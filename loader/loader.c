@@ -183,7 +183,8 @@ int main(int argc, char **argv, const char **envp){
     }
 
     /* we may have had to pwn SEPROM, so wait a bit longer before we continue */
-    sleep(4);
+    /* sleep(4); */
+    sleep(1);
 
     err = pongo_send_command(pongo_device, "xnuspy-prep\n");
 

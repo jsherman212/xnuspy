@@ -141,3 +141,69 @@ bool sysctl__kern_children_and_register_oid_finder_14(xnu_pf_patch_t *patch,
 
     return true;
 }
+
+/* confirmed working 14.0-14.2 */
+bool lck_grp_alloc_init_finder_14(xnu_pf_patch_t *patch,
+        void *cacheable_stream){
+    xnu_pf_disable_patch(patch);
+
+    uint32_t *opcode_stream = (uint32_t *)cacheable_stream;
+
+    uint32_t *lck_grp_alloc_init = get_branch_dst_ptr(opcode_stream[15],
+            opcode_stream + 15);
+
+    g_lck_grp_alloc_init_addr = xnu_ptr_to_va(lck_grp_alloc_init);
+
+    puts("xnuspy: found lck_grp_alloc_init");
+
+    return true;
+}
+
+/* confirmed working 14.0-14.2 */
+bool lck_rw_alloc_init_finder_14(xnu_pf_patch_t *patch,
+        void *cacheable_stream){
+    xnu_pf_disable_patch(patch);
+
+    uint32_t *opcode_stream = (uint32_t *)cacheable_stream;
+
+    uint32_t *lck_rw_alloc_init = get_branch_dst_ptr(*opcode_stream,
+            opcode_stream);
+
+    g_lck_rw_alloc_init_addr = xnu_ptr_to_va(lck_rw_alloc_init);
+
+    puts("xnuspy: found lck_rw_alloc_init");
+
+    return true;
+}
+
+/* confirmed working on all KTRR kernels 14.0-14.2 */
+bool ktrr_lockdown_patcher_14(xnu_pf_patch_t *patch, void *cacheable_stream){
+    xnu_pf_disable_patch(patch);
+
+    uint32_t *opcode_stream = (uint32_t *)cacheable_stream;
+
+    /* all to NOP */
+    *opcode_stream = 0xd503201f;
+    opcode_stream[1] = 0xd503201f;
+    opcode_stream[3] = 0xd503201f;
+
+    puts("xnuspy: disabled KTRR MMU lockdown");
+
+    return true;
+}
+
+/* confirmed working on all KTRR kernels 14.0-14.2 */
+bool amcc_lockdown_patcher_14(xnu_pf_patch_t *patch, void *cacheable_stream){
+    xnu_pf_disable_patch(patch);
+
+    uint32_t *opcode_stream = (uint32_t *)cacheable_stream;
+
+    /* all to NOP */
+    *opcode_stream = 0xd503201f;
+    opcode_stream[1] = 0xd503201f;
+    opcode_stream[3] = 0xd503201f;
+
+    puts("xnuspy: disabled AMCC MMU lockdown");
+
+    return true;
+}

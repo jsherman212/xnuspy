@@ -56,7 +56,8 @@ static bool getkernelv_callback(xnu_pf_patch_t *patch, void *cacheable_stream){
 
         if(socnum == 0x8010 || socnum == 0x8011 || socnum == 0x8012 ||
                 socnum == 0x8015){
-            queue_rx_string("sep auto\n");
+            printf("%s: NOT PWNING SEPROM FOR TESTING PURPOSES\n", __func__);
+            /* queue_rx_string("sep auto\n"); */
         }
     }
     else{

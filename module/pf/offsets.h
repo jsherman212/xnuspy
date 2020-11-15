@@ -37,6 +37,12 @@ extern uint64_t g_xnuspy_sysctl_mib_ptr;
 extern uint64_t g_xnuspy_sysctl_mib_count_ptr;
 extern uint64_t g_xnuspy_ctl_callnum;
 extern uint32_t g_kern_version_major;
+extern uint64_t g_bcopy_phys_addr;
+extern uint64_t g_phystokv_addr;
+extern uint64_t g_copyin_addr;
+extern uint64_t g_copyout_addr;
+extern uint64_t g_lck_grp_alloc_init_addr;
+extern uint64_t g_lck_rw_alloc_init_addr;
 
 extern uint64_t g_exec_scratch_space_addr;
 extern uint64_t g_exec_scratch_space_size;

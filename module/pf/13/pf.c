@@ -23,12 +23,18 @@ uint64_t g_lck_rw_lock_shared_addr = 0;
 uint64_t g_lck_rw_done_addr = 0;
 uint64_t g_h_s_c_sbn_branch_addr = 0;
 uint64_t g_h_s_c_sbn_epilogue_addr = 0;
-uint64_t g_xnuspy_sysctl_name_ptr;
-uint64_t g_xnuspy_sysctl_descr_ptr;
-uint64_t g_xnuspy_sysctl_fmt_ptr;
-uint64_t g_xnuspy_sysctl_mib_ptr;
-uint64_t g_xnuspy_sysctl_mib_count_ptr;
-uint64_t g_xnuspy_ctl_callnum;
+uint64_t g_xnuspy_sysctl_name_ptr = 0;
+uint64_t g_xnuspy_sysctl_descr_ptr = 0;
+uint64_t g_xnuspy_sysctl_fmt_ptr = 0;
+uint64_t g_xnuspy_sysctl_mib_ptr = 0;
+uint64_t g_xnuspy_sysctl_mib_count_ptr = 0;
+uint64_t g_xnuspy_ctl_callnum = 0;
+uint64_t g_bcopy_phys_addr = 0;
+uint64_t g_phystokv_addr = 0;
+uint64_t g_copyin_addr = 0;
+uint64_t g_copyout_addr = 0;
+uint64_t g_lck_grp_alloc_init_addr = 0;
+uint64_t g_lck_rw_alloc_init_addr = 0;
 
 uint64_t g_exec_scratch_space_addr = 0;
 /* don't count the first opcode */
@@ -388,6 +394,234 @@ bool hook_system_check_sysctlbyname_finder_13(xnu_pf_patch_t *patch,
     g_h_s_c_sbn_epilogue_addr = xnu_ptr_to_va(opcode_stream);
 
     puts("xnuspy: found h_s_c_sbn epilogue");
+
+    return true;
+}
+
+/* confirmed working on all kernels 13.0-13.7 */
+bool lck_grp_alloc_init_finder_13(xnu_pf_patch_t *patch,
+        void *cacheable_stream){
+    xnu_pf_disable_patch(patch);
+
+    /* the BL we matched is guarenteed to be branching to lck_grp_alloc_init */
+    uint32_t *blp = ((uint32_t *)cacheable_stream) + 2;
+
+    uint32_t *lck_grp_alloc_init = get_branch_dst_ptr(*blp, blp);
+
+    g_lck_grp_alloc_init_addr = xnu_ptr_to_va(lck_grp_alloc_init);
+
+    puts("xnuspy: found lck_grp_alloc_init");
+
+    return true;
+}
+
+/* confirmed working on all kernels 13.0-13.7 */
+bool lck_rw_alloc_init_finder_13(xnu_pf_patch_t *patch,
+        void *cacheable_stream){
+    xnu_pf_disable_patch(patch);
+
+    uint32_t *opcode_stream = cacheable_stream;
+
+    /* the second BL we matched is branching to lck_rw_alloc_init */
+    uint32_t instr_limit = 25;
+    uint32_t bl_cnt = 0;
+
+    for(;;){
+        if(instr_limit-- == 0){
+            puts("xnuspy:");
+            puts("   lck_rw_alloc_init_finder:");
+            puts("   no BLs?");
+            return false;
+        }
+
+        if((*opcode_stream & 0xfc000000) == 0x94000000){
+            bl_cnt++;
+
+            if(bl_cnt == 2)
+                break;
+        }
+
+        opcode_stream++;
+    }
+
+    uint32_t *lck_rw_alloc_init = get_branch_dst_ptr(*opcode_stream,
+            opcode_stream);
+
+    g_lck_rw_alloc_init_addr = xnu_ptr_to_va(lck_rw_alloc_init);
+
+    puts("xnuspy: found lck_rw_alloc_init");
+
+    return true;
+}
+
+/* confirmed working on all kernels 13.0-14.2 */
+bool bcopy_phys_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
+    uint32_t *opcode_stream = (uint32_t *)cacheable_stream;
+
+    /* search up for:
+     *  mov w3, n
+     *  b 4
+     *
+     * for bcopy_phys
+     */
+    uint32_t instr_limit = 200;
+
+    while(*opcode_stream != 0x14000001 &&
+            (opcode_stream[-1] & 0xffe0001f) != 0x52800003){
+        if(instr_limit-- == 0)
+            return false;
+
+        opcode_stream--;
+    }
+
+    /* get on the mov w3, n */
+    opcode_stream--;
+
+    /* make sure we are actually on bcopy_phys. Check for sub sp, sp, n
+     * two instructions down
+     */
+    if((opcode_stream[2] & 0xffc003ff) != 0xd10003ff)
+        return false;
+
+    xnu_pf_disable_patch(patch);
+
+    g_bcopy_phys_addr = xnu_ptr_to_va(opcode_stream);
+    
+    puts("xnuspy: found bcopy_phys");
+    printf("%s: bcopy_phys @ %#llx\n", __func__, g_bcopy_phys_addr - kernel_slide);
+
+    return true;
+}
+
+/* confirmed working on all kernels 13.0-14.2 */
+bool phystokv_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
+    xnu_pf_disable_patch(patch);
+
+    uint32_t *opcode_stream = (uint32_t *)cacheable_stream;
+
+    /* We've landed inside arm_vm_init; the 5th instruction from this point
+     * is branching to phystokv
+     */
+    uint32_t *phystokv = get_branch_dst_ptr(opcode_stream[5], opcode_stream + 5);
+
+    g_phystokv_addr = xnu_ptr_to_va(phystokv);
+
+    puts("xnuspy: found phystokv");
+    printf("%s: phystokv @ %#llx\n", __func__, g_phystokv_addr - kernel_slide);
+
+    return true;
+}
+
+/* confirmed working on all KPP kernels 13.0-14.2 */
+bool kpp_patcher_13(xnu_pf_patch_t *patch, void *cacheable_stream){
+    xnu_pf_disable_patch(patch);
+
+    uint32_t *opcode_stream = (uint32_t *)cacheable_stream;
+
+    /* We do not want the kernel telling KPP to enforce kernel integrity,
+     * so we patch monitor_call's smc 0x11 to NOP.
+     */
+    *opcode_stream = 0xd503201f;
+
+    puts("xnuspy: disabled KPP");
+
+    return true;
+}
+
+/* The KTRR & AMCC patchfinder for 13.0-13.7 is from KTRW, @bazad */
+
+/* confirmed working on all KTRR kernels 13.0-13.7 */
+bool ktrr_lockdown_patcher_13(xnu_pf_patch_t *patch, void *cacheable_stream){
+    xnu_pf_disable_patch(patch);
+
+    uint32_t *opcode_stream = (uint32_t *)opcode_stream;
+
+    /* all to NOP */
+    *opcode_stream = 0xd503201f;
+    opcode_stream[2] = 0xd503201f;
+    opcode_stream[4] = 0xd503201f;
+
+    puts("xnuspy: disabled KTRR MMU lockdown");
+
+    return true;
+}
+
+/* confirmed working on all KTRR kernels 13.0-13.7 */
+bool amcc_lockdown_patcher_13(xnu_pf_patch_t *patch, void *cacheable_stream){
+    xnu_pf_disable_patch(patch);
+
+    uint32_t *opcode_stream = (uint32_t *)opcode_stream;
+
+    /* all to NOP */
+    *opcode_stream = 0xd503201f;
+    opcode_stream[2] = 0xd503201f;
+    opcode_stream[3] = 0xd503201f;
+    opcode_stream[4] = 0xd503201f;
+
+    puts("xnuspy: disabled AMCC MMU lockdown");
+
+    return true;
+}
+
+/* confirmed working on all kernels 13.0-14.2 */
+bool copyin_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
+    xnu_pf_disable_patch(patch);
+
+    uint32_t *opcode_stream = (uint32_t *)cacheable_stream;
+
+    /* we've landed inside copyin, find its prologue
+     *
+     * looking for stp x22, x21, [sp, -0x30]!
+     */
+    uint32_t instr_limit = 100;
+
+    while(*opcode_stream != 0xa9bd57f6){
+        if(instr_limit-- == 0)
+            return false;
+
+        opcode_stream--;
+    }
+
+    g_copyin_addr = xnu_ptr_to_va(opcode_stream);
+
+    puts("xnuspy: found copyin");
+    printf("%s: copyin @ %#llx\n", __func__, g_copyin_addr - kernel_slide);
+
+    return true;
+}
+
+/* confirmed working on all kernels 13.0-14.2 */
+bool copyout_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
+    uint32_t *opcode_stream = (uint32_t *)cacheable_stream;
+
+    /* We may have landed inside copyout. Unfortunately, clang decided to
+     * make the order of the three ignored instructions different across
+     * kernels. On some kernels, the matches/masks combo matches two places,
+     * so we need to make sure we're inside copyout. We're inside copyout if
+     * the eighth instruction from this point is cmp w0, 0x12.
+     */
+    if(opcode_stream[8] != 0x7100481f)
+        return false;
+
+    xnu_pf_disable_patch(patch);
+
+    /* If we're here, then we've landed inside copyout. Find its prologue
+     *
+     * looking for stp x22, x21, [sp, -0x30]!
+     */
+    uint32_t instr_limit = 100;
+
+    while(*opcode_stream != 0xa9bd57f6){
+        if(instr_limit-- == 0)
+            return false;
+
+        opcode_stream--;
+    }
+
+    g_copyout_addr = xnu_ptr_to_va(opcode_stream);
+
+    puts("xnuspy: found copyout");
+    printf("%s: copyout @ %#llx\n", __func__, g_copyout_addr - kernel_slide);
 
     return true;
 }

@@ -343,6 +343,300 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
             }),
             8, name2oid_and_its_dependencies_finder_13, "__TEXT_EXEC"),
     },
+    {
+        PF_DECL_FULL("lck_grp_alloc_init finder iOS 13",
+            LISTIZE({
+                0xf9400260,     /* ldr x0, [x19] */
+                0xf9400281,     /* ldr x1, [x20, n] */
+                0x94000000,     /* bl n */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+                0xffc003ff,     /* ignore immediate */
+                0xfc000000,     /* ignore immediate */
+            }),
+            3, XNU_PF_ACCESS_32BIT, lck_grp_alloc_init_finder_13,
+            "com.apple.security.sandbox", "__TEXT_EXEC", NULL),
+        PF_DECL_FULL("lck_grp_alloc_init finder iOS 14",
+            LISTIZE({
+                0x910063e3,     /* add x3, sp, 0x18 */
+                0x910023e5,     /* add x5, sp, 0x8 */
+                0xaa1303e0,     /* mov x0, x19 */
+                0x52800802,     /* mov w2, 0x40 */
+                0x52800104,     /* mov w4, 0x8 */
+                0xd2800006,     /* mov x6, 0 */
+                0xd2800007,     /* mov x7, 0 */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+            }),
+            7, XNU_PF_ACCESS_32BIT, lck_grp_alloc_init_finder_14,
+            "com.apple.kec.corecrypto", "__TEXT_EXEC", NULL),
+    },
+    {
+        PF_DECL32("lck_rw_alloc_init finder iOS 13",
+            LISTIZE({
+                0xd37ced01,     /* lsl x1, x8, #4 */
+                0x94000000,     /* bl n (bzero) */
+                0x10000008,     /* adrp x8, n or adr x8, n */
+                0x0,            /* ignore this instruction */
+                0xd2800001,     /* mov x1, 0 */
+                0x94000000,     /* bl n (lck_rw_alloc_init) */
+                0xf9000260,     /* str x0, [x19, n] */
+                0xb5000000,     /* cbnz x0, n */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+                0xfc000000,     /* ignore immediate */
+                0x1f00001f,     /* ignore immediate */
+                0x0,            /* ignore this instruction */
+                0xffffffff,     /* match exactly */
+                0xfc000000,     /* ignore immediate */
+                0xffc003ff,     /* ignore immediate */
+                0xff00001f,     /* ignore immediate */
+            }),
+            8, lck_rw_alloc_init_finder_13, "__TEXT_EXEC"),
+        PF_DECL32("lck_rw_alloc_init finder iOS 14",
+            LISTIZE({
+                0x94000000,     /* bl n (lck_rw_alloc_init) */
+                0xf90002a0,     /* str x0, [x21] */
+                0xb4000000,     /* cbz x0, n */
+                0x0,            /* ignore this instruction */
+                0x0,            /* ignore this instruction */
+                0x35000000,     /* cbnz w0, n */
+                0x52804000,     /* mov w0, 0x200 */
+            }),
+            LISTIZE({
+                0xfc000000,     /* ignore immediate */
+                0xffffffff,     /* match exactly */
+                0xff00001f,     /* ignore immediate */
+                0x0,            /* ignore this instruction */
+                0x0,            /* ignore this instruction */
+                0xff00001f,     /* ignore immediate */
+                0xffffffff,     /* match exactly */
+            }),
+            7, lck_rw_alloc_init_finder_14, "__TEXT_EXEC"),
+    },
+    {
+        PF_DECL32("bcopy_phys finder iOS 13",
+            LISTIZE({
+                0x52800808,     /* mov w8, 0x4<n> */
+                0x0,            /* ignore this instruction */
+                0x0,            /* ignore this instruction */
+                0x52800808,     /* mov w8, 0x4<n> */
+            }),
+            LISTIZE({
+                0xfffffe1f,     /* ignore the lower 4 bits of imm16 */
+                0x0,            /* ignore this instruction */
+                0x0,            /* ignore this instruction */
+                0xfffffe1f,     /* ignore the lower 4 bits of imm16 */
+            }),
+            4, bcopy_phys_finder_13, "__TEXT_EXEC"),
+        PF_DECL32("bcopy_phys finder iOS 14",
+            LISTIZE({
+                0x52800808,     /* mov w8, 0x4<n> */
+                0x0,            /* ignore this instruction */
+                0x0,            /* ignore this instruction */
+                0x52800808,     /* mov w8, 0x4<n> */
+            }),
+            LISTIZE({
+                0xfffffe1f,     /* ignore the lower 4 bits of imm16 */
+                0x0,            /* ignore this instruction */
+                0x0,            /* ignore this instruction */
+                0xfffffe1f,     /* ignore the lower 4 bits of imm16 */
+            }),
+            4, bcopy_phys_finder_13, "__TEXT_EXEC"),
+    },
+    {
+        PF_DECL32("phystokv finder iOS 13",
+            LISTIZE({
+                0x92dfff29,     /* mov x9, #-0xfff900000001 */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+            }),
+            1, phystokv_finder_13, "__TEXT_EXEC"),
+        PF_DECL32("phystokv finder iOS 14",
+            LISTIZE({
+                0x92dffe49,     /* mov x9, #-0xfff200000001 */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+            }),
+            1, phystokv_finder_13, "__TEXT_EXEC"),
+    },
+    {
+        PF_DECL32("KPP patcher iOS 13",
+            LISTIZE({
+                0xd4000223,     /* smc 0x11 */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+            }),
+            1, kpp_patcher_13, "__TEXT_EXEC"),
+        PF_DECL32("KPP patcher iOS 14",
+            LISTIZE({
+                0xd4000223,     /* smc 0x11 */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+            }),
+            1, kpp_patcher_13, "__TEXT_EXEC"),
+    },
+    {
+        PF_DECL32("KTRR MMU lockdown patcher iOS 13",
+            LISTIZE({
+                0xd51cf260,     /* msr s3_4_c15_c2_3, xn */
+                0x00000000,     /* ignore this instruction */
+                0xd51cf280,     /* msr s3_4_c15_c2_4, xn */
+                0x00000000,     /* ignore this instruction */
+                0xd51cf240,     /* msr s3_4_c15_c2_2, xn */
+            }),
+            LISTIZE({
+                0xffffffe0,     /* ignore Rt */
+                0x00000000,     /* ignore this instruction */
+                0xffffffe0,     /* ignore Rt */
+                0x00000000,     /* ignore this instruction */
+                0xffffffe0,     /* ignore Rt */
+            }),
+            5, ktrr_lockdown_patcher_13, "__TEXT_EXEC"),
+        PF_DECL32("KTRR MMU lockdown patcher iOS 14",
+            LISTIZE({
+                0xd51cf260,     /* msr s3_4_c15_c2_3, xn */
+                0xd51cf280,     /* msr s3_4_c15_c2_4, xn */
+                0xd2800031,     /* mov x17, 1 */
+                0xd51cf240,     /* msr s3_4_c15_c2_2, xn */
+            }),
+            LISTIZE({
+                0xffffffe0,     /* ignore Rt */
+                0xffffffe0,     /* ignore Rt */
+                0xffffffff,     /* match exactly */
+                0xffffffe0,     /* ignore Rt */
+            }),
+            4, ktrr_lockdown_patcher_14, "__TEXT_EXEC"),
+    },
+    {
+        PF_DECL32("AMCC MMU lockdown patcher iOS 13",
+            LISTIZE({
+                0xb907ec00,     /* str wn, [xn, 0x7ec] */
+                0xd5033fdf,     /* isb */
+                0xd51cf260,     /* msr s3_4_c15_c2_3, xn */
+                0xd51cf280,     /* msr s3_4_c15_c2_4, xn */
+                0xd51cf240,     /* msr s3_4_c15_c2_2, xn */
+            }),
+            LISTIZE({
+                0xfffffc00,     /* ignore Rn and Rt */
+                0xffffffff,     /* match exactly */
+                0xffffffe0,     /* ignore Rt */
+                0xffffffe0,     /* ignore Rt */
+                0xffffffe0,     /* ignore Rt */
+            }),
+            5, amcc_lockdown_patcher_13, "__TEXT_EXEC"),
+        PF_DECL32("AMCC MMU lockdown patcher iOS 14",
+            LISTIZE({
+                0xd51cf260,     /* msr s3_4_c15_c2_3, xn */
+                0xd51cf280,     /* msr s3_4_c15_c2_4, xn */
+                0xd2800031,     /* mov x17, 1 */
+                0xd51cf240,     /* msr s3_4_c15_c2_2, xn */
+            }),
+            LISTIZE({
+                0xffffffe0,     /* ignore Rt */
+                0xffffffe0,     /* ignore Rt */
+                0xffffffff,     /* match exactly */
+                0xffffffe0,     /* ignore Rt */
+            }),
+            4, amcc_lockdown_patcher_14, "__TEXT_EXEC"),
+    },
+    {
+        PF_DECL32("copyin finder iOS 13",
+            LISTIZE({
+                0xb4000002,     /* cbz x2, n */
+                0xaa0203f3,     /* mov x19, x2 */
+                0xaa0103f4,     /* mov x20, x1 */
+                0xaa0003f5,     /* mov x21, x0 */
+                0x528000a3,     /* mov w3, 5 */
+                0x94000000,     /* bl _copy_validate */
+            }),
+            LISTIZE({
+                0xff00001f,     /* ignore immediate */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xfc000000,     /* ignore immediate */
+            }),
+            6, copyin_finder_13, "__TEXT_EXEC"),
+        PF_DECL32("copyin finder iOS 14",
+            LISTIZE({
+                0xb4000002,     /* cbz x2, n */
+                0xaa0203f3,     /* mov x19, x2 */
+                0xaa0103f4,     /* mov x20, x1 */
+                0xaa0003f5,     /* mov x21, x0 */
+                0x528000a3,     /* mov w3, 5 */
+                0x94000000,     /* bl _copy_validate */
+            }),
+            LISTIZE({
+                0xff00001f,     /* ignore immediate */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xfc000000,     /* ignore immediate */
+            }),
+            6, copyin_finder_13, "__TEXT_EXEC"),
+    },
+    {
+        PF_DECL32("copyout finder iOS 13",
+            LISTIZE({
+                0xb4000002,     /* cbz x2, n */
+                0xaa0203f3,     /* mov x19, x2 */
+                0xaa0103f4,     /* mov x20, x1 */
+                0xaa0003f5,     /* mov x21, x0 */
+                0x0,            /* ignore this instruction */
+                0x0,            /* ignore this instruction */
+                0x0,            /* ignore this instruction */
+                0x94000000,     /* bl _copy_validate */
+            }),
+            LISTIZE({
+                0xff00001f,     /* ignore immediate */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0x0,            /* ignore this instruction */
+                0x0,            /* ignore this instruction */
+                0x0,            /* ignore this instruction */
+                0xfc000000,     /* ignore immediate */
+            }),
+            8, copyout_finder_13, "__TEXT_EXEC"),
+        PF_DECL32("copyout finder iOS 14",
+            LISTIZE({
+                0xb4000002,     /* cbz x2, n */
+                0xaa0203f3,     /* mov x19, x2 */
+                0xaa0103f4,     /* mov x20, x1 */
+                0xaa0003f5,     /* mov x21, x0 */
+                0x0,            /* ignore this instruction */
+                0x0,            /* ignore this instruction */
+                0x0,            /* ignore this instruction */
+                0x94000000,     /* bl _copy_validate */
+            }),
+            LISTIZE({
+                0xff00001f,     /* ignore immediate */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0x0,            /* ignore this instruction */
+                0x0,            /* ignore this instruction */
+                0x0,            /* ignore this instruction */
+                0xfc000000,     /* ignore immediate */
+            }),
+            8, copyout_finder_13, "__TEXT_EXEC"),
+    },
     { PF_END, PF_END },
 };
 
