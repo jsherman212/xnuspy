@@ -10,6 +10,48 @@
 
 #include "preboot_hook.h"
 
+static void DumpMemory(void *startaddr, void *data, size_t size){
+    char ascii[17];
+    size_t i, j;
+    ascii[16] = '\0';
+    int putloc = 0;
+    void *curaddr = startaddr;
+    for (i = 0; i < size; ++i) {
+        if(!putloc){
+            if(startaddr != (void *)-1){
+                printf("%#llx: ", (uint64_t)curaddr);
+                curaddr += 0x10;
+            }
+
+            putloc = 1;
+        }
+
+        printf("%02X ", ((unsigned char*)data)[i]);
+        if (((unsigned char*)data)[i] >= ' ' && ((unsigned char*)data)[i] <= '~') {
+            ascii[i % 16] = ((unsigned char*)data)[i];
+        } else {
+            ascii[i % 16] = '.';
+        }
+        if ((i+1) % 8 == 0 || i+1 == size) {
+            printf(" ");
+            if ((i+1) % 16 == 0) {
+                printf("| %s \n", ascii);
+                putloc = 0;
+            } else if (i+1 == size) {
+                ascii[(i+1) % 16] = '\0';
+                if ((i+1) % 16 <= 8) {
+                    printf(" ");
+                }
+                for (j = (i+1) % 16; j < 16; ++j) {
+                    printf("  ");
+                }
+                printf("| %s \n", ascii);
+                putloc = 0;
+            }
+        }
+    }
+}
+
 uint32_t g_kern_version_major = 0;
 
 static uint32_t g_kern_version_minor = 0;
@@ -53,6 +95,84 @@ static bool getkernelv_callback(xnu_pf_patch_t *patch, void *cacheable_stream){
         printf("xnuspy: iOS 13.x detected\n");
     else if(g_kern_version_major == iOS_14_x){
         printf("xnuspy: iOS 14.x detected\n");
+
+        /* uint64_t cur_el = 0; */
+        /* asm volatile("mrs %0, CurrentEL" : "=r" (cur_el) : : ); */
+        /* cur_el >>= 2; */
+        /* printf("%s: current EL %lld\n", __func__, cur_el); */
+
+        /* printf("%s: %#llx %#llx\n", __func__, gBootArgs->virtBase, */
+        /*         gBootArgs->physBase); */
+
+        /* printf("%s: gEntryPoint is %#llx\n", __func__, gEntryPoint); */
+
+        /* void *entry = gEntryPoint; */
+        /* DumpMemory(entry, entry, 0x200); */
+
+        /* gEntryPoint = (void *)0x4100002804; */
+        
+
+        /* uint64_t vbar_el1 = 0; */
+        /* asm volatile("mrs %0, VBAR_EL1" : "=r" (vbar_el1)); */
+        /* printf("%s: vbar_el1 %#llx\n", __func__, vbar_el1); */
+
+        /* DumpMemory((void*)vbar_el1, (void *)vbar_el1, 0x100); */
+        /* puts(""); */
+
+        /* asm volatile("mov w0, 0x802"); */
+        /* asm volatile("mov w1, 0"); */
+        /* asm volatile("mov w2, 0"); */
+        /* asm volatile("mov w3, 0"); */
+        /* asm volatile("smc #0"); */
+        /* asm volatile("mov x0, %0" : : "r" (getkernelv_callback) : ); */
+        /* asm volatile("msr ELR_EL3, x0"); */
+        /* asm volatile("mov x0, 0x41"); */
+        /* asm volatile("msr ELR_EL1, x0"); */
+
+        /* fast call, use smc64 calling conv */
+        /* asm volatile("mov w0, 0xc0000000"); */
+        /* asm volatile("smc #0"); */
+
+        /* asm volatile("isb"); */
+        /* asm volatile("dsb sy"); */
+        /* asm volatile("ic iallu"); */
+        /* asm volatile("dsb sy"); */
+        /* asm volatile("isb"); */
+
+        /* asm volatile("mov x0, 0x4100002804"); */
+        /* asm volatile("mov x0, 0x2804"); */
+        /* asm volatile("mov x0, 0x4978"); */
+        /* asm volatile("movk x0, 0x41, lsl #0x30"); */
+        /* asm volatile("mov x30, x0"); */
+        /* asm volatile("mov x1, xzr"); */
+        /* asm volatile("mov x2, xzr"); */
+        /* asm volatile("mov x3, xzr"); */
+        /* asm volatile("blr x0"); */
+        /* asm volatile("ret"); */
+
+
+        /* asm volatile("mov x0, 0x4141"); */
+        /* asm volatile("msr VBAR_EL3, x0"); */
+        /* asm volatile("ldr x1, [x0]"); */
+        /* asm volatile("mrs x8, SPSR_EL3"); */
+        /* asm volatile("and x8, x8, 0xffffffff"); */
+        /* asm volatile("msr SPSR_EL1, x8"); */
+        /* asm volatile("mrs x10, ELR_EL3"); */
+        /* asm volatile("msr ELR_EL1, x10"); */
+        /* asm volatile("orr x8, x8, 0xc0"); */
+        /* M[3:0] --> EL1h (5) */
+        /* asm volatile("and x8, x8, 0xfffffff0"); */
+        /* asm volatile("mov x10, 5"); */
+        /* asm volatile("orr x8, x8, x10"); */
+        /* asm volatile("msr SPSR_EL3, x8"); */
+        /* asm volatile("mov x8, 0x4141"); */
+        /* asm volatile("msr ESR_EL1, x8"); */
+        /* asm volatile("isb"); */
+        /* asm volatile("eret"); */
+
+        /* asm volatile("mrs %0, CurrentEL" : "=r" (cur_el) : : ); */
+        /* cur_el >>= 2; */
+        /* printf("%s: BACK: current EL %lld\n", __func__, cur_el); */
 
         if(socnum == 0x8010 || socnum == 0x8011 || socnum == 0x8012 ||
                 socnum == 0x8015){

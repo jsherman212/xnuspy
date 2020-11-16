@@ -6,4 +6,4 @@ $(ASM_INSTR_HDRS) : $(ASM_SRCS) $(ASM_HDRS) \
 	../common/xnuspy_cache.h
 	$(shell chmod +x ./hookgen.pl)
 	$(shell ./hookgen.pl hook_system_check_sysctlbyname_hook)
-	$(shell ./hookgen.pl ctramp)
+	$(shell ./hookgen.pl xnuspy_ctl_tramp)

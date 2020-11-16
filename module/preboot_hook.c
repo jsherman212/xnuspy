@@ -6,8 +6,8 @@
 #include "common/common.h"
 #include "common/pongo.h"
 
-#include "el1/ctramp_instrs.h"
 #include "el1/hook_system_check_sysctlbyname_hook_instrs.h"
+#include "el1/xnuspy_ctl_tramp_instrs.h"
 
 #include "pf/disas.h"
 #include "pf/macho.h"
@@ -96,10 +96,10 @@ static void anything_missing(void){
     chk(!g_lck_grp_alloc_init_addr, "lck_grp_alloc_init not found\n");
     chk(!g_lck_rw_alloc_init_addr, "lck_rw_alloc_init not found\n");
     chk(!g_exec_scratch_space_addr, "unused executable code not found\n");
-    chk(!g_bcopy_phys_addr, "bcopy_phys not found");
-    chk(!g_phystokv_addr, "phystokv not found");
-    chk(!g_copyin_addr, "copyin not found");
-    chk(!g_copyout_addr, "copyout not found");
+    chk(!g_bcopy_phys_addr, "bcopy_phys not found\n");
+    chk(!g_phystokv_addr, "phystokv not found\n");
+    chk(!g_copyin_addr, "copyin not found\n");
+    chk(!g_copyout_addr, "copyout not found\n");
 
     /* if we printed the error header, something is missing */
     if(printed_err_hdr)
@@ -127,12 +127,15 @@ static void initialize_xnuspy_cache(void){
     XNUSPY_CACHE_WRITE(g_xnuspy_sysctl_mib_ptr);
     XNUSPY_CACHE_WRITE(g_xnuspy_sysctl_mib_count_ptr);
     /* XXX */
-    g_xnuspy_ctl_callnum = 41;
+    /* g_xnuspy_ctl_callnum = 41; */
     XNUSPY_CACHE_WRITE(g_xnuspy_ctl_callnum);
     XNUSPY_CACHE_WRITE(g_kern_version_major);
 
-    /* XXX placeholders for xnuspy_ctl syscall entrypoint & size */
+    /* XXX placeholders for compiled xnuspy_ctl syscall addr & size */
     XNUSPY_CACHE_WRITE(0);
+    XNUSPY_CACHE_WRITE(0);
+
+    /* Used inside xnuspy_ctl_tramp.s, initialize to false */
     XNUSPY_CACHE_WRITE(0);
 
     if(g_kern_version_major == iOS_13_x){
@@ -177,6 +180,90 @@ static uint32_t *install_h_s_c_sbn_hook(uint32_t *scratch_space,
     return scratch_space;
 }
 
+static uint32_t *write_xnuspy_ctl_tramp_instrs(uint32_t *scratch_space,
+        uint64_t *num_free_instrsp){
+    uint64_t num_free_instrs = *num_free_instrsp;
+    WRITE_XNUSPY_CTL_TRAMP_INSTRS;
+    *num_free_instrsp = num_free_instrs;
+    return scratch_space;
+}
+
+/* This function will replace an _enosys sysent with the address of
+ * xnuspy_ctl_tramp. For the reason we need a trampoline, see
+ * module/el1/xnuspy_ctl_tramp.s
+ */
+static uint32_t *install_xnuspy_ctl_tramp(uint32_t *scratch_space,
+        uint64_t *num_free_instrsp){
+    uint64_t num_free_instrs = *num_free_instrsp;
+
+    uint8_t *sysent_stream = (uint8_t *)xnu_va_to_ptr(g_sysent_addr);
+    size_t sizeof_struct_sysent = 0x18;
+
+    bool tagged_ptr = false;
+    uint16_t old_tag = 0;
+
+    uint32_t limit = 1000;
+
+    for(uint32_t i=0; i<limit; i++){
+        uint64_t sy_call = *(uint64_t *)sysent_stream;
+
+        /* tagged pointer */
+        if((sy_call & 0xffff000000000000) != 0xffff000000000000){
+            old_tag = (sy_call >> 48);
+
+            sy_call |= 0xffff000000000000;
+            sy_call += kernel_slide;
+
+            tagged_ptr = true;
+        }
+
+        /* mov w0, ENOSYS; ret */
+        if(*(uint64_t *)xnu_va_to_ptr(sy_call) == 0xd65f03c0528009c0){
+            g_xnuspy_ctl_callnum = i;
+
+            /* allow xnuspy_ctl_tramp access to xnuspy cache */
+            WRITE_QWORD_TO_SCRATCH_SPACE(xnu_ptr_to_va(xnuspy_cache_base));
+
+            /* sy_call */
+            if(!tagged_ptr)
+                *(uint64_t *)sysent_stream = xnu_ptr_to_va(scratch_space);
+            else{
+                uint64_t untagged = (xnu_ptr_to_va(scratch_space) &
+                        0xffffffffffff) - kernel_slide;
+
+                /* re-tag */
+                uint64_t new_sy_call = untagged | ((uint64_t)old_tag << 48);
+
+                *(uint64_t *)sysent_stream = new_sy_call;
+            }
+
+            /* no 32 bit processes on iOS 11+, so no argument munger */
+            *(uint64_t *)(sysent_stream + 0x8) = 0;
+
+            /* this syscall will return an integer */
+            *(int32_t *)(sysent_stream + 0x10) = 1; /* _SYSCALL_RET_INT_T */
+
+            /* XXX this syscall has four arguments */
+            *(int16_t *)(sysent_stream + 0x14) = 4;
+
+            /* XXX four 32 bit arguments, so arguments total 16 bytes */
+            *(uint16_t *)(sysent_stream + 0x16) = 0x10;
+
+            *num_free_instrsp = num_free_instrs;
+
+            return scratch_space;
+        }
+
+        sysent_stream += sizeof_struct_sysent;
+    }
+
+    puts("xnuspy: didn't");
+    puts("  find a sysent entry");
+    puts("  with enosys?");
+
+    xnuspy_fatal_error();
+}
+
 static void initialize_xnuspy_callnum_sysctl_offsets(void){
     uint8_t *sysctl_stuff = (uint8_t *)xnuspy_cache_base + (PAGE_SIZE / 2);
 
@@ -209,8 +296,6 @@ static void initialize_xnuspy_callnum_sysctl_offsets(void){
 void (*next_preboot_hook)(void);
 
 void xnuspy_preboot_hook(void){
-    printf("%s: hello\n", __func__);
-
     /* XXX XXX compiled xnuspy_ctl must be uploaded by this point */
 
     anything_missing();
@@ -236,9 +321,16 @@ void xnuspy_preboot_hook(void){
 
     initialize_xnuspy_callnum_sysctl_offsets();
 
+    /* replace an enosys sysent with xnuspy_ctl_tramp */
+    scratch_space = install_xnuspy_ctl_tramp(scratch_space, &num_free_instrs);
+
+    /* write the code for xnuspy_ctl_tramp */
+    scratch_space = write_xnuspy_ctl_tramp_instrs(scratch_space,
+            &num_free_instrs);
+
     initialize_xnuspy_cache();
 
-    puts("xnuspy: handing it off to checkra1n...");
+    printf("xnuspy: handing it off to checkra1n...\n");
 
     if(next_preboot_hook)
         next_preboot_hook();

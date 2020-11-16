@@ -186,6 +186,7 @@ int main(int argc, char **argv, const char **envp){
     sleep(4);
     /* sleep(1); */
 
+/* #if 0 */
     err = pongo_send_command(pongo_device, "xnuspy-prep\n");
 
     if(err < 0){
