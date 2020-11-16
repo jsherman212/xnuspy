@@ -97,6 +97,7 @@ iOS_13_x_kalloc:
     mov x1, xzr
     mov w2, wzr
     ldr x19, [x28, KALLOC_CANBLOCK]
+    blr x19
     ; fall thru
 
 register:
