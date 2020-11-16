@@ -28,15 +28,14 @@ _main:
     ; length of MIB array
     mov w20, w3
 
-    ; this function does not take sysctl_geometry_lock and name2oid expects
-    ; it to be held
+    ; this function does not take sysctl_geometry_lock
     ldr x0, [x28, SYSCTL_GEOMETRY_LOCK_PTR]
     ldr x0, [x0]
     ldr x21, [x28, LCK_RW_LOCK_SHARED]
     blr x21
     ; if this sysctl hasn't been added yet, don't do anything
-    ldr x21, [x21, DID_REGISTER_SYSCTL]
-    cbz x21, not_ours
+    ldr x21, [x28, DID_REGISTER_SYSCTL]
+    cbz x21, register_xnuspy_ctl_callnum_sysctl
     ldr x21, [x28, XNUSPY_SYSCTL_MIB_COUNT_PTR]
     ldr w21, [x21]
     cmp w21, w20
@@ -71,9 +70,90 @@ ours:
     add sp, sp, STACK
     mov x0, xzr
     br x1
+    ; not reached
 
-; in the case our sysctl wasn't being dealt with, return back to
-; hook_system_check_sysctlbyname to carry out its normal operation
+register_xnuspy_ctl_callnum_sysctl:
+    ; this does not need to be locked
+    ldr x0, [x28, SYSCTL_GEOMETRY_LOCK_PTR]
+    ldr x0, [x0]
+    ldr x19, [x28, LCK_RW_DONE]
+    blr x19
+
+    mov x0, SIZEOF_STRUCT_SYSCTL_OID
+    ; we still hold sysctl_geometry_lock
+    ldr x19, [x28, IOS_VERSION]
+    cmp x19, iOS_13_x
+    b.eq iOS_13_x_kalloc
+    ; fall thru
+
+    ldr x19, [x28, KALLOC_EXTERNAL]
+    blr x19
+
+    b register
+
+iOS_13_x_kalloc:
+    str x0, [sp, KALLOC_SZ]
+    add x0, sp, KALLOC_SZ
+    mov x1, xzr
+    mov w2, wzr
+    ldr x19, [x28, KALLOC_CANBLOCK]
+    ; fall thru
+
+register:
+    cbz x0, not_ours
+
+    ldr x19, [x28, SYSCTL__KERN_CHILDREN_PTR]
+    str x19, [x0, OFFSETOF_OID_PARENT]
+    str xzr, [x0, OFFSETOF_OID_LINK]
+    mov w19, OID_AUTO
+    str w19, [x0, OFFSETOF_OID_NUMBER]
+    mov w19, CTLTYPE_INT
+    orr w19, w19, CTLFLAG_RD
+    orr w19, w19, CTLFLAG_ANYBODY
+    orr w19, w19, CTLFLAG_OID2
+    str w19, [x0, OFFSETOF_OID_KIND]
+    add x19, x28, XNUSPY_CTL_CALLNUM
+    str x19, [x0, OFFSETOF_OID_ARG1]
+    str wzr, [x0, OFFSETOF_OID_ARG2]
+    ; oid_name, "kern.xnuspy_ctl_callnum"
+    ldr x19, [x28, XNUSPY_SYSCTL_NAME_PTR]
+    ; skip "kern."
+    add x19, x19, 0x5
+    str x19, [x0, OFFSETOF_OID_NAME]
+    ldr x19, [x28, SYSCTL_HANDLE_LONG]
+    str x19, [x0, OFFSETOF_OID_HANDLER]
+    ldr x19, [x28, XNUSPY_SYSCTL_FMT_PTR]
+    str x19, [x0, OFFSETOF_OID_FMT]
+    ldr x19, [x28, XNUSPY_SYSCTL_DESCR_PTR]
+    str x19, [x0, OFFSETOF_OID_DESCR]
+    mov w19, SYSCTL_OID_VERSION
+    str w19, [x0, OFFSETOF_OID_VERSION]
+    str wzr, [x0, OFFSETOF_OID_REFCNT]
+
+    ; register this sysctl
+    ldr x19, [x28, SYSCTL_REGISTER_OID]
+    blr x19
+
+    ; Figure out what MIB array looks like for this new sysctl.
+    ; We need this so we can check if the incoming sysctl is ours.
+    ; name2oid expects this lock to be held
+    ldr x0, [x28, SYSCTL_GEOMETRY_LOCK_PTR]
+    ldr x0, [x0]
+    ldr x19, [x28, LCK_RW_LOCK_SHARED]
+    blr x19
+
+    ldr x0, [x28, XNUSPY_SYSCTL_NAME_PTR]
+    ldr x1, [x28, XNUSPY_SYSCTL_MIB_PTR]
+    ldr x2, [x28, XNUSPY_SYSCTL_MIB_COUNT_PTR]
+    ldr x19, [x28, NAME2OID]
+    blr x19
+
+    mov x19, 0x1
+    str x19, [x28, DID_REGISTER_SYSCTL]
+    ; fall thru
+
+    ; in the case our sysctl wasn't being dealt with, return back to
+    ; hook_system_check_sysctlbyname to carry out its normal operation
 not_ours:
     ldr x0, [x28, SYSCTL_GEOMETRY_LOCK_PTR]
     ldr x0, [x0]

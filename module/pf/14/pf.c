@@ -68,7 +68,7 @@ bool ExceptionVectorsBase_finder_14(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     xnu_pf_disable_patch(patch);
 
-    uint32_t *opcode_stream = (uint32_t *)cacheable_stream;
+    uint32_t *opcode_stream = cacheable_stream;
     uint32_t limit = PAGE_SIZE / sizeof(uint32_t);
 
     /* go backwords one opcode, we'll hit the stream of values that clang
@@ -107,7 +107,7 @@ bool sysctl__kern_children_and_register_oid_finder_14(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     xnu_pf_disable_patch(patch);
 
-    uint32_t *opcode_stream = (uint32_t *)cacheable_stream;
+    uint32_t *opcode_stream = cacheable_stream;
 
     /* we've landed in entropy_buffer_init
      *
@@ -147,7 +147,7 @@ bool lck_grp_alloc_init_finder_14(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     xnu_pf_disable_patch(patch);
 
-    uint32_t *opcode_stream = (uint32_t *)cacheable_stream;
+    uint32_t *opcode_stream = cacheable_stream;
 
     uint32_t *lck_grp_alloc_init = get_branch_dst_ptr(opcode_stream[15],
             opcode_stream + 15);
@@ -164,7 +164,7 @@ bool lck_rw_alloc_init_finder_14(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     xnu_pf_disable_patch(patch);
 
-    uint32_t *opcode_stream = (uint32_t *)cacheable_stream;
+    uint32_t *opcode_stream = cacheable_stream;
 
     uint32_t *lck_rw_alloc_init = get_branch_dst_ptr(*opcode_stream,
             opcode_stream);
@@ -180,7 +180,7 @@ bool lck_rw_alloc_init_finder_14(xnu_pf_patch_t *patch,
 bool ktrr_lockdown_patcher_14(xnu_pf_patch_t *patch, void *cacheable_stream){
     xnu_pf_disable_patch(patch);
 
-    uint32_t *opcode_stream = (uint32_t *)cacheable_stream;
+    uint32_t *opcode_stream = cacheable_stream;
 
     /* all to NOP */
     *opcode_stream = 0xd503201f;
@@ -196,7 +196,7 @@ bool ktrr_lockdown_patcher_14(xnu_pf_patch_t *patch, void *cacheable_stream){
 bool amcc_lockdown_patcher_14(xnu_pf_patch_t *patch, void *cacheable_stream){
     xnu_pf_disable_patch(patch);
 
-    uint32_t *opcode_stream = (uint32_t *)cacheable_stream;
+    uint32_t *opcode_stream = cacheable_stream;
 
     /* all to NOP */
     *opcode_stream = 0xd503201f;
