@@ -219,7 +219,7 @@ int main(int argc, char **argv, const char **envp){
     }
 
     /* we may have had to pwn SEPROM, so wait a bit longer before we continue */
-    sleep(4);
+    /* sleep(4); */
 
     /* send the compiled xnuspy_ctl syscall */
     err = pongo_init_bulk_upload(pongo_device);

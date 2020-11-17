@@ -87,19 +87,13 @@ pteloop:
     blr x23
 
     ; bcopy_phys succeeds on 13.6.1 a11, not 14.x a10
-    mov x0, 0x1234
-    mov x1, 0x5678
-    brk 0
+    ; mov x0, 0x1234
+    ; mov x1, 0x5678
+    ; brk 0
+    ic iallu
+    dsb ish
+    isb
 
-
-
-
-
-
-
-    ; XXX invalidate cache?
-    ; dsb ish
-    ; isb
 
 nextpage:
     mov w22, 0x1
