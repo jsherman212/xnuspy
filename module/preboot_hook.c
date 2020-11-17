@@ -54,6 +54,25 @@ uint64_t *xnuspy_cache_base = NULL;
         *xnuspy_cache_cursor++ = (thing); \
     } while (0) \
 
+static struct xnuspy_ctl_offset {
+    const char *name;
+    uint64_t *val;
+} g_xnuspy_ctl_needed_offsets[] = {
+    { "_bcopy_phys", &g_bcopy_phys_addr },
+    { "_copyin", &g_copyin_addr },
+    { "_copyout", &g_copyout_addr },
+    { "_iOS_version", &g_kern_version_major },
+    { "_kalloc_canblock", &g_kalloc_canblock_addr },
+    { "_kalloc_external", &g_kalloc_external_addr },
+    { "_kfree_addr", &g_kfree_addr_addr },
+    { "_kfree_ext", &g_kfree_ext_addr },
+    { "_lck_grp_alloc_init", &g_lck_grp_alloc_init_addr },
+    { "_lck_rw_alloc_init", &g_lck_rw_alloc_init_addr },
+    { "_lck_rw_done", &g_lck_rw_done_addr },
+    { "_lck_rw_lock_shared", &g_lck_rw_lock_shared_addr },
+    { "_phystokv", &g_phystokv_addr },
+};
+
 static uint32_t *write_h_s_c_sbn_h_instrs(uint32_t *scratch_space,
         uint64_t *num_free_instrsp){
     uint64_t num_free_instrs = *num_free_instrsp;
@@ -298,6 +317,23 @@ static void initialize_xnuspy_callnum_sysctl_offsets(void){
     g_xnuspy_sysctl_mib_count_ptr = xnu_ptr_to_va(sysctl_mib_countp);
 }
 
+static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
+    const size_t num_needed_offsets = sizeof(g_xnuspy_ctl_needed_offsets) /
+        sizeof(*g_xnuspy_ctl_needed_offsets);
+
+    for(size_t i=0; i<num_needed_offsets; i++){
+        if(strcmp(ksym, g_xnuspy_ctl_needed_offsets[i].name) == 0){
+            /* printf("%s: replacing '%s' with %#llx (unslid %#llx)\n", __func__, */
+            /*         ksym, *g_xnuspy_ctl_needed_offsets[i].val, */
+            /*         *g_xnuspy_ctl_needed_offsets[i].val - kernel_slide); */
+            
+            *va = *g_xnuspy_ctl_needed_offsets[i].val;
+
+            return;
+        }
+    }
+}
+
 /* fill in all our kernel offsets in __koff, initialize g_xnuspy_ctl_addr
  * and g_xnuspy_ctl_img_codesz
  */
@@ -344,8 +380,15 @@ static void process_xnuspy_ctl_image(void *xnuspy_ctl_image){
         uint64_t *va = (uint64_t *)((uint8_t *)xnuspy_ctl_image +
                 symtab[i].n_value);
 
-        printf("%s: got symbol '%s' @ %#llx\n", __func__, sym, va);
+        if(strcmp(sym, "_xnuspy_ctl") == 0)
+            g_xnuspy_ctl_addr = xnu_ptr_to_va(va);
+        else
+            initialize_xnuspy_ctl_image_koff(sym, va);
+
+        /* printf("%s: got symbol '%s' @ %#llx\n", __func__, sym, va); */
     }
+
+    printf("%s: g_xnuspy_ctl_addr @ %#llx\n", __func__, g_xnuspy_ctl_addr);
 }
 
 void (*next_preboot_hook)(void);

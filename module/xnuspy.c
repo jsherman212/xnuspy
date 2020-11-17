@@ -52,7 +52,7 @@ static void DumpMemory(void *startaddr, void *data, size_t size){
     }
 }
 
-uint32_t g_kern_version_major = 0;
+uint64_t g_kern_version_major = 0;
 
 static uint32_t g_kern_version_minor = 0;
 static uint32_t g_kern_version_revision = 0;
@@ -182,7 +182,7 @@ static bool getkernelv_callback(xnu_pf_patch_t *patch, void *cacheable_stream){
     }
     else{
         printf("xnuspy: error: unknown\n"
-                "  major %d\n",
+                "  major %lld\n",
                 g_kern_version_major);
 
         xnuspy_fatal_error();

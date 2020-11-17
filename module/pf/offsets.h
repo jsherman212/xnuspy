@@ -44,6 +44,6 @@ extern uint64_t g_xnuspy_sysctl_fmt_ptr;
 extern uint64_t g_xnuspy_sysctl_mib_ptr;
 extern uint64_t g_xnuspy_sysctl_mib_count_ptr;
 extern uint64_t g_xnuspy_ctl_callnum;
-extern uint32_t g_kern_version_major;
+extern uint64_t g_kern_version_major;
 
 #endif

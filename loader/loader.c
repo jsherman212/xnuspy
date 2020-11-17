@@ -148,7 +148,7 @@ int main(int argc, char **argv, const char **envp){
     }
 
     size_t xnuspy_ctl_imgsz = st.st_size;
-    printf("xnuspy_ctl image size %#llx\n", xnuspy_ctl_imgsz);
+    printf("xnuspy_ctl image size %#zx\n", xnuspy_ctl_imgsz);
 
     int xnuspy_ctl_fd = open(xnuspy_ctl_path, O_RDONLY);
 
