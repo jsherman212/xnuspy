@@ -64,9 +64,38 @@ pteloop:
     lsr x23, x19, ARM_TT_L3_SHIFT
     and x23, x23, 0x7ff
     add x23, x22, x23, lsl 0x3
-    ; ldr x0, [x23]
-    ; successfully gets PTE, PTE pointer is in X23
-    ; XXX good up to here
+
+    ; X23 == pointer to PTE for this page
+    ldr x24, [x23]
+    ; ~(ARM_PTE_PNXMASK | ARM_PTE_NXMASK)
+    mov x25, 0xff9fffffffffffff
+    and x24, x24, x25
+    str x24, [x27, NEW_PTE_SPACE]
+
+    mov x0, x23
+    ldr x23, [x27, KVTOPHYS]
+    blr x23
+    mov x24, x0
+
+    add x0, x27, NEW_PTE_SPACE
+    blr x23
+
+    ; X0 == pa of NEW_PTE_SPACE
+    mov x1, x24
+    mov w2, 0x8
+    ldr x23, [x27, BCOPY_PHYS]
+    blr x23
+
+    ; bcopy_phys succeeds on 13.6.1 a11, not 14.x a10
+    mov x0, 0x1234
+    mov x1, 0x5678
+    brk 0
+
+
+
+
+
+
 
     ; XXX invalidate cache?
     ; dsb ish

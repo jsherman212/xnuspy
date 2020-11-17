@@ -167,7 +167,11 @@ static void initialize_xnuspy_cache(void){
 
     /* iphone 8 13.6.1 */
     uint64_t kvtophys = 0xFFFFFFF007CF83B8 + kernel_slide;
+    /* iphone 7 14.2 */
+    /* uint64_t kvtophys = 0xFFFFFFF00727F0C0 + kernel_slide; */
     XNUSPY_CACHE_WRITE(kvtophys);
+
+    XNUSPY_CACHE_WRITE(g_bcopy_phys_addr);
 
     if(g_kern_version_major == iOS_13_x){
         XNUSPY_CACHE_WRITE(g_kalloc_canblock_addr);
@@ -177,6 +181,9 @@ static void initialize_xnuspy_cache(void){
         XNUSPY_CACHE_WRITE(g_kalloc_external_addr);
         XNUSPY_CACHE_WRITE(g_kfree_ext_addr);
     }
+
+    /* new PTE space, zero it out */
+    XNUSPY_CACHE_WRITE(0);
 
     puts("xnuspy: initialized xnuspy cache");
 }
