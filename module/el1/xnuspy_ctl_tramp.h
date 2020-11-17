@@ -1,12 +1,12 @@
 #ifndef XNUSPY_CTL_TRAMP
 #define XNUSPY_CTL_TRAMP
 
-#define STACK                       (0x40)
+#define STACK                       (0x200)
 
-#define VADDR_CUR                   (STACK-0x20)
-#define VADDR_END                   (STACK-0x28)
+#define VADDR_CUR                   (STACK-0x70)
+#define VADDR_END                   (STACK-0x78)
 
-#define NUM_INSTRS_BEFORE_CACHE     (3)
+#define NUM_INSTRS_BEFORE_CACHE     (7)
 #define ADDRESS_OF_XNUSPY_CACHE     (-((4*NUM_INSTRS_BEFORE_CACHE)+8))
 
 /* mask for extracting pointer to the next table */

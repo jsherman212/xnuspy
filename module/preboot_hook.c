@@ -16,6 +16,10 @@
 #include "pf/pf_common.h"
 
 static uint64_t g_xnuspy_ctl_addr = 0;
+
+/* address of start of __TEXT_EXEC in xnuspy_ctl image */
+static uint64_t g_xnuspy_ctl_img_codestart = 0;
+
 /* how many bytes to we need to mark as executable inside xnuspy_ctl_tramp? */
 static uint64_t g_xnuspy_ctl_img_codesz = 0;
 
@@ -153,12 +157,17 @@ static void initialize_xnuspy_cache(void){
     XNUSPY_CACHE_WRITE(g_xnuspy_ctl_callnum);
     XNUSPY_CACHE_WRITE(g_kern_version_major);
     XNUSPY_CACHE_WRITE(g_xnuspy_ctl_addr);
+    XNUSPY_CACHE_WRITE(g_xnuspy_ctl_img_codestart);
     XNUSPY_CACHE_WRITE(g_xnuspy_ctl_img_codesz);
 
     /* Used inside xnuspy_ctl_tramp.s, initialize to false */
     XNUSPY_CACHE_WRITE(0);
 
     XNUSPY_CACHE_WRITE(g_phystokv_addr);
+
+    /* iphone 8 13.6.1 */
+    uint64_t kvtophys = 0xFFFFFFF007CF83B8 + kernel_slide;
+    XNUSPY_CACHE_WRITE(kvtophys);
 
     if(g_kern_version_major == iOS_13_x){
         XNUSPY_CACHE_WRITE(g_kalloc_canblock_addr);
@@ -346,8 +355,10 @@ static void process_xnuspy_ctl_image(void *xnuspy_ctl_image){
         else if(lc->cmd == LC_SEGMENT_64){
             struct segment_command_64 *sc = (struct segment_command_64 *)lc;
 
-            if(strcmp(sc->segname, "__TEXT_EXEC") == 0)
+            if(strcmp(sc->segname, "__TEXT_EXEC") == 0){
+                g_xnuspy_ctl_img_codestart = xnu_ptr_to_va(mh) + sc->vmaddr;
                 g_xnuspy_ctl_img_codesz = sc->vmsize;
+            }
         }
 
         if(st && g_xnuspy_ctl_img_codesz)
@@ -386,8 +397,9 @@ static void process_xnuspy_ctl_image(void *xnuspy_ctl_image){
         /* printf("%s: got symbol '%s' @ %#llx\n", __func__, sym, va); */
     }
 
-    printf("%s: g_xnuspy_ctl_addr @ %#llx, code size %#llx\n", __func__,
-            g_xnuspy_ctl_addr, g_xnuspy_ctl_img_codesz);
+    printf("%s: g_xnuspy_ctl_addr @ %#llx, code start @ %#llx, code size %#llx\n",
+            __func__, g_xnuspy_ctl_addr, g_xnuspy_ctl_img_codestart,
+            g_xnuspy_ctl_img_codesz);
 }
 
 void (*next_preboot_hook)(void);
