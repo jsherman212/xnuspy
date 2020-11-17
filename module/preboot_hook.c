@@ -150,17 +150,15 @@ static void initialize_xnuspy_cache(void){
     XNUSPY_CACHE_WRITE(g_xnuspy_sysctl_fmt_ptr);
     XNUSPY_CACHE_WRITE(g_xnuspy_sysctl_mib_ptr);
     XNUSPY_CACHE_WRITE(g_xnuspy_sysctl_mib_count_ptr);
-    /* XXX */
-    /* g_xnuspy_ctl_callnum = 41; */
     XNUSPY_CACHE_WRITE(g_xnuspy_ctl_callnum);
     XNUSPY_CACHE_WRITE(g_kern_version_major);
-
-    /* XXX placeholders for compiled xnuspy_ctl syscall addr & size */
     XNUSPY_CACHE_WRITE(g_xnuspy_ctl_addr);
     XNUSPY_CACHE_WRITE(g_xnuspy_ctl_img_codesz);
 
     /* Used inside xnuspy_ctl_tramp.s, initialize to false */
     XNUSPY_CACHE_WRITE(0);
+
+    XNUSPY_CACHE_WRITE(g_phystokv_addr);
 
     if(g_kern_version_major == iOS_13_x){
         XNUSPY_CACHE_WRITE(g_kalloc_canblock_addr);
@@ -388,14 +386,13 @@ static void process_xnuspy_ctl_image(void *xnuspy_ctl_image){
         /* printf("%s: got symbol '%s' @ %#llx\n", __func__, sym, va); */
     }
 
-    printf("%s: g_xnuspy_ctl_addr @ %#llx\n", __func__, g_xnuspy_ctl_addr);
+    printf("%s: g_xnuspy_ctl_addr @ %#llx, code size %#llx\n", __func__,
+            g_xnuspy_ctl_addr, g_xnuspy_ctl_img_codesz);
 }
 
 void (*next_preboot_hook)(void);
 
 void xnuspy_preboot_hook(void){
-    /* XXX XXX compiled xnuspy_ctl must be uploaded by this point */
-
     anything_missing();
 
     /* XXX check if there's enough executable free space */
@@ -411,8 +408,8 @@ void xnuspy_preboot_hook(void){
         xnuspy_fatal_error();
     }
 
-    printf("%s: xnuspy_ctl img is %#llx bytes\n", __func__,
-            loader_xfer_recv_count);
+    /* printf("%s: xnuspy_ctl img is %#llx bytes\n", __func__, */
+    /*         loader_xfer_recv_count); */
 
     void *xnuspy_ctl_image = alloc_static(loader_xfer_recv_count);
 
@@ -425,8 +422,8 @@ void xnuspy_preboot_hook(void){
         xnuspy_fatal_error();
     }
 
-    printf("%s: xnuspy_ctl image %#llx loader_xfer_recv_data %#llx\n", __func__,
-            xnuspy_ctl_image, loader_xfer_recv_data);
+    /* printf("%s: xnuspy_ctl image %#llx loader_xfer_recv_data %#llx\n", __func__, */
+    /*         xnuspy_ctl_image, loader_xfer_recv_data); */
 
     memcpy(xnuspy_ctl_image, loader_xfer_recv_data, loader_xfer_recv_count);
 

@@ -17,18 +17,19 @@
 #define XNUSPY_SYSCTL_MIB_COUNT_PTR                     (0x68)
 #define XNUSPY_CTL_CALLNUM                              (0x70)
 #define IOS_VERSION                                     (0x78)
-#define XNUSPY_CTL_ADDR                                 (0x80)
-#define XNUSPY_CTL_SIZE                                 (0x88)
+#define XNUSPY_CTL_ENTRYPOINT                           (0x80)
+#define XNUSPY_CTL_CODESZ                               (0x88)
 #define XNUSPY_CTL_IS_RX                                (0x90)
+#define PHYSTOKV                                        (0x98)
 
 /* for kalloc/kfree, one of these will written to the cache depending
  * on iOS version
  */
-#define KALLOC_CANBLOCK                                 (0x98)
-#define KALLOC_EXTERNAL                                 (0x98)
+#define KALLOC_CANBLOCK                                 (0xa0)
+#define KALLOC_EXTERNAL                                 (0xa0)
 
-#define KFREE_ADDR                                      (0xa0)
-#define KFREE_EXT                                       (0xa0)
+#define KFREE_ADDR                                      (0xa8)
+#define KFREE_EXT                                       (0xa8)
 
 #define iOS_13_x                                        (19)
 #define iOS_14_x                                        (20)
