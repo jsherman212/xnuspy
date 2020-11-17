@@ -1,3 +1,4 @@
+#include <mach-o/nlist.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -13,6 +14,10 @@
 #include "pf/macho.h"
 #include "pf/offsets.h"
 #include "pf/pf_common.h"
+
+static uint64_t g_xnuspy_ctl_addr = 0;
+/* how many bytes to we need to mark as executable inside xnuspy_ctl_tramp? */
+static uint64_t g_xnuspy_ctl_img_codesz = 0;
 
 uint64_t *xnuspy_cache_base = NULL;
 
@@ -132,8 +137,8 @@ static void initialize_xnuspy_cache(void){
     XNUSPY_CACHE_WRITE(g_kern_version_major);
 
     /* XXX placeholders for compiled xnuspy_ctl syscall addr & size */
-    XNUSPY_CACHE_WRITE(0);
-    XNUSPY_CACHE_WRITE(0);
+    XNUSPY_CACHE_WRITE(g_xnuspy_ctl_addr);
+    XNUSPY_CACHE_WRITE(g_xnuspy_ctl_img_codesz);
 
     /* Used inside xnuspy_ctl_tramp.s, initialize to false */
     XNUSPY_CACHE_WRITE(0);
@@ -293,12 +298,64 @@ static void initialize_xnuspy_callnum_sysctl_offsets(void){
     g_xnuspy_sysctl_mib_count_ptr = xnu_ptr_to_va(sysctl_mib_countp);
 }
 
+/* fill in all our kernel offsets in __koff, initialize g_xnuspy_ctl_addr
+ * and g_xnuspy_ctl_img_codesz
+ */
+static void process_xnuspy_ctl_image(void *xnuspy_ctl_image){
+    struct mach_header_64 *mh = xnuspy_ctl_image;
+    struct load_command *lc = (struct load_command *)(mh + 1);
+    struct symtab_command *st = NULL;
+    
+    for(int i=0; i<mh->ncmds; i++){
+        if(lc->cmd == LC_SYMTAB)
+            st = (struct symtab_command *)lc;
+        else if(lc->cmd == LC_SEGMENT_64){
+            struct segment_command_64 *sc = (struct segment_command_64 *)lc;
+
+            if(strcmp(sc->segname, "__TEXT_EXEC") == 0)
+                g_xnuspy_ctl_img_codesz = sc->vmsize;
+        }
+
+        if(st && g_xnuspy_ctl_img_codesz)
+            break;
+
+        lc = (struct load_command *)((uint8_t *)lc + lc->cmdsize);
+    }
+
+    if(!st || !g_xnuspy_ctl_img_codesz){
+        printf("xnuspy: could not find\n");
+
+        if(!st)
+            printf("   symtab\n");
+
+        if(!g_xnuspy_ctl_img_codesz)
+            printf("   g_xnuspy_ctl_img_codesz\n");
+
+        xnuspy_fatal_error();
+    }
+
+    struct nlist_64 *symtab = (struct nlist_64 *)((uint8_t *)xnuspy_ctl_image +
+        st->symoff);
+
+    char *strtab = (char *)xnuspy_ctl_image + st->stroff;
+
+    for(int i=0; i<st->nsyms; i++){
+        char *sym = strtab + symtab[i].n_un.n_strx;
+        uint64_t *va = (uint64_t *)((uint8_t *)xnuspy_ctl_image +
+                symtab[i].n_value);
+
+        printf("%s: got symbol '%s' @ %#llx\n", __func__, sym, va);
+    }
+}
+
 void (*next_preboot_hook)(void);
 
 void xnuspy_preboot_hook(void){
     /* XXX XXX compiled xnuspy_ctl must be uploaded by this point */
 
     anything_missing();
+
+    /* XXX check if there's enough executable free space */
 
     xnuspy_cache_base = alloc_static(PAGE_SIZE);
 
@@ -311,7 +368,26 @@ void xnuspy_preboot_hook(void){
         xnuspy_fatal_error();
     }
 
-    /* XXX check if there's enough executable free space */
+    printf("%s: xnuspy_ctl img is %#llx bytes\n", __func__,
+            loader_xfer_recv_count);
+
+    void *xnuspy_ctl_image = alloc_static(loader_xfer_recv_count);
+
+    if(!xnuspy_ctl_image){
+        puts("xnuspy: alloc_static");
+        puts("   returned NULL while");
+        puts("   allocating pages for");
+        puts("   compiled xnuspy_ctl");
+
+        xnuspy_fatal_error();
+    }
+
+    printf("%s: xnuspy_ctl image %#llx loader_xfer_recv_data %#llx\n", __func__,
+            xnuspy_ctl_image, loader_xfer_recv_data);
+
+    memcpy(xnuspy_ctl_image, loader_xfer_recv_data, loader_xfer_recv_count);
+
+    process_xnuspy_ctl_image(xnuspy_ctl_image);
 
     /* install our hook for hook_system_check_sysctlbyname */
     uint64_t num_free_instrs = g_exec_scratch_space_size / sizeof(uint32_t);

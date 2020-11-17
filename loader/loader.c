@@ -135,6 +135,42 @@ int main(int argc, char **argv, const char **envp){
         return 1;
     }
 
+    const char *xnuspy_ctl_path = "./module/el1/xnuspy_ctl/xnuspy_ctl";
+
+    memset(&st, 0, sizeof(st));
+
+    if(stat(xnuspy_ctl_path, &st)){
+        printf("Problem stat'ing '%s': %s\n", xnuspy_ctl_path, strerror(errno));
+        libusb_release_interface(pongo_device, 0);
+        libusb_close(pongo_device);
+        libusb_exit(NULL);
+        return 1;
+    }
+
+    size_t xnuspy_ctl_imgsz = st.st_size;
+    printf("xnuspy_ctl image size %#llx\n", xnuspy_ctl_imgsz);
+
+    int xnuspy_ctl_fd = open(xnuspy_ctl_path, O_RDONLY);
+
+    if(xnuspy_ctl_fd == -1){
+        printf("Problem open'ing '%s': %s\n", xnuspy_ctl_path, strerror(errno));
+        libusb_release_interface(pongo_device, 0);
+        libusb_close(pongo_device);
+        libusb_exit(NULL);
+        return 1;
+    }
+
+    void *xnuspy_ctl_imgdata = mmap(NULL, xnuspy_ctl_imgsz, PROT_READ,
+            MAP_PRIVATE, xnuspy_ctl_fd, 0);
+
+    if(xnuspy_ctl_imgdata == MAP_FAILED){
+        printf("Problem mmap'ing '%s': %s\n", xnuspy_ctl_path, strerror(errno));
+        libusb_release_interface(pongo_device, 0);
+        libusb_close(pongo_device);
+        libusb_exit(NULL);
+        return 1;
+    }
+
     err = pongo_init_bulk_upload(pongo_device);
 
     if(err < 0){
@@ -149,7 +185,7 @@ int main(int argc, char **argv, const char **envp){
     err = pongo_do_bulk_upload(pongo_device, module_data, module_size);
 
     if(err < 0){
-        printf("pongo_do_bulk_upload: %s\n", libusb_error_name(err));
+        printf("pongo_do_bulk_upload (module): %s\n", libusb_error_name(err));
         munmap(module_data, module_size);
         libusb_release_interface(pongo_device, 0);
         libusb_close(pongo_device);
@@ -184,7 +220,34 @@ int main(int argc, char **argv, const char **envp){
 
     /* we may have had to pwn SEPROM, so wait a bit longer before we continue */
     sleep(4);
-    /* sleep(1); */
+
+    /* send the compiled xnuspy_ctl syscall */
+    err = pongo_init_bulk_upload(pongo_device);
+
+    if(err < 0){
+        printf("pongo_init_bulk_upload: %s\n", libusb_error_name(err));
+        munmap(module_data, module_size);
+        libusb_release_interface(pongo_device, 0);
+        libusb_close(pongo_device);
+        libusb_exit(NULL);
+        return 1;
+    }
+
+    usleep(800 * 1000);
+
+    err = pongo_do_bulk_upload(pongo_device, xnuspy_ctl_imgdata,
+            xnuspy_ctl_imgsz);
+
+    if(err < 0){
+        printf("pongo_do_bulk_upload (xnuspy_ctl): %s\n", libusb_error_name(err));
+        munmap(module_data, module_size);
+        libusb_release_interface(pongo_device, 0);
+        libusb_close(pongo_device);
+        libusb_exit(NULL);
+        return 1;
+    }
+
+    sleep(2);
 
 /* #if 0 */
     err = pongo_send_command(pongo_device, "xnuspy-prep\n");
