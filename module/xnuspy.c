@@ -5,6 +5,7 @@
 #include "common/common.h"
 #include "common/pongo.h"
 
+#include "pf/disas.h" /* XXX for bits, remove when done */
 #include "pf/offsets.h"
 #include "pf/pfs.h"
 
@@ -91,8 +92,34 @@ static bool getkernelv_callback(xnu_pf_patch_t *patch, void *cacheable_stream){
     g_kern_version_minor = atoi(minor_s);
     g_kern_version_revision = atoi(revision_s);
 
-    if(g_kern_version_major == iOS_13_x)
+    if(g_kern_version_major == iOS_13_x){
         printf("xnuspy: iOS 13.x detected\n");
+
+        /* uint64_t ttbr0_el1, ttbr1_el1; */
+        /* asm volatile("mrs %0, ttbr0_el1" : "=r" (ttbr0_el1) ); */
+        /* asm volatile("mrs %0, ttbr1_el1" : "=r" (ttbr1_el1) ); */
+
+        /* printf("%s: ttbr0_el1 %#llx ttbr1_el1 %#llx\n", __func__, ttbr0_el1, */
+        /*         ttbr1_el1); */
+
+        /* uint64_t baddr0 = bits(ttbr0_el1, 1, 47); */
+        /* uint64_t baddr1 = bits(ttbr1_el1, 1, 47); */
+
+        /* uint64_t baddr0_va = baddr0 + gBootArgs->virtBase; */
+        /* uint64_t baddr1_va = baddr1 + gBootArgs->virtBase; */
+
+        /* printf("%s: baddr0 %#llx baddr1 %#llx baddr0_virt %#llx" */
+        /*         " baddr1_virt %#llx\n", __func__, baddr0, baddr1, baddr0_va, */
+        /*         baddr1_va); */
+
+        /* void *baddr0_ptr = xnu_va_to_ptr(baddr0_va); */
+        /* void *baddr1_ptr = xnu_va_to_ptr(baddr1_va); */
+
+        /* printf("%s: baddr0 ptr %#llx\n", __func__, baddr0_ptr); */
+        /* DumpMemory(baddr0_ptr, baddr0_ptr, 0x50); */
+        /* printf("%s: baddr1 ptr %#llx\n", __func__, baddr1_ptr); */
+        /* DumpMemory(baddr1_ptr, baddr1_ptr, 0x50); */
+    }
     else if(g_kern_version_major == iOS_14_x){
         printf("xnuspy: iOS 14.x detected\n");
 

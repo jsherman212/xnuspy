@@ -5,6 +5,9 @@
 
 #define VADDR_CUR                   (STACK-0x70)
 #define VADDR_END                   (STACK-0x78)
+#define L1_TTE                      (STACK-0x80)
+#define L2_TTE                      (STACK-0x88)
+#define L3_PTE                      (STACK-0x90)
 
 #define NUM_INSTRS_BEFORE_CACHE     (7)
 #define ADDRESS_OF_XNUSPY_CACHE     (-((4*NUM_INSTRS_BEFORE_CACHE)+8))

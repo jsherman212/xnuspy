@@ -36,6 +36,8 @@
 
 #define NEW_PTE_SPACE                                   (0xc8)
 
+#define FLUSH_MMU_TLB_REGION                            (0xd0)
+
 #define iOS_13_x                                        (19)
 #define iOS_14_x                                        (20)
 
