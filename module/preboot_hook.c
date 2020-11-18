@@ -166,9 +166,12 @@ static void initialize_xnuspy_cache(void){
     XNUSPY_CACHE_WRITE(g_phystokv_addr);
 
     /* iphone 8 13.6.1 */
-    uint64_t kvtophys = 0xFFFFFFF007CF83B8 + kernel_slide;
+    /* uint64_t kvtophys = 0xFFFFFFF007CF83B8 + kernel_slide; */
     /* iphone 7 14.2 */
     /* uint64_t kvtophys = 0xFFFFFFF00727F0C0 + kernel_slide; */
+    /* iphone 7 14.1 */
+    /* XXX this offset seems wrong */
+    uint64_t kvtophys = 0xFFFFFFF007272AF0 + kernel_slide;
     XNUSPY_CACHE_WRITE(kvtophys);
 
     XNUSPY_CACHE_WRITE(g_bcopy_phys_addr);
@@ -184,6 +187,48 @@ static void initialize_xnuspy_cache(void){
 
     /* new PTE space, zero it out */
     XNUSPY_CACHE_WRITE(0);
+
+    /* ios 14.2 iphone 7 ktrr/amcc lockdown patches */
+    /* uint32_t *ktrr_p0 = xnu_va_to_ptr(0xFFFFFFF00727E468 + kernel_slide); */
+    /* uint32_t *ktrr_p1 = xnu_va_to_ptr(0xFFFFFFF00727E46C + kernel_slide); */
+    /* uint32_t *ktrr_p2 = xnu_va_to_ptr(0xFFFFFFF00727E474 + kernel_slide); */
+
+    /* all to NOP */
+    /* *ktrr_p0 = 0xd503201f; */
+    /* *ktrr_p1 = 0xd503201f; */
+    /* *ktrr_p2 = 0xd503201f; */
+
+    /* uint32_t *ktrr_p3 = xnu_va_to_ptr(0xFFFFFFF00714445C + kernel_slide); */
+    /* uint32_t *ktrr_p4 = xnu_va_to_ptr(0xFFFFFFF007144460 + kernel_slide); */
+    /* uint32_t *ktrr_p5 = xnu_va_to_ptr(0xFFFFFFF007144468 + kernel_slide); */
+
+    /* *ktrr_p3 = 0xd503201f; */
+    /* *ktrr_p4 = 0xd503201f; */
+    /* *ktrr_p5 = 0xd503201f; */
+
+    /* phone won't boot with these three patches below */
+    /* uint32_t *ctrr_p0 = xnu_va_to_ptr(0xFFFFFFF00727E408 + kernel_slide); */
+    /* uint32_t *ctrr_p1 = xnu_va_to_ptr(0xFFFFFFF00727E42C + kernel_slide); */
+    /* uint32_t *ctrr_p2 = xnu_va_to_ptr(0xFFFFFFF00727E450 + kernel_slide); */
+
+    /* *ctrr_p0 = 0xd503201f; */
+    /* *ctrr_p1 = 0xd503201f; */
+    /* *ctrr_p2 = 0xd503201f; */
+
+    /* phone won't boot with this patch */
+    /* uint32_t *ctrr_p3 = xnu_va_to_ptr(0xFFFFFFF00727E404 + kernel_slide); */
+    /* mov w0, 0 */
+    /* *ctrr_p3 = 0x52800000; */
+    
+    /* phone won't boot with this patch */
+    /* uint32_t *ctrr_p4 = xnu_va_to_ptr(0xFFFFFFF00727E38C + kernel_slide); */
+    /* mov w9, 0 */
+    /* *ctrr_p4 = 0x52800009; */
+
+    /* phone panicks with this patch */
+    /* uint32_t *ctrr_p5 = xnu_va_to_ptr(0xFFFFFFF00727DCC8 + kernel_slide); */
+    /* mov w8, 1 */
+    /* *ctrr_p5 = 0x52800028; */
 
     puts("xnuspy: initialized xnuspy cache");
 }

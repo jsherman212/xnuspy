@@ -74,4 +74,9 @@
 #define ARM_PTE_WIRED               (0x0400000000000000)
 #define ARM_PTE_WIRED_MASK          (0x0400000000000000)
 
+#define DAIFSC_DEBUGF               (1 << 3)
+#define DAIFSC_ASYNCF               (1 << 2)
+#define DAIFSC_IRQF                 (1 << 1)
+#define DAIFSC_FIQF                 (1 << 0)
+
 #endif
