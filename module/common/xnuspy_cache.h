@@ -22,21 +22,22 @@
 #define XNUSPY_CTL_CODESZ                               (0x90)
 #define XNUSPY_CTL_IS_RX                                (0x98)
 #define PHYSTOKV                                        (0xa0)
-#define KVTOPHYS                                        (0xa8)
-#define BCOPY_PHYS                                      (0xb0)
+/* #define KVTOPHYS                                        (0xa8) */
+
+#define BCOPY_PHYS                                      (0xa8)
 
 /* for kalloc/kfree, one of these will written to the cache depending
  * on iOS version
  */
-#define KALLOC_CANBLOCK                                 (0xb8)
-#define KALLOC_EXTERNAL                                 (0xb8)
+#define KALLOC_CANBLOCK                                 (0xb0)
+#define KALLOC_EXTERNAL                                 (0xb0)
 
-#define KFREE_ADDR                                      (0xc0)
-#define KFREE_EXT                                       (0xc0)
+#define KFREE_ADDR                                      (0xb8)
+#define KFREE_EXT                                       (0xb8)
 
-#define NEW_PTE_SPACE                                   (0xc8)
+#define NEW_PTE_SPACE                                   (0xc0)
 
-#define FLUSH_MMU_TLB_REGION                            (0xd0)
+/* #define FLUSH_MMU_TLB_REGION                            (0xd0) */
 
 #define iOS_13_x                                        (19)
 #define iOS_14_x                                        (20)

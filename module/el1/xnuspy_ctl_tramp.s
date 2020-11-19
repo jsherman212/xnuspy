@@ -106,35 +106,30 @@ handoff:
     br x7
     ; not reached
 
-; since it seems like all kvtophys calls have been inlined on 14.x kernels,
-; it is impossible to patchfind for. I'm just gonna implement it here
-; XXX we can safely clobber x1 and x2 so maybe don't use callee-saved regs
+; Since it seems like all kvtophys calls have been inlined on 14.x kernels,
+; it is impossible to patchfind for. To save myself the trouble I re-implemented
+; it.
 ;
 ; Parameters:
 ;   X0, kernel virtual address
 _kvtophys:
-    sub sp, sp, 0x40
-    stp x19, x20, [sp]
-    stp x21, x22, [sp, 0x10]
-    stp x23, x24, [sp, 0x20]
-
-    mrs x19, DAIF
+    mrs x1, DAIF
     ; disable interrupts
     msr DAIFSet, #(DAIFSC_DEBUGF | DAIFSC_ASYNCF | DAIFSC_IRQF | DAIFSC_FIQF)
     ; perform address translation with input being parameter
     at s1e1r, x0
     ; read result of above
-    mrs x20, par_el1
+    mrs x2, par_el1
     ; enable interrupts
-    msr DAIF, x19
+    msr DAIF, x1
     ; check F bit of PAR_EL1, if not set, address translation was successful
-    tbnz x20, 0x0, invalid
+    tbnz x2, 0x0, invalid
     ; mask for PA[47:12] of PAR_EL1
-    and x20, x20, 0xfffffffff000
+    and x2, x2, 0xfffffffff000
     ; get page offset from parameter
-    and x21, x0, 0x3fff
+    and x1, x0, 0x3fff
     ; or physical address with page offset
-    orr x0, x20, x21
+    orr x0, x2, x1
 
     b done
 
@@ -142,8 +137,4 @@ invalid:
     mov x0, xzr
 
 done:
-    ldp x19, x20, [sp]
-    ldp x21, x22, [sp, 0x10]
-    ldp x23, x24, [sp, 0x20]
-    add sp, sp, 0x40
     ret

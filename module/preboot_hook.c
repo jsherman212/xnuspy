@@ -166,13 +166,13 @@ static void initialize_xnuspy_cache(void){
     XNUSPY_CACHE_WRITE(g_phystokv_addr);
 
     /* iphone 8 13.6.1 */
-    uint64_t kvtophys = 0xFFFFFFF007CF83B8 + kernel_slide;
+    /* uint64_t kvtophys = 0xFFFFFFF007CF83B8 + kernel_slide; */
     /* iphone 7 14.2 */
     /* uint64_t kvtophys = 0xFFFFFFF00727F0C0 + kernel_slide; */
     /* iphone 7 14.1 */
     /* XXX this offset seems wrong */
     /* uint64_t kvtophys = 0xFFFFFFF007272AF0 + kernel_slide; */
-    XNUSPY_CACHE_WRITE(kvtophys);
+    /* XNUSPY_CACHE_WRITE(kvtophys); */
 
     XNUSPY_CACHE_WRITE(g_bcopy_phys_addr);
 
@@ -189,8 +189,8 @@ static void initialize_xnuspy_cache(void){
     XNUSPY_CACHE_WRITE(0);
 
     /* iphone 8 13.6.1 */
-    uint64_t flush_mmu_tlb_region = 0xFFFFFFF007CF85F0 + kernel_slide;
-    XNUSPY_CACHE_WRITE(flush_mmu_tlb_region);
+    /* uint64_t flush_mmu_tlb_region = 0xFFFFFFF007CF85F0 + kernel_slide; */
+    /* XNUSPY_CACHE_WRITE(flush_mmu_tlb_region); */
 
     /* ios 14.2 iphone 7 ktrr/amcc lockdown patches */
     /* uint32_t *ktrr_p0 = xnu_va_to_ptr(0xFFFFFFF00727E468 + kernel_slide); */
