@@ -78,8 +78,6 @@ pteloop:
     mov x25, 0xff9fffffffffffff
     ; XXX contiguous hint prevents us from executing the code when we've
     ; turned off XN and PXN??
-    ; ~(ARM_PTE_PNXMASK | ARM_PTE_NXMASK | ARM_PTE_HINT_MASK)
-    ; mov x25, 0xff8fffffffffffff
     and x24, x24, x25
     str x24, [x27, NEW_PTE_SPACE]
 
@@ -88,12 +86,31 @@ pteloop:
     ldr x25, [x26]
 
     mov x0, x23
-    ldr x23, [x27, KVTOPHYS]
-    blr x23
+    bl _kvtophys
     mov x24, x0
+    ; ldr x23, [x27, KVTOPHYS]
+    ; blr x23
+
+    ; str x0, [sp, REAL_KVTOPHYS_PTEPTR]
+    ; mov x0, x26
+    ; bl _kvtophys
+    ; str x0, [sp, MY_KVTOPHYS_PTEPTR]
 
     add x0, x27, NEW_PTE_SPACE
-    blr x23
+    bl _kvtophys
+
+    ; blr x23
+    ; str x0, [sp, REAL_KVTOPHYS_PTESPACE]
+    ; add x0, x27, NEW_PTE_SPACE
+    ; bl _kvtophys
+    ; str x0, [sp, MY_KVTOPHYS_PTESPACE]
+
+    ; ldr x1, [sp, REAL_KVTOPHYS_PTEPTR]
+    ; ldr x2, [sp, MY_KVTOPHYS_PTEPTR]
+    ; ldr x3, [sp, REAL_KVTOPHYS_PTESPACE]
+    ; ldr x4, [sp, MY_KVTOPHYS_PTESPACE]
+    ; mov x5, 0x4141
+    ; brk 0
 
     ; X0 == pa of NEW_PTE_SPACE
     mov x1, x24
@@ -202,3 +219,45 @@ handoff:
     ldr x7, [x7, XNUSPY_CTL_ENTRYPOINT]
     br x7
     ; not reached
+
+; since it seems like all kvtophys calls have been inlined on 14.x kernels,
+; it is impossible to patchfind for. I'm just gonna implement it here
+; XXX we can safely clobber x1 and x2 so maybe don't use callee-saved regs
+;
+; Parameters:
+;   X0, kernel virtual address
+_kvtophys:
+    sub sp, sp, 0x40
+    stp x19, x20, [sp]
+    stp x21, x22, [sp, 0x10]
+    stp x23, x24, [sp, 0x20]
+
+    mrs x19, DAIF
+    ; disable interrupts
+    msr DAIFSet, #(DAIFSC_DEBUGF | DAIFSC_ASYNCF | DAIFSC_IRQF | DAIFSC_FIQF)
+    ; perform address translation with input being parameter
+    at s1e1r, x0
+    ; read result of above
+    mrs x20, par_el1
+    ; enable interrupts
+    msr DAIF, x19
+    ; check F bit of PAR_EL1, if not set, address translation was successful
+    tbnz x20, 0x0, invalid
+    ; mask for PA[47:12] of PAR_EL1
+    and x20, x20, 0xfffffffff000
+    ; get page offset from parameter
+    and x21, x0, 0x3fff
+    ; or physical address with page offset
+    orr x0, x20, x21
+
+    b done
+
+invalid:
+    mov x0, xzr
+
+done:
+    ldp x19, x20, [sp]
+    ldp x21, x22, [sp, 0x10]
+    ldp x23, x24, [sp, 0x20]
+    add sp, sp, 0x40
+    ret
