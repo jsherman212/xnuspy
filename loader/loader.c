@@ -211,7 +211,8 @@ int main(int argc, char **argv, const char **envp){
     /* If you edit this, you must make sure not to delete
      * 'use_contiguous_hint=0'
      */
-    err = pongo_send_command(pongo_device, "xargs rootdev=md0 use_contiguous_hint=0\n");
+    err = pongo_send_command(pongo_device, "xargs rootdev=md0"
+            " use_contiguous_hint=0 msgbuf=0x14000\n");
 
     if(err < 0){
         printf("pongo_send_command: %s\n", libusb_error_name(err));

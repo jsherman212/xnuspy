@@ -637,6 +637,24 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
             }),
             8, copyout_finder_13, "__TEXT_EXEC"),
     },
+    {
+        PF_DECL32("PAN disabler iOS 13",
+            LISTIZE({
+                0xd500419f,     /* msr PAN, #1 */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+            }),
+            1, PAN_disabler_13, "__TEXT_EXEC"),
+        PF_DECL32("PAN disabler iOS 13",
+            LISTIZE({
+                0xd500419f,     /* msr PAN, #1 */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+            }),
+            1, PAN_disabler_13, "__TEXT_EXEC"),
+    },
     { PF_END, PF_END },
 };
 

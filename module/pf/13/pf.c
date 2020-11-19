@@ -646,3 +646,11 @@ bool copyout_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
 
     return true;
 }
+
+/* confirmed working on all kernels 13.0-14.2 */
+bool PAN_disabler_13(xnu_pf_patch_t *patch, void *cacheable_stream){
+    /* replaces all msr PAN, #1 with msr PAN, #0 */
+    *(uint32_t *)cacheable_stream = 0xd500409f;
+
+    return true;
+}

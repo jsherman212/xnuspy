@@ -24,5 +24,6 @@ bool ktrr_lockdown_patcher_13(xnu_pf_patch_t *, void *);
 bool amcc_lockdown_patcher_13(xnu_pf_patch_t *, void *);
 bool copyin_finder_13(xnu_pf_patch_t *, void *);
 bool copyout_finder_13(xnu_pf_patch_t *, void *);
+bool PAN_disabler_13(xnu_pf_patch_t *, void *);
 
 #endif

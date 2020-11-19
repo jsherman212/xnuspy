@@ -10,6 +10,8 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 
+#include "xnuspy_ctl.h"
+
 static long SYS_xnuspy_ctl = 0;
 
 static int _concat_internal(char **dst, const char *src, va_list args){
@@ -59,6 +61,12 @@ static int concat(char **dst, const char *src, ...){
     return w;
 }
 
+static uint32_t *g_num_pointer = NULL;
+
+/* static void open_replacement(void *p, void *uap, void *retval){ */
+
+/* } */
+
 int main(int argc, char **argv){
     /* before we begin, figure out what system call was patched */
     size_t oldlen = sizeof(long);
@@ -71,10 +79,13 @@ int main(int argc, char **argv){
         return 1;
     }
 
+    g_num_pointer = malloc(sizeof(uint32_t));
+    *g_num_pointer = 0x41424344;
+
     /* first, was xnuspy_ctl patched correctly? For all my phones, the patched
      * system call is always number 8. It could be different for you.
      */
-    ret = syscall(SYS_xnuspy_ctl, 10, 20, 30, 40);
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_CHECK_IF_PATCHED, 20, 30, 40);
 
     if(ret != 999){
         printf("xnuspy_ctl wasn't patched correctly\n");
@@ -82,6 +93,9 @@ int main(int argc, char **argv){
     }
 
     printf("xnuspy_ctl was patched correctly\n");
+
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, g_num_pointer, 0, 0);
+
 
     return 0;
 }

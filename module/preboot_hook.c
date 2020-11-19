@@ -25,9 +25,13 @@ static uint64_t g_xnuspy_ctl_img_codesz = 0;
 
 /* XXX for debugging */
 /* iphone 8 13.6.1 */
-static uint64_t g_IOLog_addr = 0xFFFFFFF008134654;
+/* static uint64_t g_IOLog_addr = 0xFFFFFFF008134654; */
 /* iphone 8 13.6.1 */
-static uint64_t g_IOSleep_addr = 0xFFFFFFF00813462C;
+/* static uint64_t g_IOSleep_addr = 0xFFFFFFF00813462C; */
+/* iphone 8 13.6.1 */
+/* static uint64_t g_kprintf_addr = 0xFFFFFFF0081D28E0; */
+/* iphone x 13.3.1 */
+static uint64_t g_kprintf_addr = 0xFFFFFFF0081A08F4;
 
 uint64_t *xnuspy_cache_base = NULL;
 
@@ -341,11 +345,11 @@ static uint32_t *install_xnuspy_ctl_tramp(uint32_t *scratch_space,
             /* this syscall will return an integer */
             *(int32_t *)(sysent_stream + 0x10) = 1; /* _SYSCALL_RET_INT_T */
 
-            /* XXX this syscall has four arguments */
+            /* this syscall has four arguments */
             *(int16_t *)(sysent_stream + 0x14) = 4;
 
-            /* XXX four 32 bit arguments, so arguments total 16 bytes */
-            *(uint16_t *)(sysent_stream + 0x16) = 0x10;
+            /* four 64 bit arguments, so arguments total 32 bytes */
+            *(uint16_t *)(sysent_stream + 0x16) = 0x20;
 
             *num_free_instrsp = num_free_instrs;
 
@@ -405,15 +409,35 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
 
             return;
         }
-        /* XXX For debugging only */
-        else if(strcmp(ksym, "_IOLog") == 0){
-            *va = g_IOLog_addr + kernel_slide;
+        /* XXX For debugging only, all but kprintf are specific to iphone 8 13.6.1 */
+        /* else if(strcmp(ksym, "_IOLog") == 0){ */
+        /*     *va = g_IOLog_addr + kernel_slide; */
+        /*     return; */
+        /* } */
+        else if(strcmp(ksym, "_kprintf") == 0){
+            *va = g_kprintf_addr + kernel_slide;
             return;
         }
-        else if(strcmp(ksym, "_IOSleep") == 0){
-            *va = g_IOSleep_addr + kernel_slide;
+        /* else if(strcmp(ksym, "_IOSleep") == 0){ */
+        /*     *va = g_IOSleep_addr + kernel_slide; */
+        /*     return; */
+        /* } */
+        else if(strcmp(ksym, "_mh_execute_header") == 0){
+            *va = (uint64_t)mh_execute_header;
             return;
         }
+        /* else if(strcmp(ksym, "____osLog") == 0){ */
+        /*     *va = 0xFFFFFFF00957C7E0 + kernel_slide; */
+        /*     return; */
+        /* } */
+        /* else if(strcmp(ksym, "__os_log_default") == 0){ */
+        /*     *va = 0xFFFFFFF00925AF2C + kernel_slide; */
+        /*     return; */
+        /* } */
+        /* else if(strcmp(ksym, "_os_log_internal") == 0){ */
+        /*     *va = 0xFFFFFFF0081188CC + kernel_slide; */
+        /*     return; */
+        /* } */
     }
 }
 
@@ -535,7 +559,29 @@ void xnuspy_preboot_hook(void){
 
     initialize_xnuspy_cache();
 
+    /* combat short read */
     printf("xnuspy: handing it off to checkra1n...\n");
+    printf("xnuspy: handing it off to checkra1n...\n");
+    printf("xnuspy: handing it off to checkra1n...\n");
+    printf("xnuspy: handing it off to checkra1n...\n");
+    printf("xnuspy: handing it off to checkra1n...\n");
+    printf("xnuspy: handing it off to checkra1n...\n");
+    printf("xnuspy: handing it off to checkra1n...\n");
+    printf("xnuspy: handing it off to checkra1n...\n");
+    printf("xnuspy: handing it off to checkra1n...\n");
+    printf("xnuspy: handing it off to checkra1n...\n");
+    printf("xnuspy: handing it off to checkra1n...\n");
+    printf("xnuspy: handing it off to checkra1n...\n");
+    printf("xnuspy: handing it off to checkra1n...\n");
+    printf("xnuspy: handing it off to checkra1n...\n");
+    printf("xnuspy: handing it off to checkra1n...\n");
+    printf("xnuspy: handing it off to checkra1n...\n");
+    printf("xnuspy: handing it off to checkra1n...\n");
+    printf("xnuspy: handing it off to checkra1n...\n");
+    printf("xnuspy: handing it off to checkra1n...\n");
+    printf("xnuspy: handing it off to checkra1n...\n");
+
+
 
     if(next_preboot_hook)
         next_preboot_hook();
