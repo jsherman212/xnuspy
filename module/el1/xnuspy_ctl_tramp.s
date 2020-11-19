@@ -14,8 +14,10 @@ _main:
     stp x2, x19, [sp, STACK-0x20]
     stp x20, x21, [sp, STACK-0x30]
     stp x22, x23, [sp, STACK-0x40]
-    stp x24, x25, [sp, STACK-0x40]
-    stp x26, x27, [sp, STACK-0x50]
+    stp x24, x25, [sp, STACK-0x50]
+    stp x26, x27, [sp, STACK-0x60]
+    stp x29, x30, [sp, STACK-0x70]
+    add x29, sp, STACK-0x70
 
     adr x27, ADDRESS_OF_XNUSPY_CACHE
     ldr x27, [x27]
@@ -99,8 +101,9 @@ handoff:
     ldp x2, x19, [sp, STACK-0x20]
     ldp x20, x21, [sp, STACK-0x30]
     ldp x22, x23, [sp, STACK-0x40]
-    ldp x24, x25, [sp, STACK-0x40]
-    ldp x26, x27, [sp, STACK-0x50]
+    ldp x24, x25, [sp, STACK-0x50]
+    ldp x26, x27, [sp, STACK-0x60]
+    ldp x29, x30, [sp, STACK-0x70]
     add sp, sp, STACK
     ldr x7, [x7, XNUSPY_CTL_ENTRYPOINT]
     br x7

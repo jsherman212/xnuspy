@@ -12,9 +12,17 @@ struct xnuspy_ctl_args {
 int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
 /* int xnuspy_ctl(void *p, uint32_t arg0, uint32_t arg1, uint32_t arg2, */
         /* uint32_t arg3, int *retval){ */
-    uint64_t val = 0x4433221155667788;
-    asm volatile("mov x0, %0" : : "r" (val) : );
-    asm volatile("blr x0");
+    /* uint64_t val = 0x4433221155667788; */
+    /* asm volatile("mov x0, %0" : : "r" (val) : ); */
+    /* asm volatile("blr x0"); */
 
+
+    /* IOLog doesn't seem to work? */
+    IOLog("%s: we are alive!\n", __func__);
+
+    /* IOSleep works */
+    IOSleep(5000);
+
+    /* we panic when we return */
     return 0;
 }

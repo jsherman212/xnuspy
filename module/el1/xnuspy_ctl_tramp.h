@@ -3,19 +3,7 @@
 
 #define STACK                       (0x200)
 
-#define VADDR_CUR                   (STACK-0x70)
-#define VADDR_END                   (STACK-0x78)
-#define L1_TTE                      (STACK-0x80)
-#define L2_TTE                      (STACK-0x88)
-#define L3_PTE                      (STACK-0x90)
-
-#define REAL_KVTOPHYS_PTEPTR        (STACK-0x98)
-#define MY_KVTOPHYS_PTEPTR          (STACK-0xa0)
-#define REAL_KVTOPHYS_PTESPACE      (STACK-0xa8)
-#define MY_KVTOPHYS_PTESPACE        (STACK-0xb0)
-
-
-#define NUM_INSTRS_BEFORE_CACHE     (7)
+#define NUM_INSTRS_BEFORE_CACHE     (9)
 #define ADDRESS_OF_XNUSPY_CACHE     (-((4*NUM_INSTRS_BEFORE_CACHE)+8))
 
 /* mask for extracting pointer to the next table */

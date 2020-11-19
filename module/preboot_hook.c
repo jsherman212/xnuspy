@@ -23,6 +23,12 @@ static uint64_t g_xnuspy_ctl_img_codestart = 0;
 /* how many bytes to we need to mark as executable inside xnuspy_ctl_tramp? */
 static uint64_t g_xnuspy_ctl_img_codesz = 0;
 
+/* XXX for debugging */
+/* iphone 8 13.6.1 */
+static uint64_t g_IOLog_addr = 0xFFFFFFF008134654;
+/* iphone 8 13.6.1 */
+static uint64_t g_IOSleep_addr = 0xFFFFFFF00813462C;
+
 uint64_t *xnuspy_cache_base = NULL;
 
 #define WRITE_INSTR_TO_SCRATCH_SPACE(opcode) \
@@ -187,6 +193,11 @@ static void initialize_xnuspy_cache(void){
 
     /* new PTE space, zero it out */
     XNUSPY_CACHE_WRITE(0);
+
+    /* iphone 8 13.6.1 */
+    /* uint64_t IOLog = 0xFFFFFFF008134654 + kernel_slide; */
+    /* XNUSPY_CACHE_WRITE(IOLog); */
+
 
     /* iphone 8 13.6.1 */
     /* uint64_t flush_mmu_tlb_region = 0xFFFFFFF007CF85F0 + kernel_slide; */
@@ -394,6 +405,15 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
 
             return;
         }
+        /* XXX For debugging only */
+        else if(strcmp(ksym, "_IOLog") == 0){
+            *va = g_IOLog_addr + kernel_slide;
+            return;
+        }
+        else if(strcmp(ksym, "_IOSleep") == 0){
+            *va = g_IOSleep_addr + kernel_slide;
+            return;
+        }
     }
 }
 
@@ -508,6 +528,7 @@ void xnuspy_preboot_hook(void){
     /* replace an enosys sysent with xnuspy_ctl_tramp */
     scratch_space = install_xnuspy_ctl_tramp(scratch_space, &num_free_instrs);
 
+    printf("%s: xnuspy_ctl_tramp @ %#llx\n", __func__, xnu_ptr_to_va(scratch_space)-kernel_slide);
     /* write the code for xnuspy_ctl_tramp */
     scratch_space = write_xnuspy_ctl_tramp_instrs(scratch_space,
             &num_free_instrs);

@@ -74,7 +74,7 @@ int main(int argc, char **argv){
     /* first, was xnuspy_ctl patched correctly? For all my phones, the patched
      * system call is always number 8. It could be different for you.
      */
-    ret = syscall(SYS_xnuspy_ctl, 0, 0, 0, 0);
+    ret = syscall(SYS_xnuspy_ctl, 10, 20, 30, 40);
 
     if(ret != 999){
         printf("xnuspy_ctl wasn't patched correctly\n");
