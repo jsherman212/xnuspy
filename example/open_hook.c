@@ -67,6 +67,7 @@ static uint32_t *g_num_pointer = NULL;
 static void code(void){
     asm volatile("mov x0, 0x1234");
     asm volatile("mov x1, 0x5555");
+    asm volatile("mov x2, 0x7979");
     asm volatile("ldr x5, [x0]");
 }
 

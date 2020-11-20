@@ -29,9 +29,9 @@ static uint64_t g_xnuspy_ctl_img_codesz = 0;
 /* iphone 8 13.6.1 */
 /* static uint64_t g_IOSleep_addr = 0xFFFFFFF00813462C; */
 /* iphone 8 13.6.1 */
-static uint64_t g_kprintf_addr = 0xFFFFFFF0081D28E0;
+/* static uint64_t g_kprintf_addr = 0xFFFFFFF0081D28E0; */
 /* iphone x 13.3.1 */
-/* static uint64_t g_kprintf_addr = 0xFFFFFFF0081A08F4; */
+static uint64_t g_kprintf_addr = 0xFFFFFFF0081A08F4;
 
 uint64_t *xnuspy_cache_base = NULL;
 
@@ -581,6 +581,9 @@ void xnuspy_preboot_hook(void){
     printf("xnuspy: handing it off to checkra1n...\n");
     printf("xnuspy: handing it off to checkra1n...\n");
 
+    /* iphone 8 13.6.1 */
+    /* uint32_t *doprnt_hide_pointers = xnu_va_to_ptr(0xFFFFFFF0090B0624 + kernel_slide); */
+    /* *doprnt_hide_pointers = 0; */
 
 
     if(next_preboot_hook)

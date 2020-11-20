@@ -5,11 +5,11 @@ LDFLAGS = -Xlinker -kext
 
 all : mem.o pte.o xnuspy_ctl
 
-mem.o : mem.c mem.h
+mem.o : mem.c mem.h externs.h
 	$(CC) $(CFLAGS) mem.c -c
 
-pte.o : pte.c pte.h
+pte.o : pte.c pte.h externs.h
 	$(CC) $(CFLAGS) pte.c -c
 
-xnuspy_ctl : xnuspy_ctl.c mem.o pte.o common.h
+xnuspy_ctl : xnuspy_ctl.c mem.o pte.o externs.h
 	$(CC) $(CFLAGS) $(LDFLAGS) mem.o pte.o xnuspy_ctl.c -o xnuspy_ctl
