@@ -29,9 +29,9 @@ static uint64_t g_xnuspy_ctl_img_codesz = 0;
 /* iphone 8 13.6.1 */
 /* static uint64_t g_IOSleep_addr = 0xFFFFFFF00813462C; */
 /* iphone 8 13.6.1 */
-/* static uint64_t g_kprintf_addr = 0xFFFFFFF0081D28E0; */
+static uint64_t g_kprintf_addr = 0xFFFFFFF0081D28E0;
 /* iphone x 13.3.1 */
-static uint64_t g_kprintf_addr = 0xFFFFFFF0081A08F4;
+/* static uint64_t g_kprintf_addr = 0xFFFFFFF0081A08F4; */
 
 uint64_t *xnuspy_cache_base = NULL;
 

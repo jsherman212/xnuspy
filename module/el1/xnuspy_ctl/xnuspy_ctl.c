@@ -2,6 +2,8 @@
 #include <stdbool.h>
 
 #include "common.h"
+#include "mem.h"
+#include "pte.h"
 
 #define XNUSPY_INSTALL_HOOK         (0)
 #define XNUSPY_UNINSTALL_HOOK       (1)
@@ -41,21 +43,37 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
         return 0;
     }
 
-    /* if PAN was successfully disabled, we should get 0x41424344 back */
-    uint32_t *userland_ptr = (uint32_t *)uap->arg1;
+    if(flavor == XNUSPY_UNINSTALL_HOOK){
+        kprintf("%s: XNUSPY_UNINSTALL_HOOK is not implemented yet\n", __func__);
+        *retval = -1;
+        return ENOSYS;
+    }
+
+    uint64_t replacement_el0_addr = uap->arg1;
 
     /* zero out pan in case no instruction did it before us */
     /* msr pan, #0 */
     asm volatile(".long 0xd500409f");
 
+    /* asm volatile("mov x1, 0x8888"); */
+    /* asm volatile("mov x0, %0" : : "r" (userland_code) : ); */
+    /* asm volatile("br x0"); */
+
     /* XXX clang crash on the below line!! */
     /* uint64_t pan = __builtin_arm_rsr("pan"); */
     /* asm volatile("mrs %0, PAN" : "=r" (pan)); */
-    kprintf("%s: userland pointer %#llx\n", __func__, userland_ptr);
+    /* kprintf("%s: userland pointer %#llx\n", __func__, userland_ptr); */
     /* kprintf("%s: userland pointer %#llx, PAN = %#llx\n", __func__, userland_ptr, pan); */
 
-    kprintf("%s: dereferenced: %#x\n", __func__, *userland_ptr);
+    /* kprintf("%s: dereferenced: %#x\n", __func__, *userland_ptr); */
+
+    /* uint64_t physhdr = kvtophys((uint64_t)mh_execute_header); */
+
+    uint64_t *replacement_el0_pte = el0_ptep(replacement_el0_addr);
+
+
 
     *retval = 0;
+
     return 0;
 }

@@ -64,8 +64,11 @@ static int concat(char **dst, const char *src, ...){
 static uint32_t *g_num_pointer = NULL;
 
 /* static void open_replacement(void *p, void *uap, void *retval){ */
-
-/* } */
+static void code(void){
+    asm volatile("mov x0, 0x1234");
+    asm volatile("mov x1, 0x5555");
+    asm volatile("ldr x5, [x0]");
+}
 
 int main(int argc, char **argv){
     /* before we begin, figure out what system call was patched */
@@ -94,7 +97,8 @@ int main(int argc, char **argv){
 
     printf("xnuspy_ctl was patched correctly\n");
 
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, g_num_pointer, 0, 0);
+    /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, g_num_pointer, 0, 0); */
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, code, 0, 0);
 
 
     return 0;
