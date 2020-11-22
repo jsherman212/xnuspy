@@ -508,6 +508,90 @@ static void process_xnuspy_ctl_image(void *xnuspy_ctl_image){
             g_xnuspy_ctl_img_codesz);
 }
 
+static void patch_exception_vectors(void){
+    /* PSTATE.D is masked upon taking an exception. See the pseudocode for
+     * AArch64.TakeException in the ARMv8 reference manual. The hardware masks
+     * this bit before it branches to the appropriate exception handler specified
+     * by VBAR_EL1. In order to keep our hardware breakpoints alive, we need to
+     * modify each exception handler to unmask PSTATE.D and the D bit of SPSR_EL1.
+     *
+     * Each handler follows this format:
+     *      [NOP]   <repeats n times>
+     *      MRS X18, TPIDR_EL1 or MRS X18, TTBR0_EL1
+     *      ...
+     *      BR X18
+     *      [NOP]   <repeats n times>
+     *
+     * In all, X18 is the only used register.
+     *
+     * It'll be easy to figure out where each start/end. We will patch
+     * each to:
+     *      MSR DAIFClr, #0x8
+     *      MRS X18, SPSR_EL1
+     *      AND X18, X18, ~0x200
+     *      MSR SPSR_EL1, X18
+     *      [original handler code]
+     *
+     * All the handlers are aligned on 0x80 byte boundries so we have enough
+     * space. XNU seems to only have 12 handlers, but I'd like to not hardcode
+     * that limit. XNU aligns the page the handlers are on to a 4K boundry.
+     */
+    /* we already checked if this was missing */
+    uint32_t *opcode_stream = g_ExceptionVectorsBase_stream;
+
+    uint32_t patches[] = {
+        0xd50348ff,
+        0xd5384012,
+        0x9276fa52,
+        0xd5184012,
+    };
+
+    uint32_t instr_limit = 0x1000 / sizeof(uint32_t);
+
+    while(instr_limit > 0){
+        /* are we at the beginning of a handler? */
+        if(*opcode_stream != 0xd538d092 && *opcode_stream != 0xd5382012){
+            /* nope, carry on */
+            opcode_stream++;
+            instr_limit--;
+        }
+        else{
+            /* yep, figure out the bounds of this handler */
+            uint32_t *handler_start = opcode_stream;
+            uint32_t *handler_end = handler_start;
+
+            /* search for br x18 */
+            while(*handler_end != 0xd61f0240)
+                handler_end++;
+
+            /* get off the br x18 */
+            handler_end++;
+
+            size_t len_in_instrs = handler_end - handler_start;
+            printf("%s: %zu instrs in this handler\n", __func__, len_in_instrs);
+
+            /* Hardcoded so ___chkstk_darwin calls are not generated.
+             * This is more than enough.
+             */
+            uint32_t orig_instrs[0x20];
+            memcpy(orig_instrs, handler_start, sizeof(uint32_t) * len_in_instrs);
+
+            /* insert our patches */
+            memcpy(handler_start, patches, sizeof(patches));
+
+            /* restore original instrs */
+            memcpy(handler_start + num_patches, orig_instrs,
+                    sizeof(uint32_t) * len_in_instrs);
+
+            opcode_stream += len_in_instrs + num_patches;
+
+            instr_limit -= len_in_instrs + num_patches;
+        }
+    }
+
+    puts("xnuspy: patched exception handlers");
+}
+
 void (*next_preboot_hook)(void);
 
 void xnuspy_preboot_hook(void){
@@ -563,6 +647,8 @@ void xnuspy_preboot_hook(void){
     scratch_space = write_xnuspy_ctl_tramp_instrs(scratch_space,
             &num_free_instrs);
 
+    patch_exception_vectors();
+
     initialize_xnuspy_cache();
 
     /* combat short read */
@@ -596,11 +682,11 @@ void xnuspy_preboot_hook(void){
      * machine_thread_set_state patch so it doesn't mask out any bits in
      * the debug_state's bcrs
      */
-    uint32_t *mtss_patch0 = xnu_va_to_ptr(0xFFFFFFF007D14F2C + kernel_slide);
-    uint32_t *mtss_patch1 = xnu_va_to_ptr(0xFFFFFFF007D14F30 + kernel_slide);
+    /* uint32_t *mtss_patch0 = xnu_va_to_ptr(0xFFFFFFF007D14F2C + kernel_slide); */
+    /* uint32_t *mtss_patch1 = xnu_va_to_ptr(0xFFFFFFF007D14F30 + kernel_slide); */
     /* both nops */
-    *mtss_patch0 = 0xD503201F;
-    *mtss_patch1 = 0xD503201F;
+    /* *mtss_patch0 = 0xD503201F; */
+    /* *mtss_patch1 = 0xD503201F; */
     /* uint32_t *mtss_patch = xnu_va_to_ptr(0xFFFFFFF007D14F10 + kernel_slide); */
     /* mov x9, 16 */
     /* *mtss_patch = 0xD2800209; */

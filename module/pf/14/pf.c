@@ -69,6 +69,9 @@ bool ExceptionVectorsBase_finder_14(xnu_pf_patch_t *patch,
     xnu_pf_disable_patch(patch);
 
     uint32_t *opcode_stream = cacheable_stream;
+
+    g_ExceptionVectorsBase_stream = cacheable_stream;
+
     uint32_t limit = PAGE_SIZE / sizeof(uint32_t);
 
     /* go backwords one opcode, we'll hit the stream of values that clang

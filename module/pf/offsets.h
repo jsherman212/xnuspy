@@ -34,6 +34,7 @@ extern uint64_t g_lck_grp_alloc_init_addr;
 extern uint64_t g_lck_rw_alloc_init_addr;
 extern uint64_t g_exec_scratch_space_addr;
 extern uint64_t g_exec_scratch_space_size;
+extern uint32_t *g_ExceptionVectorsBase_stream;
 extern uint64_t g_bcopy_phys_addr;
 extern uint64_t g_phystokv_addr;
 extern uint64_t g_copyin_addr;

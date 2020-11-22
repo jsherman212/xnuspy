@@ -107,10 +107,10 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
     asm volatile("isb sy");
     kprintf("%s: current thread: %#llx, DAIF: %#llx\n", __func__, tpidr_el1, DAIF);
 
-    uint64_t rvbar_el1 = 0;
-    asm volatile("mrs %0, rvbar_el1" : "=r" (rvbar_el1));
-    kprintf("%s: rvbar_el1 = %#llx (va %#llx)\n", __func__, rvbar_el1,
-            phystokv(rvbar_el1));
+    /* uint64_t rvbar_el1 = 0; */
+    /* asm volatile("mrs %0, rvbar_el1" : "=r" (rvbar_el1)); */
+    /* kprintf("%s: rvbar_el1 = %#llx (va %#llx)\n", __func__, rvbar_el1, */
+    /*         phystokv(rvbar_el1)); */
 
     /* zero out pan in case no instruction did it before us */
     /* msr pan, #0 */
@@ -126,7 +126,7 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
     asm volatile("orr x8, x8, 0x8000");
     asm volatile("msr mdscr_el1, x8");
 
-    set_hwbp(bptarget);
+    /* set_hwbp(bptarget); */
     /* set_hwbp2(bptarget); */
 
     /* unset PSTATE.D */
@@ -137,9 +137,9 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
     asm volatile("msr DAIFClr, #0x8");
     asm volatile("isb sy");
 
-    /* asm volatile("mrs %0, DAIF" : "=r" (DAIF)); */
-    /* asm volatile("isb sy"); */
-    /* kprintf("%s: DAIF now: %#llx\n", __func__, DAIF); */
+    asm volatile("mrs %0, DAIF" : "=r" (DAIF));
+    asm volatile("isb sy");
+    kprintf("%s: DAIF now: %#llx\n", __func__, DAIF);
 
 
     /* kprintf("%s: set hw bp @ %#llx\n", __func__, bptarget); */

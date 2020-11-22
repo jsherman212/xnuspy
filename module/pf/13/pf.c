@@ -28,6 +28,7 @@ uint64_t g_lck_rw_alloc_init_addr = 0;
 uint64_t g_exec_scratch_space_addr = 0;
 /* don't count the first opcode */
 uint64_t g_exec_scratch_space_size = -sizeof(uint32_t);
+uint32_t *g_ExceptionVectorsBase_stream = NULL;
 uint64_t g_bcopy_phys_addr = 0;
 uint64_t g_phystokv_addr = 0;
 uint64_t g_copyin_addr = 0;
@@ -185,9 +186,11 @@ bool ExceptionVectorsBase_finder_13(xnu_pf_patch_t *patch,
      *
      * see osfmk/arm64/locore.s inside XNU source
      */
+    xnu_pf_disable_patch(patch);
+
     uint32_t *opcode_stream = cacheable_stream;
 
-    xnu_pf_disable_patch(patch);
+    g_ExceptionVectorsBase_stream = cacheable_stream;
 
     uint32_t limit = PAGE_SIZE / 4;
     bool got_exc_vectors_table = false;
