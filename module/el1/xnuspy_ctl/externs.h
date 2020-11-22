@@ -19,6 +19,8 @@ extern int (*copyin)(const uint64_t uaddr, void *kaddr,
         vm_size_t nbytes);
 extern int (*copyout)(const void *kaddr, uint64_t uaddr,
         vm_size_t nbytes);
+extern int (*machine_thread_set_state)(void *thread, int flavor, void *state,
+        uint32_t count);
 
 /* XXX For debugging only */
 /* extern void (*IOLog)(const char *fmt, ...); */

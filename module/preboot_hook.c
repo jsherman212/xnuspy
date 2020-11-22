@@ -29,9 +29,9 @@ static uint64_t g_xnuspy_ctl_img_codesz = 0;
 /* iphone 8 13.6.1 */
 /* static uint64_t g_IOSleep_addr = 0xFFFFFFF00813462C; */
 /* iphone 8 13.6.1 */
-/* static uint64_t g_kprintf_addr = 0xFFFFFFF0081D28E0; */
+static uint64_t g_kprintf_addr = 0xFFFFFFF0081D28E0;
 /* iphone x 13.3.1 */
-static uint64_t g_kprintf_addr = 0xFFFFFFF0081A08F4;
+/* static uint64_t g_kprintf_addr = 0xFFFFFFF0081A08F4; */
 
 uint64_t *xnuspy_cache_base = NULL;
 
@@ -426,6 +426,11 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
             *va = (uint64_t)mh_execute_header;
             return;
         }
+        else if(strcmp(ksym, "_machine_thread_set_state") == 0){
+            /* iphone 8 13.6.1 */
+            *va = 0xFFFFFFF007D14578 + kernel_slide;
+            return;
+        }
         /* else if(strcmp(ksym, "____osLog") == 0){ */
         /*     *va = 0xFFFFFFF00957C7E0 + kernel_slide; */
         /*     return; */
@@ -561,30 +566,46 @@ void xnuspy_preboot_hook(void){
 
     /* combat short read */
     printf("xnuspy: handing it off to checkra1n...\n");
-    printf("xnuspy: handing it off to checkra1n...\n");
-    printf("xnuspy: handing it off to checkra1n...\n");
-    printf("xnuspy: handing it off to checkra1n...\n");
-    printf("xnuspy: handing it off to checkra1n...\n");
-    printf("xnuspy: handing it off to checkra1n...\n");
-    printf("xnuspy: handing it off to checkra1n...\n");
-    printf("xnuspy: handing it off to checkra1n...\n");
-    printf("xnuspy: handing it off to checkra1n...\n");
-    printf("xnuspy: handing it off to checkra1n...\n");
-    printf("xnuspy: handing it off to checkra1n...\n");
-    printf("xnuspy: handing it off to checkra1n...\n");
-    printf("xnuspy: handing it off to checkra1n...\n");
-    printf("xnuspy: handing it off to checkra1n...\n");
-    printf("xnuspy: handing it off to checkra1n...\n");
-    printf("xnuspy: handing it off to checkra1n...\n");
-    printf("xnuspy: handing it off to checkra1n...\n");
-    printf("xnuspy: handing it off to checkra1n...\n");
-    printf("xnuspy: handing it off to checkra1n...\n");
-    printf("xnuspy: handing it off to checkra1n...\n");
+    /* printf("xnuspy: handing it off to checkra1n...\n"); */
+    /* printf("xnuspy: handing it off to checkra1n...\n"); */
+    /* printf("xnuspy: handing it off to checkra1n...\n"); */
+    /* printf("xnuspy: handing it off to checkra1n...\n"); */
+    /* printf("xnuspy: handing it off to checkra1n...\n"); */
+    /* printf("xnuspy: handing it off to checkra1n...\n"); */
+    /* printf("xnuspy: handing it off to checkra1n...\n"); */
+    /* printf("xnuspy: handing it off to checkra1n...\n"); */
+    /* printf("xnuspy: handing it off to checkra1n...\n"); */
+    /* printf("xnuspy: handing it off to checkra1n...\n"); */
+    /* printf("xnuspy: handing it off to checkra1n...\n"); */
+    /* printf("xnuspy: handing it off to checkra1n...\n"); */
+    /* printf("xnuspy: handing it off to checkra1n...\n"); */
+    /* printf("xnuspy: handing it off to checkra1n...\n"); */
+    /* printf("xnuspy: handing it off to checkra1n...\n"); */
+    /* printf("xnuspy: handing it off to checkra1n...\n"); */
+    /* printf("xnuspy: handing it off to checkra1n...\n"); */
+    /* printf("xnuspy: handing it off to checkra1n...\n"); */
+    /* printf("xnuspy: handing it off to checkra1n...\n"); */
 
     /* iphone 8 13.6.1 */
-    /* uint32_t *doprnt_hide_pointers = xnu_va_to_ptr(0xFFFFFFF0090B0624 + kernel_slide); */
-    /* *doprnt_hide_pointers = 0; */
+    uint32_t *doprnt_hide_pointers = xnu_va_to_ptr(0xFFFFFFF0090B0624 + kernel_slide);
+    *doprnt_hide_pointers = 0;
+    
+    /* iphone 8 13.6.1
+     *
+     * machine_thread_set_state patch so it doesn't mask out any bits in
+     * the debug_state's bcrs
+     */
+    uint32_t *mtss_patch0 = xnu_va_to_ptr(0xFFFFFFF007D14F2C + kernel_slide);
+    uint32_t *mtss_patch1 = xnu_va_to_ptr(0xFFFFFFF007D14F30 + kernel_slide);
+    /* both nops */
+    *mtss_patch0 = 0xD503201F;
+    *mtss_patch1 = 0xD503201F;
+    /* uint32_t *mtss_patch = xnu_va_to_ptr(0xFFFFFFF007D14F10 + kernel_slide); */
+    /* mov x9, 16 */
+    /* *mtss_patch = 0xD2800209; */
 
+    /* uint32_t *c = xnu_va_to_ptr(0xFFFFFFF007D129EC + kernel_slide); */
+    /* *c = 0xD4200000; */
 
     if(next_preboot_hook)
         next_preboot_hook();

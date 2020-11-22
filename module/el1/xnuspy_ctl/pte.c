@@ -4,7 +4,6 @@
 #include <stdlib.h>
 
 #include "externs.h"
-/* #include "mem.h" */
 
 #define ARM_TTE_TABLE_MASK          (0x0000ffffffffc000)
 

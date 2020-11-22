@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "hwbp.h"
 #include "mem.h"
 #include "pte.h"
 
@@ -26,6 +27,9 @@ MARK_AS_KERNEL_OFFSET int (*copyin)(const uint64_t uaddr, void *kaddr,
         vm_size_t nbytes);
 MARK_AS_KERNEL_OFFSET int (*copyout)(const void *kaddr, uint64_t uaddr,
         vm_size_t nbytes);
+
+MARK_AS_KERNEL_OFFSET int (*machine_thread_set_state)(void *thread, int flavor,
+        void *state, uint32_t count);
 
 /* XXX For debugging only */
 /* MARK_AS_KERNEL_OFFSET void (*IOLog)(const char *fmt, ...); */
@@ -55,6 +59,13 @@ struct xnuspy_ctl_args {
     uint64_t arg2;
     uint64_t arg3;
 };
+
+static void bpfunc(void){
+    /* kprintf("%s: hello!!\n", __func__); */
+    asm volatile("mov x0, 0x4141");
+    asm volatile("mov x1, 0x4242");
+    asm volatile("brk 0");
+}
 
 /* XXX kprintf output can be seen with dmesg */
 int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
@@ -90,6 +101,37 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
     /* msr pan, #0 */
     asm volatile(".long 0xd500409f");
 
+    uint64_t bptarget = (uint64_t)bpfunc;
+    /* uint64_t bptarget = (uint64_t)kalloc_canblock; */
+
+    /* set_hwbp(bptarget); */
+    /* set_hwbp2(bptarget); */
+
+    /* set MDE and KDE bits */
+    asm volatile("mrs x8, mdscr_el1");
+    asm volatile("orr x8, x8, 0x2000");
+    asm volatile("orr x8, x8, 0x8000");
+    asm volatile("msr mdscr_el1, x8");
+
+    set_hwbp(bptarget);
+    /* set_hwbp2(bptarget); */
+
+    /* unset PSTATE.D */
+    asm volatile("mrs x8, DAIF");
+    asm volatile("orr x8, x8, ~0x200");
+    asm volatile("msr DAIF, x8");
+
+    asm volatile("msr DAIFClr, #0x8");
+
+    asm volatile("isb sy");
+
+
+    /* kprintf("%s: set hw bp @ %#llx\n", __func__, bptarget); */
+    /* kprintf("%s: about to call bpfunc...\n", __func__); */
+
+    bpfunc();
+
+    kprintf("%s: called bpfunc\n", __func__);
 
     /* XXX clang crash on the below line!! */
     /* uint64_t pan = __builtin_arm_rsr("pan"); */
@@ -101,24 +143,24 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
 
     /* uint64_t physhdr = kvtophys((uint64_t)mh_execute_header); */
 
-    uint64_t *replacement_el0_ptep = el0_ptep(replacement_el0_addr);
-    uint64_t *sample_el1_ptep = el1_ptep((uint64_t)bcopy_phys);
+    /* pte_t *replacement_el0_ptep = el0_ptep(replacement_el0_addr); */
+    /* pte_t *sample_el1_ptep = el1_ptep((uint64_t)bcopy_phys); */
 
 /*     kprintf("%s: replacement el0 ptep %#llx bcopy_phys ptep %#llx\n", */
 /*             __func__, replacement_el0_ptep, sample_el1_ptep); */
 
     /* Userland code PTEs have PXN bit set!! */
-    kprintf("%s: replacement el0 ptep %#llx (%#llx) bcopy_phys ptep %#llx (%#llx)\n",
-            __func__, replacement_el0_ptep, *replacement_el0_ptep,
-            sample_el1_ptep, *sample_el1_ptep);
+    /* kprintf("%s: replacement el0 ptep %#llx (%#llx) bcopy_phys ptep %#llx (%#llx)\n", */
+    /*         __func__, replacement_el0_ptep, *replacement_el0_ptep, */
+    /*         sample_el1_ptep, *sample_el1_ptep); */
 
-    uint64_t replacement_el0_pte = *replacement_el0_ptep & ~ARM_PTE_PNX;
+    /* pte_t replacement_el0_pte = *replacement_el0_ptep & ~ARM_PTE_PNX; */
 
-    kwrite(replacement_el0_ptep, &replacement_el0_pte, sizeof(replacement_el0_pte));
+    /* kwrite(replacement_el0_ptep, &replacement_el0_pte, sizeof(replacement_el0_pte)); */
 
-    asm volatile("mov x1, 0x8888");
-    asm volatile("mov x0, %0" : : "r" (replacement_el0_addr) : );
-    asm volatile("br x0");
+    /* asm volatile("mov x1, 0x8888"); */
+    /* asm volatile("mov x0, %0" : : "r" (replacement_el0_addr) : ); */
+    /* asm volatile("br x0"); */
     
     *retval = 0;
 
