@@ -116,8 +116,8 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
     /* msr pan, #0 */
     asm volatile(".long 0xd500409f");
 
-    uint64_t bptarget = (uint64_t)bpfunc;
-    /* uint64_t bptarget = (uint64_t)kalloc_canblock; */
+    /* uint64_t bptarget = (uint64_t)bpfunc; */
+    uint64_t bptarget = (uint64_t)kalloc_canblock;
     /* uint64_t bptarget = (uint64_t)xnuspy_ctl; */
 
     /* set MDE and KDE bits */
@@ -126,7 +126,7 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
     asm volatile("orr x8, x8, 0x8000");
     asm volatile("msr mdscr_el1, x8");
 
-    /* set_hwbp(bptarget); */
+    set_hwbp(bptarget);
     /* set_hwbp2(bptarget); */
 
     /* unset PSTATE.D */
@@ -137,9 +137,9 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
     asm volatile("msr DAIFClr, #0x8");
     asm volatile("isb sy");
 
-    asm volatile("mrs %0, DAIF" : "=r" (DAIF));
-    asm volatile("isb sy");
-    kprintf("%s: DAIF now: %#llx\n", __func__, DAIF);
+    /* asm volatile("mrs %0, DAIF" : "=r" (DAIF)); */
+    /* asm volatile("isb sy"); */
+    /* kprintf("%s: DAIF now: %#llx\n", __func__, DAIF); */
 
 
     /* kprintf("%s: set hw bp @ %#llx\n", __func__, bptarget); */

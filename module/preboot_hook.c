@@ -29,9 +29,9 @@ static uint64_t g_xnuspy_ctl_img_codesz = 0;
 /* iphone 8 13.6.1 */
 /* static uint64_t g_IOSleep_addr = 0xFFFFFFF00813462C; */
 /* iphone 8 13.6.1 */
-static uint64_t g_kprintf_addr = 0xFFFFFFF0081D28E0;
+/* static uint64_t g_kprintf_addr = 0xFFFFFFF0081D28E0; */
 /* iphone x 13.3.1 */
-/* static uint64_t g_kprintf_addr = 0xFFFFFFF0081A08F4; */
+static uint64_t g_kprintf_addr = 0xFFFFFFF0081A08F4;
 
 uint64_t *xnuspy_cache_base = NULL;
 
@@ -429,7 +429,8 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
         }
         else if(strcmp(ksym, "_machine_thread_set_state") == 0){
             /* iphone 8 13.6.1 */
-            *va = 0xFFFFFFF007D14578 + kernel_slide;
+            /* *va = 0xFFFFFFF007D14578 + kernel_slide; */
+            *va = 0x4141414141;
             return;
         }
         /* else if(strcmp(ksym, "____osLog") == 0){ */
@@ -545,6 +546,8 @@ static void patch_exception_vectors(void){
         0x9276fa52,
         0xd5184012,
     };
+
+    const size_t num_patches = sizeof(patches) / sizeof(*patches);
 
     uint32_t instr_limit = 0x1000 / sizeof(uint32_t);
 
@@ -675,7 +678,7 @@ void xnuspy_preboot_hook(void){
 
     /* iphone 8 13.6.1 */
     uint32_t *doprnt_hide_pointers = xnu_va_to_ptr(0xFFFFFFF0090B0624 + kernel_slide);
-    *doprnt_hide_pointers = 0;
+    /* *doprnt_hide_pointers = 0; */
     
     /* iphone 8 13.6.1
      *
