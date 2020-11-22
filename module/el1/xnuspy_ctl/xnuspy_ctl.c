@@ -36,6 +36,7 @@ MARK_AS_KERNEL_OFFSET int (*machine_thread_set_state)(void *thread, int flavor,
 MARK_AS_KERNEL_OFFSET void (*kprintf)(const char *fmt, ...);
 /* MARK_AS_KERNEL_OFFSET void (*IOSleep)(uint32_t millis); */
 MARK_AS_KERNEL_OFFSET void *mh_execute_header;
+MARK_AS_KERNEL_OFFSET uint64_t kernel_slide;
 /* MARK_AS_KERNEL_OFFSET void *___osLog; */
 /* MARK_AS_KERNEL_OFFSET void *_os_log_default; */
 /* MARK_AS_KERNEL_OFFSET void (*os_log_internal)(void *dso, void *log, int type, */
@@ -94,8 +95,22 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
 
     uint64_t replacement_el0_addr = uap->arg1;
 
-    kprintf("%s: replacement_el0_addr %#llx bcopy_phys %#llx\n", __func__,
-            replacement_el0_addr, (uint64_t)bcopy_phys);
+    /* kprintf("%s: replacement_el0_addr %#llx bcopy_phys %#llx\n", __func__, */
+    /*         replacement_el0_addr, (uint64_t)bcopy_phys); */
+
+    kprintf("%s: kslide %#llx\n", __func__, kernel_slide);
+
+    uint64_t tpidr_el1 = 0;
+    asm volatile("mrs %0, tpidr_el1" : "=r" (tpidr_el1));
+    uint64_t DAIF = 0;
+    asm volatile("mrs %0, DAIF" : "=r" (DAIF));
+    asm volatile("isb sy");
+    kprintf("%s: current thread: %#llx, DAIF: %#llx\n", __func__, tpidr_el1, DAIF);
+
+    uint64_t rvbar_el1 = 0;
+    asm volatile("mrs %0, rvbar_el1" : "=r" (rvbar_el1));
+    kprintf("%s: rvbar_el1 = %#llx (va %#llx)\n", __func__, rvbar_el1,
+            phystokv(rvbar_el1));
 
     /* zero out pan in case no instruction did it before us */
     /* msr pan, #0 */
@@ -103,9 +118,7 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
 
     uint64_t bptarget = (uint64_t)bpfunc;
     /* uint64_t bptarget = (uint64_t)kalloc_canblock; */
-
-    /* set_hwbp(bptarget); */
-    /* set_hwbp2(bptarget); */
+    /* uint64_t bptarget = (uint64_t)xnuspy_ctl; */
 
     /* set MDE and KDE bits */
     asm volatile("mrs x8, mdscr_el1");
@@ -122,16 +135,19 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
     asm volatile("msr DAIF, x8");
 
     asm volatile("msr DAIFClr, #0x8");
-
     asm volatile("isb sy");
+
+    /* asm volatile("mrs %0, DAIF" : "=r" (DAIF)); */
+    /* asm volatile("isb sy"); */
+    /* kprintf("%s: DAIF now: %#llx\n", __func__, DAIF); */
 
 
     /* kprintf("%s: set hw bp @ %#llx\n", __func__, bptarget); */
     /* kprintf("%s: about to call bpfunc...\n", __func__); */
 
-    bpfunc();
+    /* bpfunc(); */
 
-    kprintf("%s: called bpfunc\n", __func__);
+    /* kprintf("%s: called bpfunc\n", __func__); */
 
     /* XXX clang crash on the below line!! */
     /* uint64_t pan = __builtin_arm_rsr("pan"); */

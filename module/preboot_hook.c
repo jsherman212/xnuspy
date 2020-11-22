@@ -78,6 +78,7 @@ static struct xnuspy_ctl_offset {
     { "_iOS_version", &g_kern_version_major },
     { "_kalloc_canblock", &g_kalloc_canblock_addr },
     { "_kalloc_external", &g_kalloc_external_addr },
+    { "_kernel_slide", &kernel_slide },
     { "_kfree_addr", &g_kfree_addr_addr },
     { "_kfree_ext", &g_kfree_ext_addr },
     { "_lck_grp_alloc_init", &g_lck_grp_alloc_init_addr },

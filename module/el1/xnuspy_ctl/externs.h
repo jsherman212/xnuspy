@@ -27,6 +27,7 @@ extern int (*machine_thread_set_state)(void *thread, int flavor, void *state,
 extern void (*kprintf)(const char *fmt, ...);
 /* extern void (*IOSleep)(uint32_t millis); */
 extern void *mh_execute_header;
+extern uint64_t kernel_slide;
 /* extern void *___osLog; */
 /* extern void *_os_log_default; */
 /* extern void (*os_log_internal)(void *dso, void *log, int type, */
