@@ -118,7 +118,7 @@ handoff:
 _kvtophys:
     mrs x1, DAIF
     ; disable interrupts
-    msr DAIFSet, #(DAIFSC_ASYNCF | DAIFSC_IRQF | DAIFSC_FIQF)
+    msr DAIFSet, #(DAIFSC_DEBUGF | DAIFSC_ASYNCF | DAIFSC_IRQF | DAIFSC_FIQF)
     ; perform address translation with input being parameter
     at s1e1r, x0
     ; read result of above

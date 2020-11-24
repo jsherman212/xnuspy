@@ -58,17 +58,63 @@ struct xnuspy_tramp {
      *  tramp[3]    BR X16
      */
     uint32_t tramp[4];
-    /* An abstraction that represents the original function. Really, this
-     * is just another trampoline that looks like this:
+    /* An abstraction that represents the original function. It's just another
+     * trampoline, but it can take on one of four forms. Every form starts
+     * with this header:
      *  orig[0]     ADR X16, <refcntp>
      *  orig[1]     B _reftramp
+     *
+     * Continuing from that header, the most common form is:
      *  orig[2]     <original first instruction of the hooked function>
-     *  orig[3]     ADR X16, #8
-     *  orig[4]     BR X16
-     *  orig[5]     <address of second instruction of the hooked function>[31:0]
-     *  orig[6]     <address of second instruction of the hooked function>[63:32]
+     *  orig[3]     ADR X16, #0xc
+     *  orig[4]     LDR X16, [X16]
+     *  orig[5]     BR X16
+     *  orig[6]     <address of second instruction of the hooked function>[31:0]
+     *  orig[7]     <address of second instruction of the hooked function>[63:32]
+     *
+     * The above form is taken when the original first instruction of the hooked
+     * function is not an immediate conditional branch (b.cond), an immediate
+     * compare and branch (cbz/cbnz), or an immediate test and branch (tbz/tbnz).
+     * These are special cases because the immediates do not contain enough
+     * bits for me to just "fix up", so I need to emit an equivalent sequence
+     * of instructions.
+     *
+     * If the first instruction was B.cond <label>
+     *  orig[2]     ADR X16, #0x14
+     *  orig[3]     ADR X17, #0x18
+     *  orig[4]     CSEL X16, X16, X17, <cond>
+     *  orig[5]     LDR X16, [X16]
+     *  orig[6]     BR X16
+     *  orig[7]     <destination if condition holds>[31:0]
+     *  orig[8]     <destination if condition holds>[63:32]
+     *  orig[9]     <address of second instruction of the hooked function>[31:0]
+     *  orig[10]    <address of second instruction of the hooked function>[63:32]
+     *
+     * If the first instruction was CBZ Rn, <label> or CBNZ Rn, <label>
+     *  orig[2]     ADR X16, #0x18
+     *  orig[3]     ADR X17, #0x1c
+     *  orig[4]     SUBS RZR, Rn, Rn
+     *  orig[5]     CSEL X16, X16, X17, <if CBZ, eq, if CBNZ, ne>
+     *  orig[6]     LDR X16, [X16]
+     *  orig[7]     BR X16
+     *  orig[8]     <destination if condition holds>[31:0]
+     *  orig[9]     <destination if condition holds>[63:32]
+     *  orig[10]    <address of second instruction of the hooked function>[31:0]
+     *  orig[11]    <address of second instruction of the hooked function>[63:32]
+     *
+     * If the first instruction was TBZ Rn, #n, <label> or TBNZ Rn, #n, <label>
+     *  orig[2]     ADR X16, #0x18
+     *  orig[3]     ADR X17, #0x1c
+     *  orig[4]     TST Rn, #(1 << n)
+     *  orig[5]     CSEL X16, X16, X17, <if TBZ, eq, if TBNZ, ne>
+     *  orig[6]     LDR X16, [X16]
+     *  orig[7]     BR X16
+     *  orig[8]     <destination if condition holds>[31:0]
+     *  orig[9]     <destination if condition holds>[63:32]
+     *  orig[10]    <address of second instruction of the hooked function>[31:0]
+     *  orig[11]    <address of second instruction of the hooked function>[63:32]
      */
-    uint32_t orig[7];
+    uint32_t orig[12];
 };
 
 MARK_AS_KERNEL_OFFSET struct xnuspy_tramp *xnuspy_tramp_page;
@@ -91,12 +137,15 @@ static void xnuspy_init(void){
     asm volatile(".long 0xd500409f");
     asm volatile("isb sy");
 
+    size_t sz = __builtin_offsetof(struct xnuspy_tramp, tramp) -
+        __builtin_offsetof(struct xnuspy_tramp, refcnt);
+
     xnuspy_init_flag = 1;
 }
 
 /* reletramp: release a reference on an xnuspy_tramp.
  *
- * This function is called with a pointer to its reference count saved on
+ * This function is called with a pointer to a reference count saved on
  * the stack when:
  *  - the user's replacement function returns
  *  - the original function, called through the 'orig' trampoline, returns
@@ -111,15 +160,15 @@ __attribute__ ((naked)) void reletramp(void){
 
 /* reftramp: take a reference on an xnuspy_tramp. 
  *
- * This function is called with a pointer to its reference count in X16 when:
+ * This function is called with a pointer to a reference count in X16 when:
  *  - the kernel calls the hooked function
  *  - the original function, called through the 'orig' trampoline, is called
  *    by the user
  *
  * After a reference is taken, X16 is pushed to the stack. To make sure
- * we release the reference we took, a stack frame with LR == reletramp is pushed.
- *
- * XXX Put the address of reletramp in X17?
+ * we release the reference we took, we set LR to reletramp. However, we need
+ * to make sure we return back to the original caller, so we also save the
+ * current stack frame. Finally, we branch back to tramp+2.
  */
 __attribute__ ((naked)) void reftramp(void){
     asm volatile(""
@@ -129,6 +178,13 @@ __attribute__ ((naked)) void reftramp(void){
             "add w9, w10, #1\n"
             "stlxr w10, w9, [x16]\n"
             "cbnz w10, 1b\n"
+            "stp x29, x30, [sp, -0x10]!\n"
+            /* "mov x10, %0\n" */
+            /* "str x16, [sp, -0x20]!\n" */
+            /* "stp x29, x10, [sp, 0x10]\n" */
+            /* "mov x29, sp\n" */
+            /* "add x16, x16, 0xc\n" */
+            /* "br x16" : : "r" (reletramp) */
             );
 }
 
@@ -136,6 +192,8 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
         uint64_t /* __user */ origp){
     kprintf("%s: called with target %#llx replacement %#llx origp %#llx\n",
             __func__, target, replacement, origp);
+
+    asm volatile("tst w4, #0x80");
 
     /* copyout original kernel function pointer to origp */
     uint64_t val = 0x43454345;
