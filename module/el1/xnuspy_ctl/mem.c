@@ -55,8 +55,7 @@ static int protect_common(uint64_t vaddr, uint64_t size, vm_prot_t prot,
     uint64_t target_region_end = (vaddr + size) & ~0x3fffuLL;
 
     /* Determine the equivalent PTE protections of 'prot'. Assume caller only
-     * wants read permissions.
-     */
+     * wants read permissions. */
     uint64_t new_pte_ap = ARM_PTE_AP(AP_RONA);
 
     if(prot & VM_PROT_WRITE)

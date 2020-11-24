@@ -43,7 +43,8 @@ MARK_AS_KERNEL_OFFSET vm_offset_t (*ml_io_map)(vm_offset_t phys_addr,
 MARK_AS_KERNEL_OFFSET void *mh_execute_header;
 MARK_AS_KERNEL_OFFSET uint64_t kernel_slide;
 
-/* This structure represents a function hook. sizeof(struct xnuspy_tramp) == 0x38 */
+/* This structure represents a function hook. Every xnuspy_tramp struct resides
+ * on writeable, executable memory. */
 struct xnuspy_tramp {
     /* Address of userland replacement */
     uint64_t replacement;
@@ -76,7 +77,7 @@ MARK_AS_KERNEL_OFFSET uint8_t *xnuspy_tramp_page_end;
 static int xnuspy_init_flag = 0;
 
 static void xnuspy_init(void){
-    /* Mark the trampoline page as executable */
+    /* Mark the xnuspy_tramp page as executable */
     vm_prot_t prot = VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE;
     kprotect((uint64_t)xnuspy_tramp_page, 0x4000, prot);
 
@@ -93,8 +94,9 @@ static void xnuspy_init(void){
     xnuspy_init_flag = 1;
 }
 
-/* reletramp: release a reference on an xnuspy_tramp. This function is called
- * when:
+/* reletramp: release a reference on an xnuspy_tramp.
+ *
+ * This function is called with a pointer to its reference count in X16 when:
  *  - the user's replacement function returns
  *  - the original function, called through the 'orig' trampoline, returns
  *
@@ -102,18 +104,37 @@ static void xnuspy_init(void){
  * of the hooked function and zero out this xnuspy_tramp structure, marking
  * it as free in the page it resides on.
  */
-__attribute__ ((naked)) static void reletramp(void){
-
+__attribute__ ((naked)) void reletramp(void){
+    asm volatile(""
+            "1:\n"
+            "ldaxr w9, [x16]\n"
+            "mov x10, x9\n"
+            "sub w9, w10, #1\n"
+            "stlxr w10, w9, [x16]\n"
+            "cbnz w10, 1b\n"
+            );
 }
 
-/* reftramp: take a reference on an xnuspy_tramp. This function is called by
- * an xnuspy_tramp trampoline with a pointer to its reference count inside X16.
+/* reftramp: take a reference on an xnuspy_tramp. 
+ *
+ * This function is called with a pointer to its reference count in X16 when:
+ *  - the kernel calls the hooked function
+ *  - the original function, called through the 'orig' trampoline, is called
+ *    by the user
+ *
  * After a reference is taken, X16 is pushed to the stack. To make sure
  * we release the reference we took after the user's replacement code returns,
  * a stack frame with LR == reletramp is pushed.
  */
-__attribute__ ((naked)) static void reftramp(void){
-
+__attribute__ ((naked)) void reftramp(void){
+    asm volatile(""
+            "1:\n"
+            "ldaxr w9, [x16]\n"
+            "mov x10, x9\n"
+            "add w9, w10, #1\n"
+            "stlxr w10, w9, [x16]\n"
+            "cbnz w10, 1b\n"
+            );
 }
 
 static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
