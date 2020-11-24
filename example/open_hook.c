@@ -99,8 +99,15 @@ int main(int argc, char **argv){
     printf("xnuspy_ctl was patched correctly\n");
 
     /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, g_num_pointer, 0, 0); */
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, code, 0, 0);
 
+    /* try and hook kalloc_canblock */
+    /* iphone 8 13.6.1 */
+    uint64_t kalloc_canblock = 0xFFFFFFF007C031E4;
+    void *(*kalloc_canblock_orig)(size_t *, void *, bool) = NULL;
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, kalloc_canblock, code,
+            &kalloc_canblock_orig);
+
+    printf("kalloc_canblock_orig = %#llx\n", kalloc_canblock_orig);
 
     return 0;
 }

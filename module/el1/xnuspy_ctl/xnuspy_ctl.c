@@ -69,8 +69,25 @@ static void xnuspy_init(void){
      * XXX XXX NEED TO CHECK IF THE HARDWARE SUPPORTS THIS BIT
      */
     asm volatile(".long 0xd500409f");
+    asm volatile("isb sy");
 
     xnuspy_init_flag = 1;
+}
+
+static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
+        uint64_t /* __user */ origp){
+    kprintf("%s: called with target %#llx replacement %#llx origp %#llx\n",
+            __func__, target, replacement, origp);
+
+
+    /* copyout original kernel function pointer to origp */
+    uint64_t val = 0x43454345;
+    return copyout(&val, origp, sizeof(val));
+}
+
+static int xnuspy_uninstall_hook(uint64_t target){
+    kprintf("%s: XNUSPY_UNINSTALL_HOOK is not implemented yet\n", __func__);
+    return ENOSYS;
 }
 
 int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
@@ -83,23 +100,6 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
     }
 
     kprintf("%s: got flavor %d\n", __func__, flavor);
-
-    if(!xnuspy_init_flag)
-        xnuspy_init();
-
-    /* kprintf("%s: got flavor '%s'\n", __func__, g_flavors[flavor]); */
-
-    if(flavor == XNUSPY_CHECK_IF_PATCHED){
-        *retval = 999;
-        return 0;
-    }
-
-    if(flavor == XNUSPY_UNINSTALL_HOOK){
-        kprintf("%s: XNUSPY_UNINSTALL_HOOK is not implemented yet\n", __func__);
-        *retval = -1;
-        return ENOSYS;
-    }
-
     kprintf("%s: kslide %#llx\n", __func__, kernel_slide);
     kprintf("%s: xnuspy_ctl @ %#llx (unslid)\n", __func__,
             (uint64_t)xnuspy_ctl - kernel_slide);
@@ -107,8 +107,28 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
             (uint64_t)xnuspy_tramp_page - kernel_slide,
             (uint64_t)xnuspy_tramp_page_end - kernel_slide);
 
+    if(!xnuspy_init_flag)
+        xnuspy_init();
 
-    *retval = 0;
+    int res;
 
-    return 0;
+    switch(flavor){
+        case XNUSPY_CHECK_IF_PATCHED:
+            *retval = 999;
+            return 0;
+        case XNUSPY_INSTALL_HOOK:
+            res = xnuspy_install_hook(uap->arg1, uap->arg2, uap->arg3);
+            break;
+        case XNUSPY_UNINSTALL_HOOK:
+            res = xnuspy_uninstall_hook(uap->arg1);
+            break;
+        default:
+            *retval = -1;
+            return EINVAL;
+    };
+
+    if(res)
+        *retval = -1;
+
+    return res;
 }
