@@ -47,13 +47,6 @@ MARK_AS_KERNEL_OFFSET void (*IOSleep)(unsigned int millis);
 #define XNUSPY_CHECK_IF_PATCHED     (2)
 #define XNUSPY_MAX_FLAVOR           XNUSPY_CHECK_IF_PATCHED
 
-/* XXX freezes up if we try to access this array?? */
-static const char *g_flavors[] = {
-    "XNUSPY_INSTALL_HOOK",
-    "XNUSPY_UNINSTALL_HOOK",
-    "XNUSPY_CHECK_IF_PATCHED",
-};
-
 struct xnuspy_ctl_args {
     uint64_t flavor;
     uint64_t arg1;
@@ -61,7 +54,24 @@ struct xnuspy_ctl_args {
     uint64_t arg3;
 };
 
-static const size_t SIZEOF_CPUDATAENTRY = 0x10;
+static int xnuspy_init_flag = 0;
+
+static void xnuspy_init(void){
+    /* Mark the trampoline page as executable */
+    vm_prot_t prot = VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE;
+    kprotect((uint64_t)xnuspy_tramp_page, 0x4000, prot);
+
+    /* Zero out PAN in case no instruction did it before us. After our kernel
+     * patches, the PAN bit cannot be set to 1 again.
+     *
+     * msr pan, #0
+     *
+     * XXX XXX NEED TO CHECK IF THE HARDWARE SUPPORTS THIS BIT
+     */
+    asm volatile(".long 0xd500409f");
+
+    xnuspy_init_flag = 1;
+}
 
 int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
     uint64_t flavor = uap->flavor;
@@ -73,6 +83,9 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
     }
 
     kprintf("%s: got flavor %d\n", __func__, flavor);
+
+    if(!xnuspy_init_flag)
+        xnuspy_init();
 
     /* kprintf("%s: got flavor '%s'\n", __func__, g_flavors[flavor]); */
 
@@ -94,31 +107,6 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
             (uint64_t)xnuspy_tramp_page - kernel_slide,
             (uint64_t)xnuspy_tramp_page_end - kernel_slide);
 
-    /* uint64_t map_addr = kvtophys(0xfffffff00f004000 + kernel_slide); */
-    /* kprintf("%s: 3 secs before ml_io_map with %#llx\n", __func__, map_addr); */
-    /* IOSleep(3000); */
-
-    /* vm_offset_t ml_io_map_ret = ml_io_map(map_addr, 0x4000); */
-
-    /* kprintf("%s: ml_io_map returned %#llx\n", __func__, ml_io_map_ret); */
-
-    /* zero out pan in case no instruction did it before us */
-    /* msr pan, #0 */
-    asm volatile(".long 0xd500409f");
-
-    *(uint32_t *)xnuspy_tramp_page = 0x55667788;
-
-    if(kprotect((uint64_t)xnuspy_tramp_page, 0x4000,
-                VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE)){
-        kprintf("%s: could not kprotect xnuspy_tramp_page\n", __func__);
-        *retval = 0;
-        return 0;
-    }
-
-    IOSleep(5000);
-
-    *(uint32_t *)xnuspy_tramp_page = 0x41424344;
-    asm volatile("br %0" : "=r" (xnuspy_tramp_page));
 
     *retval = 0;
 

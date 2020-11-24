@@ -45,26 +45,14 @@ void kwrite(void *dst, void *buf, size_t sz){
     kprintf("%s: still here after bcopy_phys\n", __func__);
 }
 
-/* Change protections kernel memory, at page table level.
- *
- * Parameters:
- *  kaddr: kernel virtual address of target
- *  size:  the number of bytes in the target region
- *  prot:  protections to apply
- *
- * Returns:
- *  zero if successful, non-zero otherwise
- */
-int kprotect(uint64_t kaddr, uint64_t size, vm_prot_t prot){
-    kprintf("%s: called with kaddr %#llx size %#llx prot %d\n", __func__,
-            kaddr, size, prot);
-
+static int protect_common(uint64_t vaddr, uint64_t size, vm_prot_t prot,
+        uint32_t el){
     /* memory must be readable */
     if(!(prot & VM_PROT_READ))
         return 1;
 
-    uint64_t target_region_cur = kaddr & ~0x3fffuLL;
-    uint64_t target_region_end = (kaddr + size) & ~0x3fffuLL;
+    uint64_t target_region_cur = vaddr & ~0x3fffuLL;
+    uint64_t target_region_end = (vaddr + size) & ~0x3fffuLL;
 
     /* Determine the equivalent PTE protections of 'prot'. Assume caller only
      * wants read permissions.
@@ -75,7 +63,12 @@ int kprotect(uint64_t kaddr, uint64_t size, vm_prot_t prot){
         new_pte_ap = ARM_PTE_AP(AP_RWNA);
 
     while(target_region_cur < target_region_end){
-        pte_t *pte = el1_ptep(target_region_cur);
+        pte_t *pte;
+
+        if(el == 0)
+            pte = el0_ptep(target_region_cur);
+        else
+            pte = el1_ptep(target_region_cur);
 
         pte_t new_pte = (*pte & ~ARM_PTE_APMASK) | new_pte_ap;
 
@@ -94,4 +87,38 @@ int kprotect(uint64_t kaddr, uint64_t size, vm_prot_t prot){
     asm volatile("isb");
 
     return 0;
+}
+
+/* Change protections of kernel memory at the page table level.
+ *
+ * Parameters:
+ *  kaddr: kernel virtual address of target
+ *  size:  the number of bytes in the target region
+ *  prot:  protections to apply
+ *
+ * Returns:
+ *  zero if successful, non-zero otherwise
+ */
+int kprotect(uint64_t kaddr, uint64_t size, vm_prot_t prot){
+    kprintf("%s: called with kaddr %#llx size %#llx prot %d\n", __func__,
+            kaddr, size, prot);
+
+    return protect_common(kaddr, size, prot, 1);
+}
+
+/* Change protections of user memory at the page table level.
+ *
+ * Parameters:
+ *  uaddr: EL0 virtual address of target
+ *  size:  the number of bytes in the target region
+ *  prot:  protections to apply
+ *
+ * Returns:
+ *  zero if successful, non-zero otherwise
+ */
+int uprotect(uint64_t uaddr, uint64_t size, vm_prot_t prot){
+    kprintf("%s: called with uaddr %#llx size %#llx prot %d\n", __func__,
+            uaddr, size, prot);
+
+    return protect_common(uaddr, size, prot, 0);
 }
