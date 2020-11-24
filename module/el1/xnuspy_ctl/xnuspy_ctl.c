@@ -7,7 +7,16 @@
 #include "mem.h"
 #include "pte.h"
 
+#define XNUSPY_INSTALL_HOOK         (0)
+#define XNUSPY_UNINSTALL_HOOK       (1)
+#define XNUSPY_CHECK_IF_PATCHED     (2)
+#define XNUSPY_MAX_FLAVOR           XNUSPY_CHECK_IF_PATCHED
+
 #define MARK_AS_KERNEL_OFFSET __attribute__((section("__DATA,__koff")))
+
+/* XXX For debugging only */
+MARK_AS_KERNEL_OFFSET void (*kprintf)(const char *fmt, ...);
+MARK_AS_KERNEL_OFFSET void (*IOSleep)(unsigned int millis);
 
 MARK_AS_KERNEL_OFFSET uint64_t iOS_version = 0;
 MARK_AS_KERNEL_OFFSET void *(*kalloc_canblock)(vm_size_t *sizep, bool canblock,
@@ -34,25 +43,35 @@ MARK_AS_KERNEL_OFFSET vm_offset_t (*ml_io_map)(vm_offset_t phys_addr,
 MARK_AS_KERNEL_OFFSET void *mh_execute_header;
 MARK_AS_KERNEL_OFFSET uint64_t kernel_slide;
 
-/* XXX would this be better as an array of xnuspy_tramp structs? */
-MARK_AS_KERNEL_OFFSET uint8_t *xnuspy_tramp_page;
-MARK_AS_KERNEL_OFFSET uint8_t *xnuspy_tramp_page_end;
-
-/* XXX For debugging only */
-MARK_AS_KERNEL_OFFSET void (*kprintf)(const char *fmt, ...);
-MARK_AS_KERNEL_OFFSET void (*IOSleep)(unsigned int millis);
-
-#define XNUSPY_INSTALL_HOOK         (0)
-#define XNUSPY_UNINSTALL_HOOK       (1)
-#define XNUSPY_CHECK_IF_PATCHED     (2)
-#define XNUSPY_MAX_FLAVOR           XNUSPY_CHECK_IF_PATCHED
-
-struct xnuspy_ctl_args {
-    uint64_t flavor;
-    uint64_t arg1;
-    uint64_t arg2;
-    uint64_t arg3;
+/* This structure represents a function hook. sizeof(struct xnuspy_tramp) == 0x38 */
+struct xnuspy_tramp {
+    /* Address of userland replacement */
+    uint64_t replacement;
+    _Atomic uint32_t refcnt;
+    /* The trampoline for a hooked function. When the user installs a hook
+     * on a function, the first instruction of that function is replaced
+     * with a branch to here. An xnuspy trampoline looks like this:
+     *  tramp[0]    ADR X16, <refcntp>
+     *  tramp[1]    B _reftramp
+     *  tramp[2]    ADR X16, <replacement>
+     *  tramp[3]    BR X16
+     */
+    uint32_t tramp[4];
+    /* An abstraction that represents the original function. Really, this
+     * is just another trampoline that looks like this:
+     *  orig[0]     ADR X16, <refcntp>
+     *  orig[1]     B _reftramp
+     *  orig[2]     <original first instruction of the hooked function>
+     *  orig[3]     ADR X16, #8
+     *  orig[4]     BR X16
+     *  orig[5]     <address of second instruction of the hooked function>[31:0]
+     *  orig[6]     <address of second instruction of the hooked function>[63:32]
+     */
+    uint32_t orig[7];
 };
+
+MARK_AS_KERNEL_OFFSET struct xnuspy_tramp *xnuspy_tramp_page;
+MARK_AS_KERNEL_OFFSET uint8_t *xnuspy_tramp_page_end;
 
 static int xnuspy_init_flag = 0;
 
@@ -74,11 +93,33 @@ static void xnuspy_init(void){
     xnuspy_init_flag = 1;
 }
 
+/* reletramp: release a reference on an xnuspy_tramp. This function is called
+ * when:
+ *  - the user's replacement function returns
+ *  - the original function, called through the 'orig' trampoline, returns
+ *
+ * When the reference count reaches zero, we restore the first instruction
+ * of the hooked function and zero out this xnuspy_tramp structure, marking
+ * it as free in the page it resides on.
+ */
+__attribute__ ((naked)) static void reletramp(void){
+
+}
+
+/* reftramp: take a reference on an xnuspy_tramp. This function is called by
+ * an xnuspy_tramp trampoline with a pointer to its reference count inside X16.
+ * After a reference is taken, X16 is pushed to the stack. To make sure
+ * we release the reference we took after the user's replacement code returns,
+ * a stack frame with LR == reletramp is pushed.
+ */
+__attribute__ ((naked)) static void reftramp(void){
+
+}
+
 static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
         uint64_t /* __user */ origp){
     kprintf("%s: called with target %#llx replacement %#llx origp %#llx\n",
             __func__, target, replacement, origp);
-
 
     /* copyout original kernel function pointer to origp */
     uint64_t val = 0x43454345;
@@ -89,6 +130,13 @@ static int xnuspy_uninstall_hook(uint64_t target){
     kprintf("%s: XNUSPY_UNINSTALL_HOOK is not implemented yet\n", __func__);
     return ENOSYS;
 }
+
+struct xnuspy_ctl_args {
+    uint64_t flavor;
+    uint64_t arg1;
+    uint64_t arg2;
+    uint64_t arg3;
+};
 
 int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
     uint64_t flavor = uap->flavor;
