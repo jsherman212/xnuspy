@@ -96,7 +96,8 @@ static void xnuspy_init(void){
 
 /* reletramp: release a reference on an xnuspy_tramp.
  *
- * This function is called with a pointer to its reference count in X16 when:
+ * This function is called with a pointer to its reference count saved on
+ * the stack when:
  *  - the user's replacement function returns
  *  - the original function, called through the 'orig' trampoline, returns
  *
@@ -105,14 +106,7 @@ static void xnuspy_init(void){
  * it as free in the page it resides on.
  */
 __attribute__ ((naked)) void reletramp(void){
-    asm volatile(""
-            "1:\n"
-            "ldaxr w9, [x16]\n"
-            "mov x10, x9\n"
-            "sub w9, w10, #1\n"
-            "stlxr w10, w9, [x16]\n"
-            "cbnz w10, 1b\n"
-            );
+
 }
 
 /* reftramp: take a reference on an xnuspy_tramp. 
@@ -123,8 +117,9 @@ __attribute__ ((naked)) void reletramp(void){
  *    by the user
  *
  * After a reference is taken, X16 is pushed to the stack. To make sure
- * we release the reference we took after the user's replacement code returns,
- * a stack frame with LR == reletramp is pushed.
+ * we release the reference we took, a stack frame with LR == reletramp is pushed.
+ *
+ * XXX Put the address of reletramp in X17?
  */
 __attribute__ ((naked)) void reftramp(void){
     asm volatile(""
