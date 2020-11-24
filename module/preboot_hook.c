@@ -27,11 +27,16 @@ static uint64_t g_xnuspy_ctl_img_codesz = 0;
 /* iphone 8 13.6.1 */
 /* static uint64_t g_IOLog_addr = 0xFFFFFFF008134654; */
 /* iphone 8 13.6.1 */
-/* static uint64_t g_IOSleep_addr = 0xFFFFFFF00813462C; */
+static uint64_t g_IOSleep_addr = 0xFFFFFFF00813462C;
 /* iphone 8 13.6.1 */
-/* static uint64_t g_kprintf_addr = 0xFFFFFFF0081D28E0; */
+static uint64_t g_kprintf_addr = 0xFFFFFFF0081D28E0;
 /* iphone x 13.3.1 */
-static uint64_t g_kprintf_addr = 0xFFFFFFF0081A08F4;
+/* static uint64_t g_kprintf_addr = 0xFFFFFFF0081A08F4; */
+
+static uint64_t g_xnuspy_tramp_page_addr = 0;
+
+/* needed for when we are too far away for an immediate branch */
+static uint64_t g_xnuspy_tramp_page_end = 0;
 
 uint64_t *xnuspy_cache_base = NULL;
 
@@ -86,6 +91,8 @@ static struct xnuspy_ctl_offset {
     { "_lck_rw_done", &g_lck_rw_done_addr },
     { "_lck_rw_lock_shared", &g_lck_rw_lock_shared_addr },
     { "_phystokv", &g_phystokv_addr },
+    { "_xnuspy_tramp_page", &g_xnuspy_tramp_page_addr },
+    { "_xnuspy_tramp_page_end", &g_xnuspy_tramp_page_end },
 };
 
 static uint32_t *write_h_s_c_sbn_h_instrs(uint32_t *scratch_space,
@@ -410,41 +417,33 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
 
             return;
         }
-        /* XXX For debugging only, all but kprintf are specific to iphone 8 13.6.1 */
-        /* else if(strcmp(ksym, "_IOLog") == 0){ */
-        /*     *va = g_IOLog_addr + kernel_slide; */
-        /*     return; */
-        /* } */
         else if(strcmp(ksym, "_kprintf") == 0){
             *va = g_kprintf_addr + kernel_slide;
             return;
         }
-        /* else if(strcmp(ksym, "_IOSleep") == 0){ */
-        /*     *va = g_IOSleep_addr + kernel_slide; */
-        /*     return; */
-        /* } */
+        else if(strcmp(ksym, "_IOSleep") == 0){
+            *va = g_IOSleep_addr + kernel_slide;
+            return;
+        }
+        else if(strcmp(ksym, "_ncpusp") == 0){
+            /* iphone 8 13.6.1 */
+            *va = 0xFFFFFFF007932EFC + kernel_slide;
+            return;
+        }
+        else if(strcmp(ksym, "_CpuDataEntriesp") == 0){
+            /* iphone 8 13.6.1 */
+            *va = 0xFFFFFFF00923BA98 + kernel_slide;
+            return;
+        }
+        else if(strcmp(ksym, "_ml_io_map") == 0){
+            /* iphone 8 13.6.1 */
+            *va = 0xFFFFFFF007D0E5C8 + kernel_slide;
+            return;
+        }
         else if(strcmp(ksym, "_mh_execute_header") == 0){
             *va = (uint64_t)mh_execute_header;
             return;
         }
-        else if(strcmp(ksym, "_machine_thread_set_state") == 0){
-            /* iphone 8 13.6.1 */
-            /* *va = 0xFFFFFFF007D14578 + kernel_slide; */
-            *va = 0x4141414141;
-            return;
-        }
-        /* else if(strcmp(ksym, "____osLog") == 0){ */
-        /*     *va = 0xFFFFFFF00957C7E0 + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "__os_log_default") == 0){ */
-        /*     *va = 0xFFFFFFF00925AF2C + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_os_log_internal") == 0){ */
-        /*     *va = 0xFFFFFFF0081188CC + kernel_slide; */
-        /*     return; */
-        /* } */
     }
 }
 
@@ -602,12 +601,51 @@ void xnuspy_preboot_hook(void){
 
     /* XXX check if there's enough executable free space */
 
+    void *xnuspy_tramp_page = alloc_static(PAGE_SIZE);
+
+    /* For every function someone wants to hook, I will write a single
+     * unconditional immediate branch into some point on the above page
+     * ONLY if this memory is within 128MB of the base of the kernelcache.
+     * If this memory is not within that range, we cannot assume every
+     * branch will fall within 128MB, and we'll have to default to unused
+     * r-x code already in the kernelcache.
+     *
+     * TODO actually write the logic to default to the unused r-x code
+     */
+    if(!xnuspy_tramp_page){
+        puts("xnuspy: alloc_static");
+        puts("   returned NULL while");
+        puts("   allocating xnuspy");
+        puts("   trampoline page");
+
+        xnuspy_fatal_error();
+    }
+
+#define _128MB (134217728)
+
+    /* XXX why am I doing a conversion */
+    uint64_t dist_from_kcbase = xnu_ptr_to_va(xnuspy_tramp_page) -
+        xnu_ptr_to_va(mh_execute_header);
+   
+    printf("%s: trampoline page is %#llx bytes away from kc base\n", __func__,
+            dist_from_kcbase);
+
+    if(dist_from_kcbase > _128MB){
+        printf("%s: dist_from_kcbase > 128MB, unimplemented, try again\n", __func__);
+        xnuspy_fatal_error();
+    }
+
+    memset(xnuspy_tramp_page, 0, PAGE_SIZE);
+
+    g_xnuspy_tramp_page_addr = xnu_ptr_to_va(xnuspy_tramp_page);
+    g_xnuspy_tramp_page_end = g_xnuspy_tramp_page_addr + PAGE_SIZE;
+
     xnuspy_cache_base = alloc_static(PAGE_SIZE);
 
     if(!xnuspy_cache_base){
         puts("xnuspy: alloc_static");
         puts("   returned NULL while");
-        puts("   allocating for stalker");
+        puts("   allocating for xnuspy");
         puts("   cache");
 
         xnuspy_fatal_error();
@@ -626,6 +664,7 @@ void xnuspy_preboot_hook(void){
 
         xnuspy_fatal_error();
     }
+
 
     /* printf("%s: xnuspy_ctl image %#llx loader_xfer_recv_data %#llx\n", __func__, */
     /*         xnuspy_ctl_image, loader_xfer_recv_data); */
@@ -650,53 +689,17 @@ void xnuspy_preboot_hook(void){
     scratch_space = write_xnuspy_ctl_tramp_instrs(scratch_space,
             &num_free_instrs);
 
-    patch_exception_vectors();
+    /* patch_exception_vectors(); */
 
     initialize_xnuspy_cache();
 
     /* combat short read */
     printf("xnuspy: handing it off to checkra1n...\n");
-    /* printf("xnuspy: handing it off to checkra1n...\n"); */
-    /* printf("xnuspy: handing it off to checkra1n...\n"); */
-    /* printf("xnuspy: handing it off to checkra1n...\n"); */
-    /* printf("xnuspy: handing it off to checkra1n...\n"); */
-    /* printf("xnuspy: handing it off to checkra1n...\n"); */
-    /* printf("xnuspy: handing it off to checkra1n...\n"); */
-    /* printf("xnuspy: handing it off to checkra1n...\n"); */
-    /* printf("xnuspy: handing it off to checkra1n...\n"); */
-    /* printf("xnuspy: handing it off to checkra1n...\n"); */
-    /* printf("xnuspy: handing it off to checkra1n...\n"); */
-    /* printf("xnuspy: handing it off to checkra1n...\n"); */
-    /* printf("xnuspy: handing it off to checkra1n...\n"); */
-    /* printf("xnuspy: handing it off to checkra1n...\n"); */
-    /* printf("xnuspy: handing it off to checkra1n...\n"); */
-    /* printf("xnuspy: handing it off to checkra1n...\n"); */
-    /* printf("xnuspy: handing it off to checkra1n...\n"); */
-    /* printf("xnuspy: handing it off to checkra1n...\n"); */
-    /* printf("xnuspy: handing it off to checkra1n...\n"); */
-    /* printf("xnuspy: handing it off to checkra1n...\n"); */
 
     /* iphone 8 13.6.1 */
     uint32_t *doprnt_hide_pointers = xnu_va_to_ptr(0xFFFFFFF0090B0624 + kernel_slide);
-    /* *doprnt_hide_pointers = 0; */
+    *doprnt_hide_pointers = 0;
     
-    /* iphone 8 13.6.1
-     *
-     * machine_thread_set_state patch so it doesn't mask out any bits in
-     * the debug_state's bcrs
-     */
-    /* uint32_t *mtss_patch0 = xnu_va_to_ptr(0xFFFFFFF007D14F2C + kernel_slide); */
-    /* uint32_t *mtss_patch1 = xnu_va_to_ptr(0xFFFFFFF007D14F30 + kernel_slide); */
-    /* both nops */
-    /* *mtss_patch0 = 0xD503201F; */
-    /* *mtss_patch1 = 0xD503201F; */
-    /* uint32_t *mtss_patch = xnu_va_to_ptr(0xFFFFFFF007D14F10 + kernel_slide); */
-    /* mov x9, 16 */
-    /* *mtss_patch = 0xD2800209; */
-
-    /* uint32_t *c = xnu_va_to_ptr(0xFFFFFFF007D129EC + kernel_slide); */
-    /* *c = 0xD4200000; */
-
     if(next_preboot_hook)
         next_preboot_hook();
 }

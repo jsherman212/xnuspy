@@ -3,6 +3,7 @@
 #include <stdint.h>
 
 #include "externs.h"
+#include "pte.h"
 
 __attribute__ ((naked)) uint64_t kvtophys(uint64_t kaddr){
     asm volatile(""
@@ -23,8 +24,7 @@ __attribute__ ((naked)) uint64_t kvtophys(uint64_t kaddr){
             );
 }
 
-/* Write to kernel memory. We use bcopy_phys here to avoid "unexpected faults
- * in kernel static region" panics.
+/* Write to kernel memory, using bcopy_phys.
  *
  * Parameters:
  *  dst: kernel virtual address of destination
@@ -43,4 +43,55 @@ void kwrite(void *dst, void *buf, size_t sz){
     bcopy_phys(buf_phys, dst_phys, sz);
 
     kprintf("%s: still here after bcopy_phys\n", __func__);
+}
+
+/* Change protections kernel memory, at page table level.
+ *
+ * Parameters:
+ *  kaddr: kernel virtual address of target
+ *  size:  the number of bytes in the target region
+ *  prot:  protections to apply
+ *
+ * Returns:
+ *  zero if successful, non-zero otherwise
+ */
+int kprotect(uint64_t kaddr, uint64_t size, vm_prot_t prot){
+    kprintf("%s: called with kaddr %#llx size %#llx prot %d\n", __func__,
+            kaddr, size, prot);
+
+    /* memory must be readable */
+    if(!(prot & VM_PROT_READ))
+        return 1;
+
+    uint64_t target_region_cur = kaddr & ~0x3fffuLL;
+    uint64_t target_region_end = (kaddr + size) & ~0x3fffuLL;
+
+    /* Determine the equivalent PTE protections of 'prot'. Assume caller only
+     * wants read permissions.
+     */
+    uint64_t new_pte_ap = ARM_PTE_AP(AP_RONA);
+
+    if(prot & VM_PROT_WRITE)
+        new_pte_ap = ARM_PTE_AP(AP_RWNA);
+
+    while(target_region_cur < target_region_end){
+        pte_t *pte = el1_ptep(target_region_cur);
+
+        pte_t new_pte = (*pte & ~ARM_PTE_APMASK) | new_pte_ap;
+
+        if(prot & VM_PROT_EXECUTE)
+            new_pte &= ~(ARM_PTE_NX | ARM_PTE_PNX);
+
+        kwrite(pte, &new_pte, sizeof(new_pte));
+
+        target_region_cur += 0x4000;
+    }
+
+    asm volatile("isb");
+    asm volatile("dsb sy");
+    asm volatile("tlbi vmalle1");
+    asm volatile("dsb sy");
+    asm volatile("isb");
+
+    return 0;
 }

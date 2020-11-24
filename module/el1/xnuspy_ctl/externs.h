@@ -21,13 +21,15 @@ extern int (*copyout)(const void *kaddr, uint64_t uaddr,
         vm_size_t nbytes);
 extern int (*machine_thread_set_state)(void *thread, int flavor, void *state,
         uint32_t count);
+extern uint32_t *ncpusp;
+extern void *mh_execute_header;
+extern uint64_t kernel_slide;
+extern uint8_t *xnuspy_tramp_page;
 
 /* XXX For debugging only */
 /* extern void (*IOLog)(const char *fmt, ...); */
 extern void (*kprintf)(const char *fmt, ...);
-/* extern void (*IOSleep)(uint32_t millis); */
-extern void *mh_execute_header;
-extern uint64_t kernel_slide;
+extern void (*IOSleep)(uint32_t millis);
 /* extern void *___osLog; */
 /* extern void *_os_log_default; */
 /* extern void (*os_log_internal)(void *dso, void *log, int type, */
