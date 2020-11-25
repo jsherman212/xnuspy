@@ -15,6 +15,49 @@
 #include "pf/offsets.h"
 #include "pf/pf_common.h"
 
+static void DumpMemory(void *startaddr, void *data, size_t size){
+    char ascii[17];
+    size_t i, j;
+    ascii[16] = '\0';
+    int putloc = 0;
+    void *curaddr = startaddr;
+    for (i = 0; i < size; ++i) {
+        if(!putloc){
+            if(startaddr != (void *)-1){
+                printf("%#llx: ", curaddr);
+                curaddr += 0x10;
+            }
+
+            putloc = 1;
+        }
+
+        printf("%02X ", ((unsigned char*)data)[i]);
+        if (((unsigned char*)data)[i] >= ' ' && ((unsigned char*)data)[i] <= '~') {
+            ascii[i % 16] = ((unsigned char*)data)[i];
+        } else {
+            ascii[i % 16] = '.';
+        }
+        if ((i+1) % 8 == 0 || i+1 == size) {
+            printf(" ");
+            if ((i+1) % 16 == 0) {
+                printf("|  %s \n", ascii);
+                putloc = 0;
+            } else if (i+1 == size) {
+                ascii[(i+1) % 16] = '\0';
+                if ((i+1) % 16 <= 8) {
+                    printf(" ");
+                }
+                for (j = (i+1) % 16; j < 16; ++j) {
+                    printf("   ");
+                }
+                printf("|  %s \n", ascii);
+                putloc = 0;
+            }
+        }
+    }
+}
+
+
 static uint64_t g_xnuspy_ctl_addr = 0;
 
 /* address of start of __TEXT_EXEC in xnuspy_ctl image */
@@ -441,7 +484,7 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
             return;
         }
         else if(strcmp(ksym, "_mh_execute_header") == 0){
-            *va = (uint64_t)mh_execute_header;
+            *va = xnu_ptr_to_va(mh_execute_header);
             return;
         }
     }
@@ -651,8 +694,10 @@ void xnuspy_preboot_hook(void){
         xnuspy_fatal_error();
     }
 
-    /* printf("%s: xnuspy_ctl img is %#llx bytes\n", __func__, */
-    /*         loader_xfer_recv_count); */
+    printf("%s: xnuspy_ctl img is %#x bytes\n", __func__,
+            loader_xfer_recv_count);
+
+    /* DumpMemory(loader_xfer_recv_data, loader_xfer_recv_data, 0x100); */
 
     void *xnuspy_ctl_image = alloc_static(loader_xfer_recv_count);
 

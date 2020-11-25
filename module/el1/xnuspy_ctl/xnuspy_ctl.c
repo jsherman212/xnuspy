@@ -3,7 +3,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "hwbp.h"
 #include "mem.h"
 #include "pte.h"
 
@@ -137,8 +136,9 @@ static void xnuspy_init(void){
     asm volatile(".long 0xd500409f");
     asm volatile("isb sy");
 
-    size_t sz = __builtin_offsetof(struct xnuspy_tramp, tramp) -
-        __builtin_offsetof(struct xnuspy_tramp, refcnt);
+    /* combat short read of this image */
+    asm volatile(".align 14");
+    asm volatile(".align 14");
 
     xnuspy_init_flag = 1;
 }
@@ -155,7 +155,18 @@ static void xnuspy_init(void){
  * it as free in the page it resides on.
  */
 __attribute__ ((naked)) void reletramp(void){
-
+    /* TODO actually deallocate when refcnt hits zero */
+    asm volatile(""
+            "ldr x16, [sp], 0x10\n"
+            "1:\n"
+            "ldaxr w9, [x16]\n"
+            "mov x10, x9\n"
+            "sub w9, w10, #1\n"
+            "stlxr w10, w9, [x16]\n"
+            "cbnz w10, 1b\n"
+            "ldp x29, x30, [sp], 0x10\n"
+            "ret"
+            );
 }
 
 /* reftramp: take a reference on an xnuspy_tramp. 
@@ -179,12 +190,11 @@ __attribute__ ((naked)) void reftramp(void){
             "stlxr w10, w9, [x16]\n"
             "cbnz w10, 1b\n"
             "stp x29, x30, [sp, -0x10]!\n"
-            /* "mov x10, %0\n" */
-            /* "str x16, [sp, -0x20]!\n" */
-            /* "stp x29, x10, [sp, 0x10]\n" */
-            /* "mov x29, sp\n" */
-            /* "add x16, x16, 0xc\n" */
-            /* "br x16" : : "r" (reletramp) */
+            "str x16, [sp, -0x10]!\n"
+            "mov x29, sp\n"
+            "mov x30, %0\n"
+            "add x16, x16, 0xc\n"
+            "br x16" : : "r" (reletramp)
             );
 }
 
@@ -193,7 +203,8 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
     kprintf("%s: called with target %#llx replacement %#llx origp %#llx\n",
             __func__, target, replacement, origp);
 
-    asm volatile("tst w4, #0x80");
+    /* slide target */
+    target += kernel_slide;
 
     /* copyout original kernel function pointer to origp */
     uint64_t val = 0x43454345;
