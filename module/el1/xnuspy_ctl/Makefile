@@ -1,9 +1,9 @@
-CFLAGS += -mkernel# -Os
+CFLAGS += -mkernel
 LDFLAGS = -Xlinker -kext
 
 # XXX compress later
 
-all : asm.o mem.o pte.o xnuspy_ctl
+all : asm.o mem.o pte.o tramp.o xnuspy_ctl
 
 asm.o : asm.c asm.h externs.h
 	$(CC) $(CFLAGS) asm.c -c
@@ -14,5 +14,8 @@ mem.o : mem.c mem.h externs.h
 pte.o : pte.c pte.h externs.h
 	$(CC) $(CFLAGS) pte.c -c
 
-xnuspy_ctl : xnuspy_ctl.c asm.o mem.o pte.o externs.h
-	$(CC) $(CFLAGS) $(LDFLAGS) asm.o mem.o pte.o xnuspy_ctl.c -o xnuspy_ctl
+tramp.o : tramp.c tramp.h externs.h
+	$(CC) $(CFLAGS) tramp.c -c
+
+xnuspy_ctl : xnuspy_ctl.c asm.o mem.o pte.o tramp.o externs.h
+	$(CC) $(CFLAGS) $(LDFLAGS) asm.o mem.o pte.o tramp.o xnuspy_ctl.c -o xnuspy_ctl

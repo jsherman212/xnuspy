@@ -5,6 +5,7 @@
 
 #include "mem.h"
 #include "pte.h"
+#include "tramp.h"
 
 #define XNUSPY_INSTALL_HOOK         (0)
 #define XNUSPY_UNINSTALL_HOOK       (1)
@@ -53,12 +54,13 @@ struct xnuspy_tramp {
      * with a branch to here. An xnuspy trampoline looks like this:
      *  tramp[0]    ADR X16, <refcntp>
      *  tramp[1]    B _reftramp
-     *  tramp[2]    ADR X16, <replacement>
-     *  tramp[3]    BR X16
+     *  tramp[2]    ADR X16, <replacementp>
+     *  tramp[3]    LDR X16, [X16]
+     *  tramp[4]    BR X16
      */
-    uint32_t tramp[4];
+    uint32_t tramp[5];
     /* An abstraction that represents the original function. It's just another
-     * trampoline, but it can take on one of four forms. Every form starts
+     * trampoline, but it can take on one of five forms. Every form starts
      * with this header:
      *  orig[0]     ADR X16, <refcntp>
      *  orig[1]     B _reftramp
@@ -73,7 +75,8 @@ struct xnuspy_tramp {
      *
      * The above form is taken when the original first instruction of the hooked
      * function is not an immediate conditional branch (b.cond), an immediate
-     * compare and branch (cbz/cbnz), or an immediate test and branch (tbz/tbnz).
+     * compare and branch (cbz/cbnz), an immediate test and branch (tbz/tbnz),
+     * or an ADR.
      * These are special cases because the immediates do not contain enough
      * bits for me to just "fix up", so I need to emit an equivalent sequence
      * of instructions.
@@ -92,7 +95,7 @@ struct xnuspy_tramp {
      * If the first instruction was CBZ Rn, <label> or CBNZ Rn, <label>
      *  orig[2]     ADR X16, #0x18
      *  orig[3]     ADR X17, #0x1c
-     *  orig[4]     SUBS RZR, Rn, Rn
+     *  orig[4]     CMP Rn, #0
      *  orig[5]     CSEL X16, X16, X17, <if CBZ, eq, if CBNZ, ne>
      *  orig[6]     LDR X16, [X16]
      *  orig[7]     BR X16
@@ -112,6 +115,15 @@ struct xnuspy_tramp {
      *  orig[9]     <destination if condition holds>[63:32]
      *  orig[10]    <address of second instruction of the hooked function>[31:0]
      *  orig[11]    <address of second instruction of the hooked function>[63:32]
+     *
+     * If the first instruction was ADR Rn, #n
+     *  orig[2]     ADRP Rn, #n@pageoff
+     *  orig[3]     ADD Rn, Rn, #n
+     *  orig[4]     ADR X16, #0xc
+     *  orig[5]     LDR X16, [X16]
+     *  orig[6]     BR X16
+     *  orig[7]     <address of second instruction of the hooked function>[31:0]
+     *  orig[8]     <address of second instruction of the hooked function>[63:32]
      */
     uint32_t orig[12];
 };
@@ -206,9 +218,44 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
     /* slide target */
     target += kernel_slide;
 
+    /* Find a free xnuspy_tramp inside the trampoline page */
+    struct xnuspy_tramp *tramp = xnuspy_tramp_page;
+
+    while((uint8_t *)tramp < xnuspy_tramp_page_end){
+        /* These structs are zeroed out when they're freed */
+        if(!tramp->replacement)
+            break;
+
+        tramp++;
+    }
+
+    if(!tramp){
+        kprintf("%s: no free xnuspy_tramp structs\n", __func__);
+        return ENOSPC;
+    }
+
+    kprintf("%s: got free xnuspy_ctl struct @ %#llx\n", __func__, tramp);
+
+    tramp->replacement = replacement;
+
+    /* Build the trampoline to the replacement as well as the trampoline
+     * that represents the original function */
+
+    generate_replacement_tramp(reftramp, tramp->tramp);
+
+    /* TODO We need to mark the entirety of the calling processes' __text
+     * segment as executable from EL1 so the user can call other functions
+     * they write inside their program from their kernel hook. */
+    // XXX something like get_calling_process_text_segment
+
+
+
+    kprintf("%s: tramp %#llx &tramp %#llx\n", __func__, tramp, &tramp);
+
     /* copyout original kernel function pointer to origp */
-    uint64_t val = 0x43454345;
-    return copyout(&val, origp, sizeof(val));
+    uint32_t *orig_tramp = tramp->orig;
+
+    return copyout(&orig_tramp, origp, sizeof(origp));
 }
 
 static int xnuspy_uninstall_hook(uint64_t target){
