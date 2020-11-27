@@ -56,10 +56,19 @@ static int protect_common(uint64_t vaddr, uint64_t size, vm_prot_t prot,
 
     /* Determine the equivalent PTE protections of 'prot'. Assume caller only
      * wants read permissions. */
-    uint64_t new_pte_ap = ARM_PTE_AP(AP_RONA);
+    uint64_t new_pte_ap;
 
-    if(prot & VM_PROT_WRITE)
-        new_pte_ap = ARM_PTE_AP(AP_RWNA);
+    if(el == 0)
+        new_pte_ap = ARM_PTE_AP(AP_RORO);
+    else
+        new_pte_ap = ARM_PTE_AP(AP_RONA);
+
+    if(prot & VM_PROT_WRITE){
+        if(el == 0)
+            new_pte_ap = ARM_PTE_AP(AP_RWRW);
+        else
+            new_pte_ap = ARM_PTE_AP(AP_RWNA);
+    }
 
     while(target_region_cur < target_region_end){
         pte_t *pte;
@@ -74,6 +83,8 @@ static int protect_common(uint64_t vaddr, uint64_t size, vm_prot_t prot,
         if(prot & VM_PROT_EXECUTE)
             new_pte &= ~(ARM_PTE_NX | ARM_PTE_PNX);
 
+        /* new_pte &= ~ARM_PTE_NG; */
+
         kprintf("%s: pte %#llx new_pte %#llx\n", __func__, *pte, new_pte);
 
         kwrite(pte, &new_pte, sizeof(new_pte));
@@ -82,9 +93,9 @@ static int protect_common(uint64_t vaddr, uint64_t size, vm_prot_t prot,
     }
 
     asm volatile("isb");
-    asm volatile("dsb sy");
+    asm volatile("dsb ish");
     asm volatile("tlbi vmalle1");
-    asm volatile("dsb sy");
+    asm volatile("dsb ish");
     asm volatile("isb");
 
     return 0;

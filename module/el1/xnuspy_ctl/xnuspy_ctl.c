@@ -6,6 +6,7 @@
 #include "asm.h"
 #include "mem.h"
 #include "pte.h"
+#include "queue.h"
 #include "tramp.h"
 
 #undef current_task
@@ -52,11 +53,48 @@ MARK_AS_KERNEL_OFFSET void (*flush_mmu_tlb_region_asid_async)(uint64_t va,
 MARK_AS_KERNEL_OFFSET void (*InvalidatePoU_IcacheRegion)(uint64_t va, uint32_t len);
 MARK_AS_KERNEL_OFFSET void *(*current_task)(void);
 
+struct pmap_statistics {
+    integer_t	resident_count;	/* # of pages mapped (total)*/
+    integer_t	resident_max;	/* # of pages mapped (peak) */
+    integer_t	wired_count;	/* # of pages wired */
+    integer_t	device;
+    integer_t	device_peak;
+    integer_t	internal;
+    integer_t	internal_peak;
+    integer_t	external;
+    integer_t	external_peak;
+    integer_t	reusable;
+    integer_t	reusable_peak;
+    uint64_t	compressed __attribute__((aligned(8)));
+    uint64_t	compressed_peak __attribute__((aligned(8)));
+    uint64_t	compressed_lifetime __attribute__((aligned(8)));
+};
+
+struct queue_entry {
+    struct queue_entry *next;
+    struct queue_entry *prev;
+};
+
+typedef struct queue_entry queue_chain_t;
+typedef struct queue_entry queue_head_t;
+
 struct pmap {
     uint64_t *tte;
+    uint64_t ttep;
+    uint64_t min;
+    uint64_t max;
+    void *ledger;
+    struct {
+        uint64_t lock_data;
+        uint64_t type;
+    } lock;
+    struct pmap_statistics stats;
+    queue_chain_t pmaps;
+
 };
 
 MARK_AS_KERNEL_OFFSET struct pmap *(*get_task_pmap)(void *task);
+MARK_AS_KERNEL_OFFSET queue_head_t *map_pmap_list;
 
 #define tt1_index(pmap, addr)								\
 	(((addr) & ARM_TT_L1_INDEX_MASK) >> ARM_TT_L1_SHIFT)
@@ -148,6 +186,9 @@ struct xnuspy_tramp {
      *  orig[8]     <address of second instruction of the hooked function>[63:32]
      */
     uint32_t orig[12];
+    /* This will be set to whatever TTBR0_EL1 is from the process that
+     * installed this hook. Before we call into the user replacement, we need
+     * to swap TTBR0_EL1 with this one. */
     uint64_t ttbr0_el1;
 };
 
@@ -163,6 +204,8 @@ static void desc_xnuspy_tramp(struct xnuspy_tramp *t, uint32_t orig_tramp_len){
     kprintf("Original trampoline:\n");
     for(int i=0; i<orig_tramp_len; i++)
         kprintf("\ttramp[%d]    %#x\n", i, t->orig[i]);
+
+    kprintf("TTBR0_EL1 of process which made this hook: %#llx\n", t->ttbr0_el1);
 }
 
 MARK_AS_KERNEL_OFFSET struct xnuspy_tramp *xnuspy_tramp_page;
@@ -171,7 +214,7 @@ MARK_AS_KERNEL_OFFSET uint8_t *xnuspy_tramp_page_end;
 static int xnuspy_init_flag = 0;
 
 static void xnuspy_init(void){
-    /* Mark the xnuspy_tramp page as executable */
+    /* Mark the xnuspy_tramp page as writeable/executable */
     vm_prot_t prot = VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE;
     kprotect((uint64_t)xnuspy_tramp_page, 0x4000, prot);
 
@@ -204,7 +247,7 @@ static void xnuspy_init(void){
  * it as free in the page it resides on.
  */
 __attribute__ ((naked)) void reletramp(void){
-    /* TODO actually deallocate when refcnt hits zero */
+    /* TODO actually delete the branch to tramp when refcnt hits zero */
     asm volatile(""
             "ldr x16, [sp], 0x10\n"
             "1:\n"
@@ -218,24 +261,49 @@ __attribute__ ((naked)) void reletramp(void){
             );
 }
 
-void remove_pnx(void){
+/* void remove_pnx(void){ */
+/*     struct xnuspy_tramp *t = NULL; */
+/*     asm volatile("sub %0, x16, 0x8" : "=r" (t)); */
+
+/*     pte_t *ptep = el0_ptep(t->replacement); */
+/*     pte_t pte = *ptep; */
+
+/*     asm volatile("mov x0, %0" : : "r" (ptep)); */
+/*     asm volatile("mov x1, %0" : : "r" (pte)); */
+/*     asm volatile("mov x2, %0" : : "r" (t)); */
+/*     asm volatile("mov x3, %0" : : "r" (t->replacement)); */
+/*     asm volatile("mrs x4, ttbr0_el1"); */
+/*     asm volatile("mov x5, 0x4141"); */
+
+/*     asm volatile("brk 0"); */
+/*     uprotect(t->replacement, 0x4000, VM_PROT_READ | VM_PROT_EXECUTE); */
+/*     asm volatile("isb sy"); */
+/*     return; */
+/* } */
+
+/* XXX this is a mouthful, figure out a better name */
+void add_el0_replacement_mapping_to_calling_process(void){
     struct xnuspy_tramp *t = NULL;
     asm volatile("sub %0, x16, 0x8" : "=r" (t));
 
-    pte_t *ptep = el0_ptep(t->replacement);
-    pte_t pte = *ptep;
+    /* asm volatile("mov x0, %0" : : "r" (t)); */
+    /* asm volatile("mov x1, %0" : : "r" (t->replacement)); */
+    /* asm volatile("mrs x2, ttbr0_el1"); */
+    /* asm volatile("mov x3, 0x4141"); */
 
-    asm volatile("mov x0, %0" : : "r" (ptep));
-    asm volatile("mov x1, %0" : : "r" (pte));
-    asm volatile("mov x2, %0" : : "r" (t));
-    asm volatile("mov x3, %0" : : "r" (t->replacement));
-    asm volatile("mrs x4, ttbr0_el1");
-    asm volatile("mov x5, 0x4141");
+    /* asm volatile("brk 0"); */
+
+    uint64_t replacement = t->replacement;
+
+    /* uint64_t ttbr0_el1; */
+    /* asm volatile("mrs %0, ttbr0_el1" : "=r" (ttbr0_el1)); */
+
+    /* pretty naive */
+    /* uint64_t l1_table = phystokv(ttbr & 0xfffffffffffe); */
+    /* uint64_t l1_idx = */ 
+
 
     asm volatile("brk 0");
-    uprotect(t->replacement, 0x4000, VM_PROT_READ | VM_PROT_EXECUTE);
-    asm volatile("isb sy");
-    return;
 }
 
 /* reftramp: take a reference on an xnuspy_tramp. 
@@ -260,11 +328,27 @@ __attribute__ ((naked)) void reftramp(void){
             "cbnz w10, 1b\n"
             "stp x29, x30, [sp, -0x10]!\n"
             "mov x29, sp\n"
+            /* "stp x0, x1, [sp, -0x10]!\n" */
+            /* "stp x2, x3, [sp, -0x10]!\n" */
+            /* "stp x4, x5, [sp, -0x10]!\n" */
+            /* "stp x6, x7, [sp, -0x10]!\n" */
+            /* "stp x19, x20, [sp, -0x10]!\n" */
+            /* "stp x21, x22, [sp, -0x10]!\n" */
+            /* "stp x23, x24, [sp, -0x10]!\n" */
+            /* "stp x25, x26, [sp, -0x10]!\n" */
+            /* "stp x27, x28, [sp, -0x10]!\n" */
+            /* "str x16, [sp, -0x10]!\n" */
+            /* "bl _add_el0_replacement_mapping_to_calling_process\n" */
+            /* swap TTBR0 with the one from the process that hooked
+             * this function, will be restored inside of reletramp */
             "mrs x17, ttbr0_el1\n"
             "stp x16, x17, [sp, -0x10]!\n"
+            /* X16 == &tramp->ttbr0_el1 */
             "add x16, x16, 0x48\n"
             "ldr x16, [x16]\n"
             "msr ttbr0_el1, x16\n"
+            /* "orr x17, x17, 1\n" */
+            /* "msr ttbr0_el1, x17\n" */
             "isb\n"
             "dsb ish\n"
             "tlbi vmalle1\n"
@@ -318,69 +402,43 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
     /* copyout the original function trampoline before the replacement
      * is called */
     uint32_t *orig_tramp = tramp->orig;
-    copyout(&orig_tramp, origp, sizeof(origp));
+    int err = copyout(&orig_tramp, origp, sizeof(origp));
 
-    desc_xnuspy_tramp(tramp, orig_tramp_len);
-
-    /* Make sure the kernel can execute the replacement code */
-    /* uprotect(tramp->replacement, 0x4000, VM_PROT_READ | VM_PROT_EXECUTE); */
-
-    pte_t *replacement_el0_ptep = el0_ptep(tramp->replacement);
-    kprintf("%s: el0 replacement page table @ %#llx, orig pte == %#llx\n", __func__,
-            replacement_el0_ptep, *replacement_el0_ptep);
-    pte_t replacement_el0_pte = *replacement_el0_ptep & ~ARM_PTE_PNX;
-    kwrite(replacement_el0_ptep, &replacement_el0_pte, sizeof(replacement_el0_pte));
-
-    asm volatile("isb");
-    asm volatile("dsb ish");
-    asm volatile("tlbi vmalle1");
-    asm volatile("dsb ish");
-    asm volatile("isb");
-
-    kprintf("%s: new pte == %#llx\n", __func__, replacement_el0_pte);
-
-    struct pmap *pmap = get_task_pmap(current_task());
-    kprintf("%s: current task's pmap @ %#llx\n", __func__, (uint64_t)pmap);
-
-    uint64_t *tt1e = &pmap->tte[tt1_index(pmap, tramp->replacement)];
-    kprintf("%s: level 1 tte @ %#llx: %#llx\n", __func__, (uint64_t)tt1e, *tt1e);
-
-    uint64_t *tt2e =
-        &((uint64_t *)phystokv(*tt1e & ARM_TTE_TABLE_MASK))[tt2_index(pmap, tramp->replacement)];
-    kprintf("%s: level 2 tte @ %#llx: %#llx\n", __func__, (uint64_t)tt2e, *tt2e);
-
-    uint64_t *tt3e =
-        &((uint64_t *)phystokv(*tt2e & ARM_TTE_TABLE_MASK))[tt3_index(pmap, tramp->replacement)];
-    kprintf("%s: level 3 pte @ %#llx: %#llx\n", __func__, (uint64_t)tt3e, *tt3e);
+    /* XXX do something if copyout fails */
 
     uint64_t ttbr0_el1;
     asm volatile("mrs %0, ttbr0_el1" : "=r" (ttbr0_el1));
     tramp->ttbr0_el1 = ttbr0_el1;
 
+    desc_xnuspy_tramp(tramp, orig_tramp_len);
 
-    /* pte_t replacement_el0_pte = *replacement_el0_ptep & ~ARM_PTE_PNX; */
+    kprintf("%s: on this CPU, ttbr0_el1 == %#llx baddr phys %#llx baddr kva %#llx\n",
+            __func__, ttbr0_el1, ttbr0_el1 & 0xfffffffffffe,
+            phystokv(ttbr0_el1 & 0xfffffffffffe));
+
+    /* XXX we don't need to unset nG bit in user pte if we are just swapping ttbr0? */
+    
+    /* Mark the user replacement as executable from EL1. This function
+     * will clear NX as well as PXN. */
+    /* TODO We need to mark the entirety of the calling processes' __text
+     * segment as executable from EL1 so the user can call other functions
+     * they write inside their program from their kernel hook. */
+    // XXX something like get_calling_process_text_segment
+    uprotect(tramp->replacement, 0x4000, VM_PROT_READ | VM_PROT_EXECUTE);
+
+    /* pte_t *replacement_el0_ptep = el0_ptep(tramp->replacement); */
+    /* kprintf("%s: el0 replacement page table @ %#llx, orig pte == %#llx\n", __func__, */
+    /*         replacement_el0_ptep, *replacement_el0_ptep); */
+    /* pte_t replacement_el0_pte = *replacement_el0_ptep & ~(ARM_PTE_PNX | ARM_PTE_NG); */
     /* kwrite(replacement_el0_ptep, &replacement_el0_pte, sizeof(replacement_el0_pte)); */
-
-    /* asm volatile("dsb sy"); */
-    /* InvalidatePoU_IcacheRegion(tramp->replacement, 0x4000); */
-    /* asm volatile("dsb 0xb"); */
 
     /* asm volatile("isb"); */
     /* asm volatile("dsb ish"); */
     /* asm volatile("tlbi vmalle1"); */
-    /* asm volatile("dc ivac, %0" : : "r" (replacement_el0_ptep)); */
-    /* asm volatile("dc civac, %0" : : "r" (replacement_el0_ptep)); */
     /* asm volatile("dsb ish"); */
     /* asm volatile("isb"); */
 
-    /* flush_mmu_tlb_region_asid_async(tramp->replacement, 0x4000, */
-    /*         get_task_pmap(current_task())); */
-    /* asm volatile("mov x1, 0x8888"); */
-    /* asm volatile("mov x0, %0" : : "r" (tramp->replacement) : ); */
-    /* asm volatile("br x0"); */
-
-    /* flush_mmu_tlb_region((uint64_t)replacement_el0_ptep, 8); */
-    /* flush_mmu_tlb_region((uint64_t)tramp->replacement, 0x4000); */
+    /* kprintf("%s: new pte == %#llx\n", __func__, replacement_el0_pte); */
 
     /* All the trampolines are set up, write the branch */
     kprotect(target, 0x4000, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE);
@@ -393,15 +451,6 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
     asm volatile("dsb ish");
     asm volatile("isb sy");
 
-    /* TODO We need to mark the entirety of the calling processes' __text
-     * segment as executable from EL1 so the user can call other functions
-     * they write inside their program from their kernel hook. */
-    // XXX something like get_calling_process_text_segment
-
-
-    /* copyout original kernel function pointer to origp */
-
-    /* return copyout(&orig_tramp, origp, sizeof(origp)); */
     return 0;
 }
 

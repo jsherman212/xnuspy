@@ -507,6 +507,10 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
             *va = 0xFFFFFFF007CF4014 + kernel_slide;
             return;
         }
+        else if(strcmp(ksym, "_map_pmap_list") == 0){
+            *va = 0xFFFFFFF00923B970 + kernel_slide;
+            return;
+        }
     }
 }
 

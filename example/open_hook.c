@@ -102,12 +102,12 @@ int main(int argc, char **argv){
 
     /* try and hook kalloc_canblock */
     /* iphone 8 13.6.1 */
-    /* uint64_t kalloc_canblock = 0xFFFFFFF007C031E4; */
-    /* void *(*kalloc_canblock_orig)(size_t *, void *, bool) = NULL; */
-    /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, kalloc_canblock, code, */
-    /*         &kalloc_canblock_orig); */
+    uint64_t kalloc_canblock = 0xFFFFFFF007C031E4;
+    void *(*kalloc_canblock_orig)(size_t *, void *, bool) = NULL;
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, kalloc_canblock, code,
+            &kalloc_canblock_orig);
 
-    /* printf("kalloc_canblock_orig = %#llx\n", kalloc_canblock_orig); */
+    printf("kalloc_canblock_orig = %#llx\n", kalloc_canblock_orig);
 
     /* uint64_t some_fxn_with_cbz_as_first = 0xFFFFFFF007E5FFCC; */
     /* void (*dummy)(void) = NULL; */
@@ -117,12 +117,12 @@ int main(int argc, char **argv){
     /* try and hook sysctl_handle_long */
     /* iphone 8 13.6.1 */
     /* for(;;){ */
-    uint64_t sysctl_handle_long = 0xfffffff00800d508;
-    uint64_t (*sysctl_handle_long_orig)(void) = NULL;
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, sysctl_handle_long, code,
-            &sysctl_handle_long_orig);
+    /* uint64_t sysctl_handle_long = 0xfffffff00800d508; */
+    /* uint64_t (*sysctl_handle_long_orig)(void) = NULL; */
+    /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, sysctl_handle_long, code, */
+    /*         &sysctl_handle_long_orig); */
 
-    printf("sysctl_handle_long_orig = %#llx\n", sysctl_handle_long_orig);
+    /* printf("sysctl_handle_long_orig = %#llx\n", sysctl_handle_long_orig); */
     /* ret = sysctlbyname("kern.xnuspy_ctl_callnum", &SYS_xnuspy_ctl, */
     /*         &oldlen, NULL, 0); */
     /* printf("ret %d\n", ret); */
