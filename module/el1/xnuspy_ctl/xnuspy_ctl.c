@@ -3,9 +3,12 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "asm.h"
 #include "mem.h"
 #include "pte.h"
 #include "tramp.h"
+
+#undef current_task
 
 #define XNUSPY_INSTALL_HOOK         (0)
 #define XNUSPY_UNINSTALL_HOOK       (1)
@@ -42,6 +45,25 @@ MARK_AS_KERNEL_OFFSET vm_offset_t (*ml_io_map)(vm_offset_t phys_addr,
         vm_size_t size);
 MARK_AS_KERNEL_OFFSET void *mh_execute_header;
 MARK_AS_KERNEL_OFFSET uint64_t kernel_slide;
+
+MARK_AS_KERNEL_OFFSET void (*flush_mmu_tlb_region)(uint64_t va, uint32_t len);
+MARK_AS_KERNEL_OFFSET void (*flush_mmu_tlb_region_asid_async)(uint64_t va,
+        uint32_t len, void *pmap);
+MARK_AS_KERNEL_OFFSET void (*InvalidatePoU_IcacheRegion)(uint64_t va, uint32_t len);
+MARK_AS_KERNEL_OFFSET void *(*current_task)(void);
+
+struct pmap {
+    uint64_t *tte;
+};
+
+MARK_AS_KERNEL_OFFSET struct pmap *(*get_task_pmap)(void *task);
+
+#define tt1_index(pmap, addr)								\
+	(((addr) & ARM_TT_L1_INDEX_MASK) >> ARM_TT_L1_SHIFT)
+#define tt2_index(pmap, addr)								\
+	(((addr) & ARM_TT_L2_INDEX_MASK) >> ARM_TT_L2_SHIFT)
+#define tt3_index(pmap, addr)								\
+	(((addr) & ARM_TT_L3_INDEX_MASK) >> ARM_TT_L3_SHIFT)
 
 /* This structure represents a function hook. Every xnuspy_tramp struct resides
  * on writeable, executable memory. */
@@ -117,8 +139,8 @@ struct xnuspy_tramp {
      *  orig[11]    <address of second instruction of the hooked function>[63:32]
      *
      * If the first instruction was ADR Rn, #n
-     *  orig[2]     ADRP Rn, #n@pageoff
-     *  orig[3]     ADD Rn, Rn, #n
+     *  orig[2]     ADRP Rn, #n@PAGE
+     *  orig[3]     ADD Rn, Rn, #n@PAGEOFF
      *  orig[4]     ADR X16, #0xc
      *  orig[5]     LDR X16, [X16]
      *  orig[6]     BR X16
@@ -127,6 +149,20 @@ struct xnuspy_tramp {
      */
     uint32_t orig[12];
 };
+
+static void desc_xnuspy_tramp(struct xnuspy_tramp *t, uint32_t orig_tramp_len){
+    kprintf("This xnuspy_tramp is @ %#llx\n", (uint64_t)t);
+    kprintf("Replacement: %#llx\n", t->replacement);
+    kprintf("Refcount:    %d\n", t->refcnt);
+    
+    kprintf("Replacement trampoline:\n");
+    for(int i=0; i<5; i++)
+        kprintf("\ttramp[%d]    %#x\n", i, t->tramp[i]);
+
+    kprintf("Original trampoline:\n");
+    for(int i=0; i<orig_tramp_len; i++)
+        kprintf("\ttramp[%d]    %#x\n", i, t->orig[i]);
+}
 
 MARK_AS_KERNEL_OFFSET struct xnuspy_tramp *xnuspy_tramp_page;
 MARK_AS_KERNEL_OFFSET uint8_t *xnuspy_tramp_page_end;
@@ -181,6 +217,26 @@ __attribute__ ((naked)) void reletramp(void){
             );
 }
 
+void remove_pnx(void){
+    struct xnuspy_tramp *t = NULL;
+    asm volatile("sub %0, x16, 0x8" : "=r" (t));
+
+    pte_t *ptep = el0_ptep(t->replacement);
+    pte_t pte = *ptep;
+
+    asm volatile("mov x0, %0" : : "r" (ptep));
+    asm volatile("mov x1, %0" : : "r" (pte));
+    asm volatile("mov x2, %0" : : "r" (t));
+    asm volatile("mov x3, %0" : : "r" (t->replacement));
+    asm volatile("mrs x4, ttbr0_el1");
+    asm volatile("mov x5, 0x4141");
+
+    asm volatile("brk 0");
+    uprotect(t->replacement, 0x4000, VM_PROT_READ | VM_PROT_EXECUTE);
+    asm volatile("isb sy");
+    return;
+}
+
 /* reftramp: take a reference on an xnuspy_tramp. 
  *
  * This function is called with a pointer to a reference count in X16 when:
@@ -202,9 +258,11 @@ __attribute__ ((naked)) void reftramp(void){
             "stlxr w10, w9, [x16]\n"
             "cbnz w10, 1b\n"
             "stp x29, x30, [sp, -0x10]!\n"
-            "str x16, [sp, -0x10]!\n"
             "mov x29, sp\n"
+            "str x16, [sp, -0x10]!\n"
+            /* "bl _remove_pnx\n" */
             "mov x30, %0\n"
+            /* "ldr x16, [sp]\n" */
             "add x16, x16, 0xc\n"
             "br x16" : : "r" (reletramp)
             );
@@ -222,8 +280,7 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
     struct xnuspy_tramp *tramp = xnuspy_tramp_page;
 
     while((uint8_t *)tramp < xnuspy_tramp_page_end){
-        /* These structs are zeroed out when they're freed */
-        if(!tramp->replacement)
+        if(!tramp->refcnt)
             break;
 
         tramp++;
@@ -236,12 +293,90 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
 
     kprintf("%s: got free xnuspy_ctl struct @ %#llx\n", __func__, tramp);
 
+    /* +1 for use */
+    tramp->refcnt = 1;
     tramp->replacement = replacement;
 
     /* Build the trampoline to the replacement as well as the trampoline
      * that represents the original function */
 
+    uint32_t orig_tramp_len = 0;
+
     generate_replacement_tramp(reftramp, tramp->tramp);
+    generate_original_tramp(target + 4, reftramp, tramp->orig, &orig_tramp_len);
+
+    /* copyout the original function trampoline before the replacement
+     * is called */
+    uint32_t *orig_tramp = tramp->orig;
+    copyout(&orig_tramp, origp, sizeof(origp));
+
+    desc_xnuspy_tramp(tramp, orig_tramp_len);
+
+    /* Make sure the kernel can execute the replacement code */
+    /* uprotect(tramp->replacement, 0x4000, VM_PROT_READ | VM_PROT_EXECUTE); */
+
+    pte_t *replacement_el0_ptep = el0_ptep(tramp->replacement);
+    kprintf("%s: el0 replacement page table @ %#llx, orig pte == %#llx\n", __func__,
+            replacement_el0_ptep, *replacement_el0_ptep);
+    pte_t replacement_el0_pte = *replacement_el0_ptep & ~ARM_PTE_PNX;
+    kwrite(replacement_el0_ptep, &replacement_el0_pte, sizeof(replacement_el0_pte));
+
+    asm volatile("isb");
+    asm volatile("dsb ish");
+    asm volatile("tlbi vmalle1");
+    asm volatile("dsb ish");
+    asm volatile("isb");
+
+    kprintf("%s: new pte == %#llx\n", __func__, replacement_el0_pte);
+
+    struct pmap *pmap = get_task_pmap(current_task());
+    kprintf("%s: current task's pmap @ %#llx\n", __func__, (uint64_t)pmap);
+
+    uint64_t *tt1e = &pmap->tte[tt1_index(pmap, tramp->replacement)];
+    kprintf("%s: level 1 tte @ %#llx: %#llx\n", __func__, (uint64_t)tt1e, *tt1e);
+
+    uint64_t *tt2e =
+        &((uint64_t *)phystokv(*tt1e & ARM_TTE_TABLE_MASK))[tt2_index(pmap, tramp->replacement)];
+    kprintf("%s: level 2 tte @ %#llx: %#llx\n", __func__, (uint64_t)tt2e, *tt2e);
+
+    uint64_t *tt3e =
+        &((uint64_t *)phystokv(*tt2e & ARM_TTE_TABLE_MASK))[tt3_index(pmap, tramp->replacement)];
+    kprintf("%s: level 3 pte @ %#llx: %#llx\n", __func__, (uint64_t)tt3e, *tt3e);
+
+    /* pte_t replacement_el0_pte = *replacement_el0_ptep & ~ARM_PTE_PNX; */
+    /* kwrite(replacement_el0_ptep, &replacement_el0_pte, sizeof(replacement_el0_pte)); */
+
+    /* asm volatile("dsb sy"); */
+    /* InvalidatePoU_IcacheRegion(tramp->replacement, 0x4000); */
+    /* asm volatile("dsb 0xb"); */
+
+    /* asm volatile("isb"); */
+    /* asm volatile("dsb ish"); */
+    /* asm volatile("tlbi vmalle1"); */
+    /* asm volatile("dc ivac, %0" : : "r" (replacement_el0_ptep)); */
+    /* asm volatile("dc civac, %0" : : "r" (replacement_el0_ptep)); */
+    /* asm volatile("dsb ish"); */
+    /* asm volatile("isb"); */
+
+    /* flush_mmu_tlb_region_asid_async(tramp->replacement, 0x4000, */
+    /*         get_task_pmap(current_task())); */
+    /* asm volatile("mov x1, 0x8888"); */
+    /* asm volatile("mov x0, %0" : : "r" (tramp->replacement) : ); */
+    /* asm volatile("br x0"); */
+
+    /* flush_mmu_tlb_region((uint64_t)replacement_el0_ptep, 8); */
+    /* flush_mmu_tlb_region((uint64_t)tramp->replacement, 0x4000); */
+
+    /* All the trampolines are set up, write the branch */
+    kprotect(target, 0x4000, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE);
+
+    *(uint32_t *)target = assemble_b(target, (uint64_t)tramp->tramp);
+
+    asm volatile("dc cvau, %0" : : "r" (target));
+    asm volatile("dsb ish");
+    asm volatile("ic ivau, %0" : : "r" (target));
+    asm volatile("dsb ish");
+    asm volatile("isb sy");
 
     /* TODO We need to mark the entirety of the calling processes' __text
      * segment as executable from EL1 so the user can call other functions
@@ -249,13 +384,10 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
     // XXX something like get_calling_process_text_segment
 
 
-
-    kprintf("%s: tramp %#llx &tramp %#llx\n", __func__, tramp, &tramp);
-
     /* copyout original kernel function pointer to origp */
-    uint32_t *orig_tramp = tramp->orig;
 
-    return copyout(&orig_tramp, origp, sizeof(origp));
+    /* return copyout(&orig_tramp, origp, sizeof(origp)); */
+    return 0;
 }
 
 static int xnuspy_uninstall_hook(uint64_t target){

@@ -487,6 +487,26 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
             *va = xnu_ptr_to_va(mh_execute_header);
             return;
         }
+        else if(strcmp(ksym, "_flush_mmu_tlb_region") == 0){
+            *va = 0xFFFFFFF007CF85F0 + kernel_slide;
+            return;
+        }
+        else if(strcmp(ksym, "_InvalidatePoU_IcacheRegion") == 0){
+            *va = 0xFFFFFFF0081F40B8 + kernel_slide;
+            return;
+        }
+        else if(strcmp(ksym, "_current_task") == 0){
+            *va = 0xFFFFFFF007C2BE18 + kernel_slide;
+            return;
+        }
+        else if(strcmp(ksym, "_get_task_pmap") == 0){
+            *va = 0xFFFFFFF007C5103C + kernel_slide;
+            return;
+        }
+        else if(strcmp(ksym, "_flush_mmu_tlb_region_asid_async") == 0){
+            *va = 0xFFFFFFF007CF4014 + kernel_slide;
+            return;
+        }
     }
 }
 
@@ -549,6 +569,8 @@ static void process_xnuspy_ctl_image(void *xnuspy_ctl_image){
     printf("%s: g_xnuspy_ctl_addr @ %#llx, code start @ %#llx, code size %#llx\n",
             __func__, g_xnuspy_ctl_addr, g_xnuspy_ctl_img_codestart,
             g_xnuspy_ctl_img_codesz);
+    printf("%s: image @ %#llx [unslid %#llx]\n", __func__, xnu_ptr_to_va(mh),
+            xnu_ptr_to_va(mh) - kernel_slide);
 }
 
 static void patch_exception_vectors(void){
@@ -744,6 +766,12 @@ void xnuspy_preboot_hook(void){
     /* iphone 8 13.6.1 */
     uint32_t *doprnt_hide_pointers = xnu_va_to_ptr(0xFFFFFFF0090B0624 + kernel_slide);
     *doprnt_hide_pointers = 0;
+
+    printf("%s: sysctl_handle_long @ %#llx\n", __func__,
+            g_sysctl_handle_long_addr - kernel_slide);
+
+    /* combat short read */
+    asm volatile(".align 14");
     
     if(next_preboot_hook)
         next_preboot_hook();

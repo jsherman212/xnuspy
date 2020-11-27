@@ -74,6 +74,8 @@ static int protect_common(uint64_t vaddr, uint64_t size, vm_prot_t prot,
         if(prot & VM_PROT_EXECUTE)
             new_pte &= ~(ARM_PTE_NX | ARM_PTE_PNX);
 
+        kprintf("%s: pte %#llx new_pte %#llx\n", __func__, *pte, new_pte);
+
         kwrite(pte, &new_pte, sizeof(new_pte));
 
         target_region_cur += 0x4000;
