@@ -123,9 +123,9 @@ int main(int argc, char **argv){
             &sysctl_handle_long_orig);
 
     printf("sysctl_handle_long_orig = %#llx\n", sysctl_handle_long_orig);
-    ret = sysctlbyname("kern.xnuspy_ctl_callnum", &SYS_xnuspy_ctl,
-            &oldlen, NULL, 0);
-    printf("ret %d\n", ret);
+    /* ret = sysctlbyname("kern.xnuspy_ctl_callnum", &SYS_xnuspy_ctl, */
+    /*         &oldlen, NULL, 0); */
+    /* printf("ret %d\n", ret); */
     /* sleep(5); */
     /* } */
 

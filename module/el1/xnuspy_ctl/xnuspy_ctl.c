@@ -148,6 +148,7 @@ struct xnuspy_tramp {
      *  orig[8]     <address of second instruction of the hooked function>[63:32]
      */
     uint32_t orig[12];
+    uint64_t ttbr0_el1;
 };
 
 static void desc_xnuspy_tramp(struct xnuspy_tramp *t, uint32_t orig_tramp_len){
@@ -259,10 +260,19 @@ __attribute__ ((naked)) void reftramp(void){
             "cbnz w10, 1b\n"
             "stp x29, x30, [sp, -0x10]!\n"
             "mov x29, sp\n"
-            "str x16, [sp, -0x10]!\n"
+            "mrs x17, ttbr0_el1\n"
+            "stp x16, x17, [sp, -0x10]!\n"
+            "add x16, x16, 0x48\n"
+            "ldr x16, [x16]\n"
+            "msr ttbr0_el1, x16\n"
+            "isb\n"
+            "dsb ish\n"
+            "tlbi vmalle1\n"
+            "dsb ish\n"
+            "isb\n"
             /* "bl _remove_pnx\n" */
             "mov x30, %0\n"
-            /* "ldr x16, [sp]\n" */
+            "ldr x16, [sp]\n"
             "add x16, x16, 0xc\n"
             "br x16" : : "r" (reletramp)
             );
@@ -342,6 +352,11 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
     uint64_t *tt3e =
         &((uint64_t *)phystokv(*tt2e & ARM_TTE_TABLE_MASK))[tt3_index(pmap, tramp->replacement)];
     kprintf("%s: level 3 pte @ %#llx: %#llx\n", __func__, (uint64_t)tt3e, *tt3e);
+
+    uint64_t ttbr0_el1;
+    asm volatile("mrs %0, ttbr0_el1" : "=r" (ttbr0_el1));
+    tramp->ttbr0_el1 = ttbr0_el1;
+
 
     /* pte_t replacement_el0_pte = *replacement_el0_ptep & ~ARM_PTE_PNX; */
     /* kwrite(replacement_el0_ptep, &replacement_el0_pte, sizeof(replacement_el0_pte)); */
