@@ -14,7 +14,13 @@
 #define XNUSPY_INSTALL_HOOK         (0)
 #define XNUSPY_UNINSTALL_HOOK       (1)
 #define XNUSPY_CHECK_IF_PATCHED     (2)
-#define XNUSPY_MAX_FLAVOR           XNUSPY_CHECK_IF_PATCHED
+#define XNUSPY_GET_FUNCTION         (3)
+#define XNUSPY_MAX_FLAVOR           XNUSPY_GET_FUNCTION
+
+/* values for XNUSPY_GET_FUNCTION */
+#define KPROTECT                    (0)
+#define COPYOUT                     (1)
+#define MAX_FUNCTION                COPYOUT
 
 #define MARK_AS_KERNEL_OFFSET __attribute__((section("__DATA,__koff")))
 
@@ -103,6 +109,10 @@ MARK_AS_KERNEL_OFFSET queue_head_t *map_pmap_list;
 #define tt3_index(pmap, addr)								\
 	(((addr) & ARM_TT_L3_INDEX_MASK) >> ARM_TT_L3_SHIFT)
 
+/* shorter macros so I can stay under 80 column lines */
+#define DIST_FROM_REFCNT_TO(x) __builtin_offsetof(struct xnuspy_tramp, x) - \
+    __builtin_offsetof(struct xnuspy_tramp, refcnt)
+
 /* This structure represents a function hook. Every xnuspy_tramp struct resides
  * on writeable, executable memory. */
 struct xnuspy_tramp {
@@ -113,25 +123,32 @@ struct xnuspy_tramp {
      * on a function, the first instruction of that function is replaced
      * with a branch to here. An xnuspy trampoline looks like this:
      *  tramp[0]    ADR X16, <refcntp>
-     *  tramp[1]    B _reftramp
-     *  tramp[2]    ADR X16, <replacementp>
-     *  tramp[3]    LDR X16, [X16]
-     *  tramp[4]    BR X16
+     *  tramp[1]    B _save_original_state0
+     *  tramp[2]    B _reftramp0
+     *  tramp[3]    B _swap_ttbr0
+     *  tramp[4]    ADR X16, <replacementp>
+     *  tramp[5]    LDR X16, [X16]
+     *  tramp[6]    BR X16
      */
-    uint32_t tramp[5];
+    uint32_t tramp[7];
     /* An abstraction that represents the original function. It's just another
      * trampoline, but it can take on one of five forms. Every form starts
      * with this header:
+     * XXX DO NOT NEED THIS ADR ANYMORE BECAUSE DBGBVR_EL1 HOLDS IT
      *  orig[0]     ADR X16, <refcntp>
-     *  orig[1]     B _reftramp
+     *
+     *
+     *  orig[0]     B _save_original_state1
+     *  orig[1]     B _reftramp1
+     *  orig[2]     B _restore_ttbr0
      *
      * Continuing from that header, the most common form is:
-     *  orig[2]     <original first instruction of the hooked function>
-     *  orig[3]     ADR X16, #0xc
-     *  orig[4]     LDR X16, [X16]
-     *  orig[5]     BR X16
-     *  orig[6]     <address of second instruction of the hooked function>[31:0]
-     *  orig[7]     <address of second instruction of the hooked function>[63:32]
+     *  orig[3]     <original first instruction of the hooked function>
+     *  orig[4]     ADR X16, #0xc
+     *  orig[5]     LDR X16, [X16]
+     *  orig[6]     BR X16
+     *  orig[7]     <address of second instruction of the hooked function>[31:0]
+     *  orig[8]     <address of second instruction of the hooked function>[63:32]
      *
      * The above form is taken when the original first instruction of the hooked
      * function is not an immediate conditional branch (b.cond), an immediate
@@ -229,10 +246,228 @@ static void xnuspy_init(void){
     asm volatile("isb sy");
 
     /* combat short read of this image */
-    asm volatile(".align 14");
-    asm volatile(".align 14");
+    /* asm volatile(".align 14"); */
+    /* asm volatile(".align 14"); */
 
     xnuspy_init_flag = 1;
+}
+
+/* If you decide to edit the functions marked as naked, you need to make
+ * sure clang isn't clobbering registers. */
+
+/* swap_ttbr0: set this CPU's TTBR0_EL1 to the one in the current xnuspy_tramp
+ * struct. This is meant to be called only from a trampoline inside the
+ * current xnuspy_tramp struct since we have to manually branch back to that
+ * trampoline.
+ */
+__attribute__ ((naked)) void swap_ttbr0(void){
+    asm volatile(""
+            "mrs x16, dbgbvr3_el1\n"
+            "add x17, x16, %[ttbr0_el1_dist]\n"
+            "ldr x17, [x17]\n"
+            "msr ttbr0_el1, x17\n"
+            "isb\n"
+            "dsb ish\n"
+            "tlbi vmalle1\n"
+            "dsb ish\n"
+            "isb\n"
+            /* branch back to tramp+4 */
+            "add x16, x16, %[tramp_plus_4_dist]\n"
+            "br x16\n"
+            : : [ttbr0_el1_dist] "r" (DIST_FROM_REFCNT_TO(ttbr0_el1)),
+            [tramp_plus_4_dist] "r" (DIST_FROM_REFCNT_TO(tramp[4]))
+            );
+}
+
+/* restore_ttbr0: restore this CPU's original TTBR0_EL1. Again, this is only
+ * meant to be called from a trampoline from the current xnuspy_tramp struct.
+ */
+__attribute__ ((naked)) void restore_ttbr0(void){
+    asm volatile(""
+            "mrs x16, dbgbvr0_el1\n"
+            "msr ttbr0_el1, x16\n"
+            "isb\n"
+            "dsb ish\n"
+            "tlbi vmalle1\n"
+            "dsb ish\n"
+            "isb\n"
+            "mrs x16, dbgbvr3_el1\n"
+            /* branch back to orig+3 */
+            "add x16, x16, %[orig_plus_3_dist]\n"
+            "br x16\n"
+            : : [orig_plus_3_dist] "r" (DIST_FROM_REFCNT_TO(orig[3]))
+            );
+}
+
+/* reletramp: release a reference, using the reference count pointer held
+ * inside DBGBVR3_EL1.
+ *
+ * TODO actually sever the branch from the hooked function to the tramp
+ * when the count hits zero
+ *
+ * reletramp0 and reletramp1 will call reletramp_common to drop a reference,
+ * and then they'll branch back to their original callers. Because we're
+ * restoring LR in both those functions, using BL is safe.
+ */
+__attribute__ ((naked)) void reletramp_common(void){
+    asm volatile(""
+            "mrs x16, dbgbvr3_el1\n"
+            "1:\n"
+            "ldaxr w14, [x16]\n"
+            "mov x15, x14\n"
+            "sub w14, w15, #1\n"
+            "stlxr w15, w14, [x16]\n"
+            "cbnz w15, 1b\n"
+            "ret\n"
+            );
+}
+
+/* This function is only called when the replacement code returns back to
+ * its caller. We are always returning back to the kernel, so we need to
+ * restore the original TTBR0_EL1.
+ */ 
+__attribute__ ((naked)) void reletramp0(void){
+    asm volatile(""
+            "bl _reletramp_common\n"
+            "mrs x9, dbgbvr0_el1\n"
+            "msr ttbr0_el1, x9\n"
+            "isb\n"
+            "dsb ish\n"
+            "tlbi vmalle1\n"
+            "dsb ish\n"
+            "isb\n"
+            "mrs x29, dbgbvr2_el1\n"
+            "mrs x30, dbgbvr1_el1\n"
+            "ret"
+            );
+}
+
+/* This function is only called when the original function returns back
+ * to the user's replacement code. We are always returning back to the user's
+ * code, so we need to swap TTBR0_EL1 back to the one in this xnuspy_tramp
+ * struct.
+ */ 
+__attribute__ ((naked)) void reletramp1(void){
+    asm volatile(""
+            "bl _reletramp_common\n"
+            "mrs x16, dbgbvr3_el1\n"
+            "add x16, x16, %[ttbr0_el1_dist]\n"
+            "ldr x16, [x16]\n"
+            "msr ttbr0_el1, x16\n"
+            "isb\n"
+            "dsb ish\n"
+            "tlbi vmalle1\n"
+            "dsb ish\n"
+            "isb\n"
+            "mrs x29, dbgbvr5_el1\n"
+            "mrs x30, dbgbvr4_el1\n"
+            "ret"
+            : : [ttbr0_el1_dist] "r" (DIST_FROM_REFCNT_TO(ttbr0_el1))
+            );
+}
+
+/* save_original_state0: save this CPU's original TTBR0_EL1, FP, LR, and
+ * X16, and set LR to the appropriate 'reletramp' routine. This is only called
+ * when the kernel calls the hooked function. X16 holds a pointer to the refcnt
+ * of an xnuspy_tramp when this is called.
+ *
+ * For both save_original_state functions, I need a way to persist data. For
+ * save_original_state0, I need to save the original TTBR0_EL1 and a pointer
+ * to the reference count of whatever xnuspy_tramp struct X16 holds. For
+ * both, I also need to save the current stack frame because I set LR to
+ * 'reletramp' and have to be able to branch back to the original caller.
+ *
+ * Normally, I would just use the stack, but functions like
+ * kprintf rely on some arguments being passed on the stack. If I were
+ * to modify it, the parameters would be incorrect inside of the user's
+ * replacement code. Instead of using the stack, I will use the first six
+ * debug breakpoint value registers in the following way:
+ *  
+ * DBGBVR0_EL1: This CPU's original TTBR0_EL1.
+ * DBGBVR1_EL1: Original link register when the kernel calls the hooked function.
+ * DBGBVR2_EL1: Original frame pointer when the kernel calls the hooked function.
+ * DBGBVR3_EL1: A pointer to the current xnuspy_tramp's reference count.
+ * DBGBVR4_EL1: Original link register when the user calls the original function.
+ * DBGBVR5_EL1: Original frame pointer when the user calls the original function.
+ *
+ * Because I am using these registers, you CANNOT set any hardware breakpoints
+ * if you're debugging something while xnuspy is doing its thing. You can set
+ * software breakpoints, though. You're able to specify whether you want a
+ * software breakpoint or a hardware breakpoint inside of LLDB.
+ */
+__attribute__ ((naked)) void save_original_state0(void){
+    asm volatile(""
+            "mrs x9, ttbr0_el1\n"
+            "msr dbgbvr0_el1, x9\n"
+            "msr dbgbvr1_el1, x30\n"
+            "msr dbgbvr2_el1, x29\n"
+            "msr dbgbvr3_el1, x16\n"
+            "mov x30, %[reletramp0]\n"
+            /* branch back to tramp+2 */
+            "add x16, x16, %[tramp_plus_2_dist]\n"
+            "br x16\n"
+            : : [reletramp0] "r" (reletramp0),
+            [tramp_plus_2_dist] "r" (DIST_FROM_REFCNT_TO(tramp[2]))
+            );
+}
+
+/* save_original_state1: save this CPU's FP and LR. This is only called when
+ * the user calls the original function from their replacement code. */
+__attribute__ ((naked)) void save_original_state1(void){
+    asm volatile(""
+            "msr dbgbvr4_el1, x30\n"
+            "msr dbgbvr5_el1, x29\n"
+            "mov x30, %[reletramp1]\n"
+            "mrs x16, dbgbvr3_el1\n"
+            /* branch back to orig+1 */
+            "add x16, x16, %[orig_plus_1_dist]\n"
+            "br x16\n"
+            : : [reletramp1] "r" (reletramp1),
+            [orig_plus_1_dist] "r" (DIST_FROM_REFCNT_TO(orig[1]))
+            );
+}
+
+/* reftramp0 and reftramp1: take a reference on an xnuspy_tramp.
+ *
+ * reftramp0 is called when the kernel calls the hooked function.
+ *
+ * reftramp1 is called when the original function, called through the 'orig'
+ * trampoline, is called by the user.
+ *
+ * Sadly, these can't be merged into one function because we cannot modify
+ * LR and we have no way of knowing what context (tramp or orig) it would be
+ * called from.
+ */
+__attribute__ ((naked)) void reftramp0(void){
+    asm volatile(""
+            "mrs x16, dbgbvr3_el1\n"
+            "1:\n"
+            "ldaxr w14, [x16]\n"
+            "mov x15, x14\n"
+            "add w14, w15, #1\n"
+            "stlxr w15, w14, [x16]\n"
+            "cbnz w15, 1b\n"
+            /* branch back to tramp+3 */
+            "add x16, x16, %[tramp_plus_3_dist]\n"
+            "br x16\n"
+            : : [tramp_plus_3_dist] "r" (DIST_FROM_REFCNT_TO(tramp[3]))
+            );
+}
+
+__attribute__ ((naked)) void reftramp1(void){
+    asm volatile(""
+            "mrs x16, dbgbvr3_el1\n"
+            "1:\n"
+            "ldaxr w14, [x16]\n"
+            "mov x15, x14\n"
+            "add w14, w15, #1\n"
+            "stlxr w15, w14, [x16]\n"
+            "cbnz w15, 1b\n"
+            /* branch back to orig+2 */
+            "add x16, x16, %[orig_plus_2_dist]\n"
+            "br x16\n"
+            : : [orig_plus_2_dist] "r" (DIST_FROM_REFCNT_TO(orig[2]))
+            );
 }
 
 /* reletramp: release a reference on an xnuspy_tramp.
@@ -246,65 +481,59 @@ static void xnuspy_init(void){
  * of the hooked function and zero out this xnuspy_tramp structure, marking
  * it as free in the page it resides on.
  */
-__attribute__ ((naked)) void reletramp(void){
-    /* TODO actually delete the branch to tramp when refcnt hits zero */
-    asm volatile(""
-            "ldr x16, [sp], 0x10\n"
-            "1:\n"
-            "ldaxr w9, [x16]\n"
-            "mov x10, x9\n"
-            "sub w9, w10, #1\n"
-            "stlxr w10, w9, [x16]\n"
-            "cbnz w10, 1b\n"
-            "ldp x29, x30, [sp], 0x10\n"
-            "ret"
-            );
-}
-
-/* void remove_pnx(void){ */
-/*     struct xnuspy_tramp *t = NULL; */
-/*     asm volatile("sub %0, x16, 0x8" : "=r" (t)); */
-
-/*     pte_t *ptep = el0_ptep(t->replacement); */
-/*     pte_t pte = *ptep; */
-
-/*     asm volatile("mov x0, %0" : : "r" (ptep)); */
-/*     asm volatile("mov x1, %0" : : "r" (pte)); */
-/*     asm volatile("mov x2, %0" : : "r" (t)); */
-/*     asm volatile("mov x3, %0" : : "r" (t->replacement)); */
-/*     asm volatile("mrs x4, ttbr0_el1"); */
-/*     asm volatile("mov x5, 0x4141"); */
-
-/*     asm volatile("brk 0"); */
-/*     uprotect(t->replacement, 0x4000, VM_PROT_READ | VM_PROT_EXECUTE); */
-/*     asm volatile("isb sy"); */
-/*     return; */
+/* __attribute__ ((naked)) void reletramp(void){ */
+/*     /1* TODO actually delete the branch to tramp when refcnt hits zero *1/ */
+/*     asm volatile("" */
+/*             "ldp x16, x17, [sp], 0x10\n" */
+/*             "msr ttbr0_el1, x17\n" */
+/*             "isb\n" */
+/*             "dsb ish\n" */
+/*             "tlbi vmalle1\n" */
+/*             "dsb ish\n" */
+/*             "isb\n" */
+/*             "1:\n" */
+/*             "ldaxr w9, [x16]\n" */
+/*             "mov x10, x9\n" */
+/*             "sub w9, w10, #1\n" */
+/*             "stlxr w10, w9, [x16]\n" */
+/*             "cbnz w10, 1b\n" */
+/*             "ldp x29, x30, [sp], 0x10\n" */
+/*             "ret" */
+/*             ); */
 /* } */
 
-/* XXX this is a mouthful, figure out a better name */
-void add_el0_replacement_mapping_to_calling_process(void){
-    struct xnuspy_tramp *t = NULL;
-    asm volatile("sub %0, x16, 0x8" : "=r" (t));
+/* restore_ttbr0: replace the current CPU's TTBR0 with its original.
+ *
+ * This function is called:
+ *  - when the kernel returns from the user's replacement
+ *  - when the user makes a call to a kernel function which was made callable
+ *      by xnuspy_ctl. This includes a call to the original function.
+ *
+ * 
+ *
+ * The only way this code can be reached is if the hooked function was
+ * called by the kernel. That means swap_ttbr0 will always be called before
+ * this function is called. 
+ */
+/* __attribute__ ((naked)) void restore_ttbr0(void){ */
 
-    /* asm volatile("mov x0, %0" : : "r" (t)); */
-    /* asm volatile("mov x1, %0" : : "r" (t->replacement)); */
-    /* asm volatile("mrs x2, ttbr0_el1"); */
-    /* asm volatile("mov x3, 0x4141"); */
+/* } */
 
-    /* asm volatile("brk 0"); */
+/* swap_ttbr0: replace the current CPU's TTBR0 with the one from the CPU which
+ * installed this hook.
+ *
+ * This function is called:
+ *  - when the kernel calls the hooked function
+ *  - right before the kernel returns to the replacement code after a call to
+ *      a kernel function (made callable by xnuspy_ctl) was made by
+ *      the user. This includes when a call to the original function is
+ *      about to return.
+ */
+/* __attribute__ ((naked)) void swap_ttbr0(void){ */
+/*     asm volatile("" */
+/*             " */
+/* } */
 
-    uint64_t replacement = t->replacement;
-
-    /* uint64_t ttbr0_el1; */
-    /* asm volatile("mrs %0, ttbr0_el1" : "=r" (ttbr0_el1)); */
-
-    /* pretty naive */
-    /* uint64_t l1_table = phystokv(ttbr & 0xfffffffffffe); */
-    /* uint64_t l1_idx = */ 
-
-
-    asm volatile("brk 0");
-}
 
 /* reftramp: take a reference on an xnuspy_tramp. 
  *
@@ -318,49 +547,35 @@ void add_el0_replacement_mapping_to_calling_process(void){
  * to make sure we return back to the original caller, so we also save the
  * current stack frame. Finally, we branch back to tramp+2.
  */
-__attribute__ ((naked)) void reftramp(void){
-    asm volatile(""
-            "1:\n"
-            "ldaxr w9, [x16]\n"
-            "mov x10, x9\n"
-            "add w9, w10, #1\n"
-            "stlxr w10, w9, [x16]\n"
-            "cbnz w10, 1b\n"
-            "stp x29, x30, [sp, -0x10]!\n"
-            "mov x29, sp\n"
-            /* "stp x0, x1, [sp, -0x10]!\n" */
-            /* "stp x2, x3, [sp, -0x10]!\n" */
-            /* "stp x4, x5, [sp, -0x10]!\n" */
-            /* "stp x6, x7, [sp, -0x10]!\n" */
-            /* "stp x19, x20, [sp, -0x10]!\n" */
-            /* "stp x21, x22, [sp, -0x10]!\n" */
-            /* "stp x23, x24, [sp, -0x10]!\n" */
-            /* "stp x25, x26, [sp, -0x10]!\n" */
-            /* "stp x27, x28, [sp, -0x10]!\n" */
-            /* "str x16, [sp, -0x10]!\n" */
-            /* "bl _add_el0_replacement_mapping_to_calling_process\n" */
-            /* swap TTBR0 with the one from the process that hooked
-             * this function, will be restored inside of reletramp */
-            "mrs x17, ttbr0_el1\n"
-            "stp x16, x17, [sp, -0x10]!\n"
-            /* X16 == &tramp->ttbr0_el1 */
-            "add x16, x16, 0x48\n"
-            "ldr x16, [x16]\n"
-            "msr ttbr0_el1, x16\n"
-            /* "orr x17, x17, 1\n" */
-            /* "msr ttbr0_el1, x17\n" */
-            "isb\n"
-            "dsb ish\n"
-            "tlbi vmalle1\n"
-            "dsb ish\n"
-            "isb\n"
-            /* "bl _remove_pnx\n" */
-            "mov x30, %0\n"
-            "ldr x16, [sp]\n"
-            "add x16, x16, 0xc\n"
-            "br x16" : : "r" (reletramp)
-            );
-}
+/* __attribute__ ((naked)) void reftramp(void){ */
+/*     asm volatile("" */
+/*             "1:\n" */
+/*             "ldaxr w9, [x16]\n" */
+/*             "mov x10, x9\n" */
+/*             "add w9, w10, #1\n" */
+/*             "stlxr w10, w9, [x16]\n" */
+/*             "cbnz w10, 1b\n" */
+/*             "stp x29, x30, [sp, -0x10]!\n" */
+/*             "mov x29, sp\n" */
+/*             /1* swap TTBR0 with the one from the process that hooked */
+/*              * this function, will be restored inside of reletramp *1/ */
+/*             "mrs x17, ttbr0_el1\n" */
+/*             "stp x16, x17, [sp, -0x10]!\n" */
+/*             /1* X16 == &tramp->ttbr0_el1 *1/ */
+/*             "add x16, x16, 0x48\n" */
+/*             "ldr x16, [x16]\n" */
+/*             "msr ttbr0_el1, x16\n" */
+/*             "isb\n" */
+/*             "dsb ish\n" */
+/*             "tlbi vmalle1\n" */
+/*             "dsb ish\n" */
+/*             "isb\n" */
+/*             "mov x30, %0\n" */
+/*             "ldr x16, [sp]\n" */
+/*             "add x16, x16, 0xc\n" */
+/*             "br x16" : : "r" (reletramp) */
+/*             ); */
+/* } */
 
 static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
         uint64_t /* __user */ origp){
@@ -387,7 +602,7 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
 
     kprintf("%s: got free xnuspy_ctl struct @ %#llx\n", __func__, tramp);
 
-    /* +1 for use */
+    /* +1 for creation */
     tramp->refcnt = 1;
     tramp->replacement = replacement;
 
@@ -396,8 +611,8 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
 
     uint32_t orig_tramp_len = 0;
 
-    generate_replacement_tramp(reftramp, tramp->tramp);
-    generate_original_tramp(target + 4, reftramp, tramp->orig, &orig_tramp_len);
+    /* generate_replacement_tramp(reftramp, tramp->tramp); */
+    /* generate_original_tramp(target + 4, reftramp, tramp->orig, &orig_tramp_len); */
 
     /* copyout the original function trampoline before the replacement
      * is called */
@@ -426,20 +641,6 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
     // XXX something like get_calling_process_text_segment
     uprotect(tramp->replacement, 0x4000, VM_PROT_READ | VM_PROT_EXECUTE);
 
-    /* pte_t *replacement_el0_ptep = el0_ptep(tramp->replacement); */
-    /* kprintf("%s: el0 replacement page table @ %#llx, orig pte == %#llx\n", __func__, */
-    /*         replacement_el0_ptep, *replacement_el0_ptep); */
-    /* pte_t replacement_el0_pte = *replacement_el0_ptep & ~(ARM_PTE_PNX | ARM_PTE_NG); */
-    /* kwrite(replacement_el0_ptep, &replacement_el0_pte, sizeof(replacement_el0_pte)); */
-
-    /* asm volatile("isb"); */
-    /* asm volatile("dsb ish"); */
-    /* asm volatile("tlbi vmalle1"); */
-    /* asm volatile("dsb ish"); */
-    /* asm volatile("isb"); */
-
-    /* kprintf("%s: new pte == %#llx\n", __func__, replacement_el0_pte); */
-
     /* All the trampolines are set up, write the branch */
     kprotect(target, 0x4000, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE);
 
@@ -457,6 +658,92 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
 static int xnuspy_uninstall_hook(uint64_t target){
     kprintf("%s: XNUSPY_UNINSTALL_HOOK is not implemented yet\n", __func__);
     return ENOSYS;
+}
+
+static int xnuspy_get_function(uint64_t which, uint64_t /* __user */ outp){
+    kprintf("%s: XNUSPY_GET_FUNCTION called with which %lld origp %#llx\n",
+            __func__, which, outp);
+
+    if(which > MAX_FUNCTION)
+        return ENOENT;
+
+    switch(which){
+        case KPROTECT:
+            which = (uint64_t)kprotect;
+            break;
+        case COPYOUT:
+            which = (uint64_t)copyout;
+            break;
+        default:
+            break;
+    };
+
+    return copyout(&which, outp, sizeof(outp));
+}
+
+static int xnuspy_make_callable(uint64_t target, uint64_t /* __user */ origp){
+    kprintf("%s: called with target %#llx origp %#llx\n", __func__, target, origp);
+
+    /* slide target */
+    target += kernel_slide;
+
+    /* The problem we have is the following: we are swapping the current CPU's
+     * TTBR0_EL1 with the TTBR0_EL1 from the CPU which installed a hook. The
+     * user is allowed to call other kernel functions from within their
+     * userland replacement. So what happens if some kernel function the user
+     * calls within their replacement relies on seeing the original TTBR0_EL1?
+     *
+     * To solve this problem, an external kernel function will be represented
+     * as an xnuspy_wrapper struct. Every xnuspy_wrapper struct resides on
+     * writable, executable memory. The wrapper will contain a small trampoline
+     * to restore the original TTBR0, call the actual kernel function, swap
+     * back the TTBR0 of the CPU that installed the hook, and then return
+     * back to the user's replacement code.
+     *
+     * Again, we cannot use the stack to persist data across function calls.
+     * Since I'm already using most of the debug breakpoint value registers,
+     * I'll just use callee-saved registers instead.
+     *
+     * An xnuspy_wrapper trampoline looks like this:
+     *  wtramp[0]   MOV X28, X29
+     *  wtramp[1]   MOV X27, X30
+     *  wtramp[2]   MOV X26, X19
+     *  wtramp[3]   MOV X25, X20
+     *  wtramp[4]   MOV X24, X21
+     *  wtramp[5]   MOV X23, X22
+     *
+     *  XXX here we have x19-x22 to work with
+     *  
+     *  ; FAR_EL1 is the register we're persisting the original value
+     *  ; of TTBR0_EL1 with.
+     *  wtramp[6]   MRS X19, FAR_EL1
+     *
+     *  ; Back up current TTBR0
+     *  wtramp[7]   MRS X20, TTBR0_EL1
+     *
+     *  ; Set original TTBR0_EL1
+     *  wtramp[8]   MSR TTBR0_EL1, X19
+     *
+     *  wtramp[9,13] barriers, invalidate TLBs
+     *
+     *  XXX stick a pointer to the kernel function in some register
+     *
+     *  wtramp[.]   BLR <kernel_functionp>
+     *
+     *  wtramp[.]   MSR TTBR0_EL1, X20
+     *
+     *  wtramp[...] barriers, invalidate TLBs
+     *
+     *  wtramp[.]   MOV X22, X23
+     *  wtramp[.]   MOV X21, X24
+     *  wtramp[.]   MOV X20, X25
+     *  wtramp[.]   MOV X19, X26
+     *  wtramp[.]   MOV X30, X27
+     *  wtramp[.]   MOV X29, X28
+     *  wtramp[.]   RET
+     */
+
+    return 0;
 }
 
 struct xnuspy_ctl_args {
@@ -497,6 +784,10 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
             break;
         case XNUSPY_UNINSTALL_HOOK:
             res = xnuspy_uninstall_hook(uap->arg1);
+            break;
+            /* XXX below will be replaced with XNUSPY_MAKE_CALLABLE */
+        case XNUSPY_GET_FUNCTION:
+            res = xnuspy_get_function(uap->arg1, uap->arg2);
             break;
         default:
             *retval = -1;

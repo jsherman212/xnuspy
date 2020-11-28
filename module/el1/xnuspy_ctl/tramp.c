@@ -263,15 +263,18 @@ void generate_original_tramp(uint64_t addrof_second_instr,
 
 /* This function generates a replacement trampoline and returns it through
  * the 'tramp' parameter. 'tramp' is expected to be an array of 5 uint32_t's */
-void generate_replacement_tramp(void (*reftramp)(void), uint32_t *tramp){
+void generate_replacement_tramp(void (*reftramp)(void), void (*swap_ttbr0)(void),
+        uint32_t *tramp){
     /* ADR X16, #-0x4 */
     tramp[0] = 0x10fffff0;
     /* B _reftramp */
     tramp[1] = assemble_b((uint64_t)(tramp + 1), (uint64_t)reftramp);
-    /* ADR X16, #-0x14 */
-    tramp[2] = 0x10ffff70;
+    /* B _swap_ttbr0 */
+    tramp[2] = assemble_b((uint64_t)(tramp + 2), (uint64_t)swap_ttbr0);
+    /* ADR X16, #-0x18 */
+    tramp[3] = 0x10ffff50;
     /* LDR X16, [X16] */
-    tramp[3] = 0xf9400210;
+    tramp[4] = 0xf9400210;
     /* BR X16 */
-    tramp[4] = 0xd61f0200;
+    tramp[5] = 0xd61f0200;
 }
