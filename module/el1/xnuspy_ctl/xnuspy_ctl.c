@@ -134,10 +134,6 @@ struct xnuspy_tramp {
     /* An abstraction that represents the original function. It's just another
      * trampoline, but it can take on one of five forms. Every form starts
      * with this header:
-     * XXX DO NOT NEED THIS ADR ANYMORE BECAUSE DBGBVR_EL1 HOLDS IT
-     *  orig[0]     ADR X16, <refcntp>
-     *
-     *
      *  orig[0]     B _save_original_state1
      *  orig[1]     B _reftramp1
      *  orig[2]     B _restore_ttbr0
@@ -159,50 +155,50 @@ struct xnuspy_tramp {
      * of instructions.
      *
      * If the first instruction was B.cond <label>
-     *  orig[2]     ADR X16, #0x14
-     *  orig[3]     ADR X17, #0x18
-     *  orig[4]     CSEL X16, X16, X17, <cond>
-     *  orig[5]     LDR X16, [X16]
-     *  orig[6]     BR X16
-     *  orig[7]     <destination if condition holds>[31:0]
-     *  orig[8]     <destination if condition holds>[63:32]
-     *  orig[9]     <address of second instruction of the hooked function>[31:0]
-     *  orig[10]    <address of second instruction of the hooked function>[63:32]
+     *  orig[3]     ADR X16, #0x14
+     *  orig[4]     ADR X17, #0x18
+     *  orig[5]     CSEL X16, X16, X17, <cond>
+     *  orig[6]     LDR X16, [X16]
+     *  orig[7]     BR X16
+     *  orig[8]     <destination if condition holds>[31:0]
+     *  orig[9]     <destination if condition holds>[63:32]
+     *  orig[10]     <address of second instruction of the hooked function>[31:0]
+     *  orig[11]    <address of second instruction of the hooked function>[63:32]
      *
      * If the first instruction was CBZ Rn, <label> or CBNZ Rn, <label>
-     *  orig[2]     ADR X16, #0x18
-     *  orig[3]     ADR X17, #0x1c
-     *  orig[4]     CMP Rn, #0
-     *  orig[5]     CSEL X16, X16, X17, <if CBZ, eq, if CBNZ, ne>
-     *  orig[6]     LDR X16, [X16]
-     *  orig[7]     BR X16
-     *  orig[8]     <destination if condition holds>[31:0]
-     *  orig[9]     <destination if condition holds>[63:32]
-     *  orig[10]    <address of second instruction of the hooked function>[31:0]
-     *  orig[11]    <address of second instruction of the hooked function>[63:32]
+     *  orig[3]     ADR X16, #0x18
+     *  orig[4]     ADR X17, #0x1c
+     *  orig[5]     CMP Rn, #0
+     *  orig[6]     CSEL X16, X16, X17, <if CBZ, eq, if CBNZ, ne>
+     *  orig[7]     LDR X16, [X16]
+     *  orig[8]     BR X16
+     *  orig[9]     <destination if condition holds>[31:0]
+     *  orig[10]     <destination if condition holds>[63:32]
+     *  orig[11]    <address of second instruction of the hooked function>[31:0]
+     *  orig[12]    <address of second instruction of the hooked function>[63:32]
      *
      * If the first instruction was TBZ Rn, #n, <label> or TBNZ Rn, #n, <label>
-     *  orig[2]     ADR X16, #0x18
-     *  orig[3]     ADR X17, #0x1c
-     *  orig[4]     TST Rn, #(1 << n)
-     *  orig[5]     CSEL X16, X16, X17, <if TBZ, eq, if TBNZ, ne>
-     *  orig[6]     LDR X16, [X16]
-     *  orig[7]     BR X16
-     *  orig[8]     <destination if condition holds>[31:0]
-     *  orig[9]     <destination if condition holds>[63:32]
-     *  orig[10]    <address of second instruction of the hooked function>[31:0]
-     *  orig[11]    <address of second instruction of the hooked function>[63:32]
+     *  orig[3]     ADR X16, #0x18
+     *  orig[4]     ADR X17, #0x1c
+     *  orig[5]     TST Rn, #(1 << n)
+     *  orig[6]     CSEL X16, X16, X17, <if TBZ, eq, if TBNZ, ne>
+     *  orig[7]     LDR X16, [X16]
+     *  orig[8]     BR X16
+     *  orig[9]     <destination if condition holds>[31:0]
+     *  orig[10]     <destination if condition holds>[63:32]
+     *  orig[11]    <address of second instruction of the hooked function>[31:0]
+     *  orig[12]    <address of second instruction of the hooked function>[63:32]
      *
      * If the first instruction was ADR Rn, #n
-     *  orig[2]     ADRP Rn, #n@PAGE
-     *  orig[3]     ADD Rn, Rn, #n@PAGEOFF
-     *  orig[4]     ADR X16, #0xc
-     *  orig[5]     LDR X16, [X16]
-     *  orig[6]     BR X16
-     *  orig[7]     <address of second instruction of the hooked function>[31:0]
-     *  orig[8]     <address of second instruction of the hooked function>[63:32]
+     *  orig[3]     ADRP Rn, #n@PAGE
+     *  orig[4]     ADD Rn, Rn, #n@PAGEOFF
+     *  orig[5]     ADR X16, #0xc
+     *  orig[6]     LDR X16, [X16]
+     *  orig[7]     BR X16
+     *  orig[8]     <address of second instruction of the hooked function>[31:0]
+     *  orig[9]     <address of second instruction of the hooked function>[63:32]
      */
-    uint32_t orig[12];
+    uint32_t orig[13];
     /* This will be set to whatever TTBR0_EL1 is from the process that
      * installed this hook. Before we call into the user replacement, we need
      * to swap TTBR0_EL1 with this one. */
@@ -470,113 +466,6 @@ __attribute__ ((naked)) void reftramp1(void){
             );
 }
 
-/* reletramp: release a reference on an xnuspy_tramp.
- *
- * This function is called with a pointer to a reference count saved on
- * the stack when:
- *  - the user's replacement function returns
- *  - the original function, called through the 'orig' trampoline, returns
- *
- * When the reference count reaches zero, we restore the first instruction
- * of the hooked function and zero out this xnuspy_tramp structure, marking
- * it as free in the page it resides on.
- */
-/* __attribute__ ((naked)) void reletramp(void){ */
-/*     /1* TODO actually delete the branch to tramp when refcnt hits zero *1/ */
-/*     asm volatile("" */
-/*             "ldp x16, x17, [sp], 0x10\n" */
-/*             "msr ttbr0_el1, x17\n" */
-/*             "isb\n" */
-/*             "dsb ish\n" */
-/*             "tlbi vmalle1\n" */
-/*             "dsb ish\n" */
-/*             "isb\n" */
-/*             "1:\n" */
-/*             "ldaxr w9, [x16]\n" */
-/*             "mov x10, x9\n" */
-/*             "sub w9, w10, #1\n" */
-/*             "stlxr w10, w9, [x16]\n" */
-/*             "cbnz w10, 1b\n" */
-/*             "ldp x29, x30, [sp], 0x10\n" */
-/*             "ret" */
-/*             ); */
-/* } */
-
-/* restore_ttbr0: replace the current CPU's TTBR0 with its original.
- *
- * This function is called:
- *  - when the kernel returns from the user's replacement
- *  - when the user makes a call to a kernel function which was made callable
- *      by xnuspy_ctl. This includes a call to the original function.
- *
- * 
- *
- * The only way this code can be reached is if the hooked function was
- * called by the kernel. That means swap_ttbr0 will always be called before
- * this function is called. 
- */
-/* __attribute__ ((naked)) void restore_ttbr0(void){ */
-
-/* } */
-
-/* swap_ttbr0: replace the current CPU's TTBR0 with the one from the CPU which
- * installed this hook.
- *
- * This function is called:
- *  - when the kernel calls the hooked function
- *  - right before the kernel returns to the replacement code after a call to
- *      a kernel function (made callable by xnuspy_ctl) was made by
- *      the user. This includes when a call to the original function is
- *      about to return.
- */
-/* __attribute__ ((naked)) void swap_ttbr0(void){ */
-/*     asm volatile("" */
-/*             " */
-/* } */
-
-
-/* reftramp: take a reference on an xnuspy_tramp. 
- *
- * This function is called with a pointer to a reference count in X16 when:
- *  - the kernel calls the hooked function
- *  - the original function, called through the 'orig' trampoline, is called
- *    by the user
- *
- * After a reference is taken, X16 is pushed to the stack. To make sure
- * we release the reference we took, we set LR to reletramp. However, we need
- * to make sure we return back to the original caller, so we also save the
- * current stack frame. Finally, we branch back to tramp+2.
- */
-/* __attribute__ ((naked)) void reftramp(void){ */
-/*     asm volatile("" */
-/*             "1:\n" */
-/*             "ldaxr w9, [x16]\n" */
-/*             "mov x10, x9\n" */
-/*             "add w9, w10, #1\n" */
-/*             "stlxr w10, w9, [x16]\n" */
-/*             "cbnz w10, 1b\n" */
-/*             "stp x29, x30, [sp, -0x10]!\n" */
-/*             "mov x29, sp\n" */
-/*             /1* swap TTBR0 with the one from the process that hooked */
-/*              * this function, will be restored inside of reletramp *1/ */
-/*             "mrs x17, ttbr0_el1\n" */
-/*             "stp x16, x17, [sp, -0x10]!\n" */
-/*             /1* X16 == &tramp->ttbr0_el1 *1/ */
-/*             "add x16, x16, 0x48\n" */
-/*             "ldr x16, [x16]\n" */
-/*             "msr ttbr0_el1, x16\n" */
-/*             "isb\n" */
-/*             "dsb ish\n" */
-/*             "tlbi vmalle1\n" */
-/*             "dsb ish\n" */
-/*             "isb\n" */
-/*             "mov x30, %0\n" */
-/*             "ldr x16, [sp]\n" */
-/*             "add x16, x16, 0xc\n" */
-/*             "br x16" : : "r" (reletramp) */
-/*             ); */
-/* } */
-
 static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
         uint64_t /* __user */ origp){
     kprintf("%s: called with target %#llx replacement %#llx origp %#llx\n",
@@ -611,8 +500,11 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
 
     uint32_t orig_tramp_len = 0;
 
-    /* generate_replacement_tramp(reftramp, tramp->tramp); */
-    /* generate_original_tramp(target + 4, reftramp, tramp->orig, &orig_tramp_len); */
+    generate_replacement_tramp(save_original_state0, reftramp0, swap_ttbr0,
+            tramp->tramp);
+
+    generate_original_tramp(target + 4, save_original_state1, reftramp1,
+            restore_ttbr0, tramp->orig, &orig_tramp_len);
 
     /* copyout the original function trampoline before the replacement
      * is called */
