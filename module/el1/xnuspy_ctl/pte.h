@@ -33,6 +33,9 @@ pte_t *el1_ptep(uint64_t);
 #define ARM_PTE_APMASK              (0xc0uLL)
 #define ARM_PTE_AP(x)               ((x) << 6)
 
+#define ARM_PTE_NS                 0x0000000000000020ULL
+#define ARM_PTE_ATTRINDXMASK       (0x7ULL << 2)
+
 #define ARM_PTE_NG                 0x0000000000000800ULL
 
 #define AP_RWNA                     (0x0) /* priv=read-write, user=no-access */

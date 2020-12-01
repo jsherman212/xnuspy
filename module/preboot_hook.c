@@ -511,6 +511,26 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
             *va = 0xFFFFFFF00923B970 + kernel_slide;
             return;
         }
+        else if(strcmp(ksym, "_pmap_map") == 0){
+            *va = 0xFFFFFFF007CF5BF8 + kernel_slide;
+            return;
+        }
+        else if(strcmp(ksym, "_kernel_pmap") == 0){
+            *va = 0xFFFFFFF007932810 + kernel_slide;
+            return;
+        }
+        else if(strcmp(ksym, "_pmap_expand") == 0){
+            *va = 0xFFFFFFF007CF6BC8 + kernel_slide;
+            return;
+        }
+        else if(strcmp(ksym, "__disable_preemption") == 0){
+            *va = 0xFFFFFFF007D091E0 + kernel_slide;
+            return;
+        }
+        else if(strcmp(ksym, "__enable_preemption") == 0){
+            *va = 0xFFFFFFF007D09210 + kernel_slide;
+            return;
+        }
     }
 }
 
@@ -773,6 +793,12 @@ void xnuspy_preboot_hook(void){
 
     printf("%s: sysctl_handle_long @ %#llx\n", __func__,
             g_sysctl_handle_long_addr - kernel_slide);
+
+    printf("%s: KERNEL SLIDE %#llx\n", __func__, kernel_slide);
+
+    /* iphone 8 13.6.1 */
+    uint32_t *copyio_zalloc_check = xnu_va_to_ptr(0xFFFFFFF00792E370 + kernel_slide);
+    *copyio_zalloc_check = 0;
 
     /* combat short read */
     asm volatile(".align 14");

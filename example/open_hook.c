@@ -73,6 +73,7 @@ static void code(void){
 
 static int (*copyout)(const void *, uint64_t, vm_size_t);
 static int (*kprotect)(uint64_t, uint64_t, vm_prot_t);
+static void (*kprintf)(const char *, ...);
 
 struct sysctl_req {
     void            *p;
@@ -106,6 +107,32 @@ static int sysctl_handle_long(void *oidp, void *arg1, int arg2,
     /* req->oldlen = sizeof(nonsense); */
     /* req->oldidx = 8; */
     /* return ENOENT; */
+
+    /* uint64_t tpidr_el1; */
+    /* asm volatile("mrs %0, tpidr_el1" : "=r" (tpidr_el1)); */
+
+    /* void *cpudata = *(void **)(tpidr_el1 + 0x478); */
+    /* uint16_t curcpu = *(uint16_t *)cpudata; */
+
+    /* asm volatile("mrs x3, ttbr0_el1"); */
+    /* asm volatile("mov x4, 0x4141"); */
+    /* int val = *g_num_pointer; */
+    /* asm volatile("mov x5, %0" : "=r" (val)); */
+    /* asm volatile("ldr x0, [x5]"); */
+
+    /* static void (*kprintf2)(const char *, ...) = */
+    /*     (void (*)(const char *, ...))(0xFFFFFFF0081D28E0 + 0xd2b4000); */
+
+    /* asm volatile("mov x4, 0x4141"); */
+    /* asm volatile("mov x5, %0" : : "r" (curcpu)); */
+    /* asm volatile("mov x6, 0x7777"); */
+
+    /* kprintf2("%s: alive and on CPU %d\n", __func__, curcpu); */
+
+    /* return ENOENT; */
+
+    /* kprintf("%s: *****We are on CPU %d\n", __func__, curcpu); */
+
     return sysctl_handle_long_orig(oidp, arg1, arg2, req);
 }
 
@@ -121,6 +148,195 @@ static kern_return_t _host_kernel_version(void *host, char *host_version){
     host_version[6] = '\0';
 
     return KERN_SUCCESS;
+}
+
+static void *(*kalloc_canblock_orig)(size_t *sz, void *site, int block);
+
+static void *kalloc_canblock(size_t *sz, void *site, int block){
+    return kalloc_canblock_orig(sz, site, block);
+}
+
+static void DumpMemory(void *startaddr, void *data, size_t size){
+    char ascii[17];
+    size_t i, j;
+    ascii[16] = '\0';
+    int putloc = 0;
+    uint64_t curaddr = startaddr;
+    for (i = 0; i < size; ++i) {
+        if(!putloc){
+            if(startaddr != (uint64_t)-1){
+                printf("%#llx: ", curaddr);
+                curaddr += 0x10;
+            }
+
+            putloc = 1;
+        }
+
+        printf("%02X ", ((unsigned char*)data)[i]);
+        if (((unsigned char*)data)[i] >= ' ' && ((unsigned char*)data)[i] <= '~') {
+            ascii[i % 16] = ((unsigned char*)data)[i];
+        } else {
+            ascii[i % 16] = '.';
+        }
+        if ((i+1) % 8 == 0 || i+1 == size) {
+            printf(" ");
+            if ((i+1) % 16 == 0) {
+                printf("|  %s \n", ascii);
+                putloc = 0;
+            } else if (i+1 == size) {
+                ascii[(i+1) % 16] = '\0';
+                if ((i+1) % 16 <= 8) {
+                    printf(" ");
+                }
+                for (j = (i+1) % 16; j < 16; ++j) {
+                    printf("   ");
+                }
+                printf("|  %s \n", ascii);
+                putloc = 0;
+            }
+        }
+    }
+}
+
+static int KernelRead(vm_address_t kaddr, void *buffer, vm_size_t length){
+    vm_address_t current_loc = kaddr;
+    vm_address_t end = kaddr + length;
+
+    vm_size_t bytes_read = 0;
+    vm_size_t bytes_left = length;
+
+    int ret = 0;
+
+    while(current_loc < end){
+        vm_size_t chunk = 0x100;
+
+        if(chunk > bytes_left)
+            chunk = bytes_left;
+
+        /* kret = vm_read_overwrite(tfp0, current_loc, chunk, */
+        /*         (vm_address_t)((uint8_t *)buffer + bytes_read), &chunk); */
+
+
+        ret = syscall(SYS_xnuspy_ctl, XNUSPY_KREAD, current_loc,
+                (uint8_t *)buffer + bytes_read, chunk);
+
+        if(ret)
+            return ret;
+
+        bytes_read += chunk;
+        current_loc += chunk;
+        bytes_left -= chunk;
+    }
+
+    return 0;
+}
+
+static void DumpKernelMemory(vm_address_t kaddr, size_t size){
+    uint8_t *data = malloc(size);
+
+    int ret = KernelRead(kaddr, data, size);
+
+    if(ret){
+        printf("%s: KernelRead failed: %s\n", __func__, strerror(errno));
+        return;
+    }
+
+    DumpMemory(kaddr, data, size);
+
+    free(data);
+}
+
+struct ipc_space {
+    struct {
+        uint64_t data;
+        uint32_t type;
+        uint32_t pad;
+    } is_lock_data;
+    uint32_t is_bits;
+    uint32_t is_table_size;
+    uint32_t is_table_hashed;
+    uint32_t is_table_free;
+    uint64_t is_table;
+    uint64_t is_task;
+    uint64_t is_table_next;
+    uint32_t is_low_mod;
+    uint32_t is_high_mod;
+
+    /* other stuff that isn't needed */
+};
+
+struct ipc_entry {
+    uint64_t ie_object;
+    uint32_t ie_dist : 12;
+    uint32_t ie_bits : 20;
+    uint32_t ie_index;
+    union {
+        uint32_t next;
+        uint32_t request;
+    } index;
+};
+
+/* found in ipc_task_init */
+static const int TASK_ITK_SPACE_OFFSET = 0x320;
+
+static uint64_t kaddr_of_port(uint64_t task, mach_port_t port){
+    uint64_t ipc_space_kaddr = 0;
+    int ret = KernelRead(task + TASK_ITK_SPACE_OFFSET, &ipc_space_kaddr,
+            sizeof(ipc_space_kaddr));
+
+    if(ret){
+        printf("%s: couldnt get kaddr of our ipc_space: %s\n", __func__,
+                strerror(ret));
+        return -1;
+    }
+
+    uint64_t is_table_kaddr = 0;
+    ret = KernelRead(ipc_space_kaddr + __builtin_offsetof(struct ipc_space, is_table),
+            &is_table_kaddr, sizeof(is_table_kaddr));
+
+    if(ret){
+        printf("%s: couldnt get kaddr of our is_table: %s\n", __func__,
+                strerror(errno));
+        return -1;
+    }
+
+    uint32_t idx = (port >> 8) * sizeof(struct ipc_entry);
+    uint64_t baseaddr = is_table_kaddr + idx;
+
+    uint64_t kaddr = 0;
+
+    ret = KernelRead(baseaddr, &kaddr, sizeof(kaddr));
+
+    if(ret){
+        printf("%s: couldnt read out ie_object ptr: %s\n", __func__,
+                strerror(ret));
+        return -1;
+    }
+
+    return kaddr;
+}
+
+
+#define EL0 0
+#define EL1 1
+static void sideband_buffer_shmem_tests(void){
+    uint64_t current_task = 0;
+    syscall(SYS_xnuspy_ctl, XNUSPY_GET_CURRENT_TASK, &current_task, 0, 0, 0);
+
+    printf("%s: current task @ %#llx\n", __func__, current_task);
+
+    mach_port_t p;
+    mach_port_allocate(mach_task_self(), MACH_PORT_RIGHT_RECEIVE, &p);
+
+    uint64_t p_kaddr = kaddr_of_port(current_task, p);
+
+    if(p_kaddr != -1)
+        DumpKernelMemory(p_kaddr, 0x100);
+
+    /* syscall(SYS_xnuspy_ctl, XNUSPY_DUMP_TTES, current_task, EL1, 0, 0); */
+
+    /* DumpKernelMemory(current_task, 0x100); */
+
 }
 
 int main(int argc, char **argv){
@@ -149,11 +365,18 @@ int main(int argc, char **argv){
     }
 
     printf("xnuspy_ctl was patched correctly\n");
+    printf("pid == %d\n", getpid());
+
+    sideband_buffer_shmem_tests();
+    getchar();
+    return 0;
 
     ret = syscall(SYS_xnuspy_ctl, XNUSPY_GET_FUNCTION, KPROTECT, &kprotect, 0);
     printf("got kprotect @ %#llx\n", kprotect);
     ret = syscall(SYS_xnuspy_ctl, XNUSPY_GET_FUNCTION, COPYOUT, &copyout, 0);
     printf("got copyout @ %#llx\n", copyout);
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_GET_FUNCTION, KPRINTF, &kprintf, 0);
+    printf("got kprintf @ %#llx\n", kprintf);
     /* printf("%llx\n", *kprotect); */
 
     /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, g_num_pointer, 0, 0); */
@@ -162,8 +385,8 @@ int main(int argc, char **argv){
     /* iphone 8 13.6.1 */
     /* uint64_t kalloc_canblock = 0xFFFFFFF007C031E4; */
     /* void *(*kalloc_canblock_orig)(size_t *, void *, bool) = NULL; */
-    /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, kalloc_canblock, code, */
-    /*         &kalloc_canblock_orig); */
+    /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF007C031E4, */
+    /*         kalloc_canblock, &kalloc_canblock_orig); */
 
     /* printf("kalloc_canblock_orig = %#llx\n", kalloc_canblock_orig); */
 

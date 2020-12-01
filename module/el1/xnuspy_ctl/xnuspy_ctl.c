@@ -15,12 +15,16 @@
 #define XNUSPY_UNINSTALL_HOOK       (1)
 #define XNUSPY_CHECK_IF_PATCHED     (2)
 #define XNUSPY_GET_FUNCTION         (3)
-#define XNUSPY_MAX_FLAVOR           XNUSPY_GET_FUNCTION
+#define XNUSPY_DUMP_TTES            (4)
+#define XNUSPY_KREAD                (5)
+#define XNUSPY_GET_CURRENT_TASK     (6)
+#define XNUSPY_MAX_FLAVOR           XNUSPY_GET_CURRENT_TASK
 
 /* values for XNUSPY_GET_FUNCTION */
 #define KPROTECT                    (0)
 #define COPYOUT                     (1)
-#define MAX_FUNCTION                COPYOUT
+#define KPRINTF                     (2)
+#define MAX_FUNCTION                KPRINTF
 
 #define MARK_AS_KERNEL_OFFSET __attribute__((section("__DATA,__koff")))
 
@@ -58,6 +62,13 @@ MARK_AS_KERNEL_OFFSET void (*flush_mmu_tlb_region_asid_async)(uint64_t va,
         uint32_t len, void *pmap);
 MARK_AS_KERNEL_OFFSET void (*InvalidatePoU_IcacheRegion)(uint64_t va, uint32_t len);
 MARK_AS_KERNEL_OFFSET void *(*current_task)(void);
+MARK_AS_KERNEL_OFFSET uint64_t (*pmap_map)(uint64_t virt, vm_offset_t start,
+        vm_offset_t end, vm_prot_t prot, unsigned int flags);
+MARK_AS_KERNEL_OFFSET void *kernel_pmap;
+MARK_AS_KERNEL_OFFSET int (*pmap_expand)(void *pmap, uint64_t v, unsigned int options,
+        unsigned int level);
+MARK_AS_KERNEL_OFFSET void (*_disable_preemption)(void);
+MARK_AS_KERNEL_OFFSET void (*_enable_preemption)(void);
 
 struct pmap_statistics {
     integer_t	resident_count;	/* # of pages mapped (total)*/
@@ -248,6 +259,14 @@ static void xnuspy_init(void){
     xnuspy_init_flag = 1;
 }
 
+void disable_preemption(void){
+    _disable_preemption();
+}
+
+void enable_preemption(void){
+    _enable_preemption();
+}
+
 /* If you decide to edit the functions marked as naked, you need to make
  * sure clang isn't clobbering registers. */
 
@@ -263,9 +282,11 @@ __attribute__ ((naked)) void swap_ttbr0(void){
             "ldr x17, [x17]\n"
             "msr ttbr0_el1, x17\n"
             "isb\n"
-            "dsb ish\n"
+            /* "dsb ish\n" */
             "tlbi vmalle1\n"
-            "dsb ish\n"
+            /* "dsb ish\n" */
+            "ic iallu\n"
+            "dsb sy\n"
             "isb\n"
             /* branch back to tramp+4 */
             "add x16, x16, %[tramp_plus_4_dist]\n"
@@ -283,10 +304,13 @@ __attribute__ ((naked)) void restore_ttbr0(void){
             "mrs x16, dbgbvr0_el1\n"
             "msr ttbr0_el1, x16\n"
             "isb\n"
-            "dsb ish\n"
+            /* "dsb ish\n" */
             "tlbi vmalle1\n"
-            "dsb ish\n"
+            /* "dsb ish\n" */
+            "ic iallu\n"
+            "dsb sy\n"
             "isb\n"
+            "bl _enable_preemption\n"
             "mrs x16, dbgbvr3_el1\n"
             /* branch back to orig+3 */
             "add x16, x16, %[orig_plus_3_dist]\n"
@@ -325,15 +349,22 @@ __attribute__ ((naked)) void reletramp_common(void){
 __attribute__ ((naked)) void reletramp0(void){
     asm volatile(""
             "bl _reletramp_common\n"
+            /* "mrs x9, dbgwvr0_el1\n" */
+            /* "msr DAIF, x9\n" */
             "mrs x9, dbgbvr0_el1\n"
             "msr ttbr0_el1, x9\n"
             "isb\n"
-            "dsb ish\n"
+            /* "dsb ish\n" */
             "tlbi vmalle1\n"
-            "dsb ish\n"
+            /* "dsb ish\n" */
+            "ic iallu\n"
+            "dsb sy\n"
             "isb\n"
             "mrs x29, dbgbvr2_el1\n"
             "mrs x30, dbgbvr1_el1\n"
+            "mov x19, x0\n"
+            "bl _enable_preemption\n"
+            "mov x0, x19\n"
             "ret"
             );
 }
@@ -346,17 +377,23 @@ __attribute__ ((naked)) void reletramp0(void){
 __attribute__ ((naked)) void reletramp1(void){
     asm volatile(""
             "bl _reletramp_common\n"
+            /* "msr DAIFSet, #0xf\n" */
             "mrs x16, dbgbvr3_el1\n"
             "add x16, x16, %[ttbr0_el1_dist]\n"
             "ldr x16, [x16]\n"
             "msr ttbr0_el1, x16\n"
             "isb\n"
-            "dsb ish\n"
+            /* "dsb ish\n" */
             "tlbi vmalle1\n"
-            "dsb ish\n"
+            /* "dsb ish\n" */
+            "ic iallu\n"
+            "dsb sy\n"
             "isb\n"
             "mrs x29, dbgbvr5_el1\n"
             "mrs x30, dbgbvr4_el1\n"
+            "mov x19, x0\n"
+            "bl _disable_preemption\n"
+            "mov x0, x19\n"
             "ret"
             : : [ttbr0_el1_dist] "r" (DIST_FROM_REFCNT_TO(ttbr0_el1))
             );
@@ -393,17 +430,34 @@ __attribute__ ((naked)) void reletramp1(void){
  */
 __attribute__ ((naked)) void save_original_state0(void){
     asm volatile(""
-            "mrs x9, ttbr0_el1\n"
-            "msr dbgbvr0_el1, x9\n"
+            /* turn off PAN bit */
+            ".long 0xd500409f\n"
+            /* turn off SCTLR_EL1.WXN */
+            /* "mrs x9, sctlr_el1\n" */
+            /* "and x9, x9, ~0x80000\n" */
+            /* "msr sctlr_el1, x9\n" */
+            /* "mrs x9, DAIF\n" */
+            /* "msr dbgwvr0_el1, x9\n" */
+            /* "msr DAIFSet, #0xf\n" */
+            "mrs x15, ttbr0_el1\n"
+            "msr dbgbvr0_el1, x15\n"
             "msr dbgbvr1_el1, x30\n"
             "msr dbgbvr2_el1, x29\n"
             "msr dbgbvr3_el1, x16\n"
-            "mov x30, %[reletramp0]\n"
+            "dsb sy\n"
+            "isb\n"
+            "mov x21, %[tramp_plus_2_dist]\n"
+            "mov x20, %[reletramp0]\n"
+            "mov x19, %[disable_preemption]\n"
+            "blr x19\n"
+            "mov x30, x20\n"
             /* branch back to tramp+2 */
-            "add x16, x16, %[tramp_plus_2_dist]\n"
+            "add x16, x16, x21\n"
+            /* "add x16, x16, %[tramp_plus_2_dist]\n" */
             "br x16\n"
-            : : [reletramp0] "r" (reletramp0),
-            [tramp_plus_2_dist] "r" (DIST_FROM_REFCNT_TO(tramp[2]))
+            : : [tramp_plus_2_dist] "r" (DIST_FROM_REFCNT_TO(tramp[2])),
+            [reletramp0] "r" (reletramp0),
+            [disable_preemption] "r" (_disable_preemption)
             );
 }
 
@@ -413,13 +467,22 @@ __attribute__ ((naked)) void save_original_state1(void){
     asm volatile(""
             "msr dbgbvr4_el1, x30\n"
             "msr dbgbvr5_el1, x29\n"
-            "mov x30, %[reletramp1]\n"
+            "mov x21, %[orig_plus_1_dist]\n"
+            "mov x20, %[reletramp1]\n"
+            /* "mov x19, %[enable_preemption]\n" */
+            /* "blr x19\n" */
+            "mov x30, x20\n"
+            /* "mov x30, %[reletramp1]\n" */
+            /* "mrs x16, dbgwvr0_el1\n" */
+            /* "msr DAIF, x16\n" */
             "mrs x16, dbgbvr3_el1\n"
             /* branch back to orig+1 */
-            "add x16, x16, %[orig_plus_1_dist]\n"
+            "add x16, x16, x21\n"
+            /* "add x16, x16, %[orig_plus_1_dist]\n" */
             "br x16\n"
-            : : [reletramp1] "r" (reletramp1),
-            [orig_plus_1_dist] "r" (DIST_FROM_REFCNT_TO(orig[1]))
+            : : [orig_plus_1_dist] "r" (DIST_FROM_REFCNT_TO(orig[1])),
+            [reletramp1] "r" (reletramp1)
+            /* [enable_preemption] "r" (_enable_preemption) */
             );
 }
 
@@ -466,6 +529,13 @@ __attribute__ ((naked)) void reftramp1(void){
             );
 }
 
+struct xnuspy_ctl_args {
+    uint64_t flavor;
+    uint64_t arg1;
+    uint64_t arg2;
+    uint64_t arg3;
+};
+    int xnuspy_ctl(void *, struct xnuspy_ctl_args *, int *);
 static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
         uint64_t /* __user */ origp){
     kprintf("%s: called with target %#llx replacement %#llx origp %#llx\n",
@@ -517,11 +587,117 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
     asm volatile("mrs %0, ttbr0_el1" : "=r" (ttbr0_el1));
     tramp->ttbr0_el1 = ttbr0_el1;
 
+    uint64_t tpidr_el1;
+    asm volatile("mrs %0, tpidr_el1" : "=r" (tpidr_el1));
+    /* cpuDatap offset found in _machine_switch_context */
+    void *cpudata = *(void **)(tpidr_el1 + 0x478);
+    uint16_t curcpu = *(uint16_t *)cpudata;
     desc_xnuspy_tramp(tramp, orig_tramp_len);
 
     kprintf("%s: on this CPU, ttbr0_el1 == %#llx baddr phys %#llx baddr kva %#llx\n",
             __func__, ttbr0_el1, ttbr0_el1 & 0xfffffffffffe,
             phystokv(ttbr0_el1 & 0xfffffffffffe));
+
+
+#if 0
+    kprintf("%s: xnuspy_ctl is @ %#llx (phys=%#llx)\n", __func__, (uint64_t)xnuspy_ctl,
+            kvtophys((uint64_t)xnuspy_ctl));
+    pte_t *xnuspy_ctl_ptep = el1_ptep((uint64_t)xnuspy_ctl);
+    pte_t *replacement_ptep = el0_ptep(replacement);
+
+    kprintf("%s: xnuspy_ctl pte @ %#llx phys %#llx pte == %#llx\n", __func__,
+            xnuspy_ctl_ptep, kvtophys((uint64_t)xnuspy_ctl_ptep),
+            *xnuspy_ctl_ptep);
+    uint64_t replacement_phys = kvtophys(replacement);
+    uint64_t replacement_kv = phystokv(replacement_phys);
+    kprintf("%s: replacement (%#llx, phys=%#llx (phystokv on that = %#llx))"
+            " pte @ %#llx phys ptep %#llx pte == %#llx\n",
+            __func__,
+            replacement, replacement_phys, replacement_kv, replacement_ptep,
+            kvtophys((uint64_t)replacement_ptep), *replacement_ptep);
+
+    uint32_t *cursor = (uint32_t *)replacement_kv;
+
+    int pmap_expand_ret = pmap_expand(kernel_pmap, replacement_kv, 0, 3);
+    kprintf("%s: pmap_expand returned %d\n", __func__, pmap_expand_ret);
+
+    kprintf("%s: gonna try and read from replacement_kv @ %#llx\n", __func__,
+            replacement_kv);
+
+    *cursor = 0x41414141;
+
+    asm volatile("isb");
+    asm volatile("dsb ish");
+    asm volatile("tlbi vmalle1");
+    asm volatile("dsb ish");
+    asm volatile("isb");
+
+    for(int i=0; i<15; i++){
+        kprintf("%s: %#llx:   %#x\n", __func__, (uint64_t)(cursor+i), cursor[i]);
+    }
+
+    pte_t *replacement_kv_pte = el1_ptep(replacement_kv);
+
+    kprintf("%s: replacement_kv pte @ %#llx pte == %#llx\n", __func__,
+            (uint64_t)replacement_kv_pte, *replacement_kv_pte);
+
+
+
+    /* replacement_phys &= ~0x3fff; */
+    /* replacement_kv &= ~0x3fffuLL; */
+
+    /* uint64_t pmap_map_ret = pmap_map(replacement_kv, replacement_phys, */
+    /*         replacement_phys + 0x4000, VM_PROT_READ | VM_PROT_WRITE, 0); */
+
+    /* kprintf("%s: pmap_map returned %#llx\n", __func__, pmap_map_ret); */
+
+    /* return 0; */
+
+    /* replacement_kv_pte = el1_ptep(replacement_kv); */
+
+    /* kprintf("%s: after pmap_map, replacement_kv pte is @ %#llx, pte == %#llx\n", */
+    /*         __func__, replacement_kv_pte, *replacement_kv_pte); */
+
+    /* pte_t new_replacement_kv_pte = *replacement_kv_pte & */
+    /*     ~(ARM_PTE_NS | ARM_PTE_ATTRINDXMASK); */
+    /* new_replacement_kv_pte |= 1; */
+
+    /* kwrite(replacement_kv_pte, &new_replacement_kv_pte, */
+    /*         sizeof(new_replacement_kv_pte)); */
+            
+    asm volatile("isb");
+    asm volatile("dsb ish");
+    asm volatile("tlbi vmalle1");
+    asm volatile("dsb ish");
+    asm volatile("isb");
+
+    /* asm volatile("mov x4, 0x5454"); */
+    /* asm volatile("br %0" : : "r" (replacement_kv)); */
+#endif
+
+    /* uint64_t ttbr1_el1; */
+    /* asm volatile("mrs %0, ttbr1_el1" : "=r" (ttbr1_el1)); */
+    /* uint64_t l1_table = phystokv(ttbr1_el1 & 0xfffffffffffe); */
+    /* uint64_t l1_idx = (replacement >> ARM_TT_L1_SHIFT) & 0x7; */
+    /* uint64_t *l1_ttep = (uint64_t *)(l1_table + (0x8 * l1_idx)); */
+
+    /* kprintf("%s: l1 tte from ttbr1_el1 with replacement %#llx == %#llx\n", */
+    /*         __func__, replacement, (uint64_t)l1_ttep); */
+
+    /* uint64_t l2_table = phystokv(*l1_ttep & ARM_TTE_TABLE_MASK); */
+    /* uint64_t l2_idx = (replacement >> ARM_TT_L2_SHIFT) & 0x7ff; */
+    /* uint64_t *l2_ttep = (uint64_t *)(l2_table + (0x8 * l2_idx)); */
+
+    /* kprintf("%s: l2 tte from ttbr1_el1 with replacement %#llx == %#llx\n", */
+    /*         __func__, replacement, (uint64_t)l2_ttep); */
+
+    /* uint64_t l3_table = phystokv(*l2_ttep & ARM_TTE_TABLE_MASK); */
+    /* uint64_t l3_idx = (replacement >> ARM_TT_L3_SHIFT) & 0x7ff; */
+    /* uint64_t *l3_ptep = (uint64_t *)(l3_table + (0x8 * l3_idx)); */
+
+    /* kprintf("%s: l3 tte from ttbr1_el1 with replacement %#llx == %#llx\n", */
+    /*         __func__, replacement, (uint64_t)l3_ptep); */
+
 
     /* XXX we don't need to unset nG bit in user pte if we are just swapping ttbr0? */
     
@@ -565,6 +741,9 @@ static int xnuspy_get_function(uint64_t which, uint64_t /* __user */ outp){
             break;
         case COPYOUT:
             which = (uint64_t)copyout;
+            break;
+        case KPRINTF:
+            which = (uint64_t)kprintf;
             break;
         default:
             break;
@@ -638,12 +817,36 @@ static int xnuspy_make_callable(uint64_t target, uint64_t /* __user */ origp){
     return 0;
 }
 
-struct xnuspy_ctl_args {
-    uint64_t flavor;
-    uint64_t arg1;
-    uint64_t arg2;
-    uint64_t arg3;
-};
+static int xnuspy_dump_ttes(uint64_t addr, uint64_t el){
+    uint64_t ttbr;
+
+    if(el == 0)
+        asm volatile("mrs %0, ttbr0_el1" : "=r" (ttbr));
+    else
+        asm volatile("mrs %0, ttbr1_el1" : "=r" (ttbr));
+
+    uint64_t l1_table = phystokv(ttbr & 0xfffffffffffe);
+    uint64_t l1_idx = (addr >> ARM_TT_L1_SHIFT) & 0x7;
+    uint64_t *l1_ttep = (uint64_t *)(l1_table + (0x8 * l1_idx));
+
+    uint64_t l2_table = phystokv(*l1_ttep & ARM_TTE_TABLE_MASK);
+    uint64_t l2_idx = (addr >> ARM_TT_L2_SHIFT) & 0x7ff;
+    uint64_t *l2_ttep = (uint64_t *)(l2_table + (0x8 * l2_idx));
+
+    uint64_t l3_table = phystokv(*l2_ttep & ARM_TTE_TABLE_MASK);
+    uint64_t l3_idx = (addr >> ARM_TT_L3_SHIFT) & 0x7ff;
+    uint64_t *l3_ptep = (uint64_t *)(l3_table + (0x8 * l3_idx));
+
+    kprintf("%s: TTE dump for %#llx:\n", __func__, addr);
+    kprintf("\tL1 TTE @ %#llx (phys = %#llx): %#llx\n"
+            "\tL2 TTE @ %#llx (phys = %#llx): %#llx\n"
+            "\tL3 PTE @ %#llx (phys = %#llx): %#llx\n",
+            l1_ttep, kvtophys((uint64_t)l1_ttep), *l1_ttep,
+            l2_ttep, kvtophys((uint64_t)l2_ttep), *l2_ttep,
+            l3_ptep, kvtophys((uint64_t)l3_ptep), *l3_ptep);
+
+    return 0;
+}
 
 int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
     uint64_t flavor = uap->flavor;
@@ -654,13 +857,13 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
         return EINVAL;
     }
 
-    kprintf("%s: got flavor %d\n", __func__, flavor);
-    kprintf("%s: kslide %#llx\n", __func__, kernel_slide);
-    kprintf("%s: xnuspy_ctl @ %#llx (unslid)\n", __func__,
-            (uint64_t)xnuspy_ctl - kernel_slide);
-    kprintf("%s: xnuspy_ctl tramp page @ [%#llx,%#llx] (unslid)\n", __func__,
-            (uint64_t)xnuspy_tramp_page - kernel_slide,
-            (uint64_t)xnuspy_tramp_page_end - kernel_slide);
+    /* kprintf("%s: got flavor %d\n", __func__, flavor); */
+    /* kprintf("%s: kslide %#llx\n", __func__, kernel_slide); */
+    /* kprintf("%s: xnuspy_ctl @ %#llx (unslid)\n", __func__, */
+    /*         (uint64_t)xnuspy_ctl - kernel_slide); */
+    /* kprintf("%s: xnuspy_ctl tramp page @ [%#llx,%#llx] (unslid)\n", __func__, */
+    /*         (uint64_t)xnuspy_tramp_page - kernel_slide, */
+    /*         (uint64_t)xnuspy_tramp_page_end - kernel_slide); */
 
     if(!xnuspy_init_flag)
         xnuspy_init();
@@ -681,6 +884,18 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
         case XNUSPY_GET_FUNCTION:
             res = xnuspy_get_function(uap->arg1, uap->arg2);
             break;
+        case XNUSPY_DUMP_TTES:
+            res = xnuspy_dump_ttes(uap->arg1, uap->arg2);
+            break;
+        case XNUSPY_KREAD:
+            res = copyout(uap->arg1, uap->arg2, uap->arg3);
+            break;
+        case XNUSPY_GET_CURRENT_TASK:
+            {
+                void *ct = current_task();
+                res = copyout(&ct, uap->arg1, sizeof(void *));
+                break;
+            }
         default:
             *retval = -1;
             return EINVAL;
