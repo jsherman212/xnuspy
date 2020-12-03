@@ -69,6 +69,25 @@ MARK_AS_KERNEL_OFFSET int (*pmap_expand)(void *pmap, uint64_t v, unsigned int op
         unsigned int level);
 MARK_AS_KERNEL_OFFSET void (*_disable_preemption)(void);
 MARK_AS_KERNEL_OFFSET void (*_enable_preemption)(void);
+MARK_AS_KERNEL_OFFSET kern_return_t (*kernel_memory_allocate)(void *map, uint64_t *addrp,
+        vm_size_t size, vm_offset_t mask, int flags, int tag);
+MARK_AS_KERNEL_OFFSET void *kernel_map;
+
+/* flags for kernel_memory_allocate */
+#define KMA_HERE        0x01
+#define KMA_NOPAGEWAIT  0x02
+#define KMA_KOBJECT     0x04
+#define KMA_LOMEM       0x08
+#define KMA_GUARD_FIRST 0x10
+#define KMA_GUARD_LAST  0x20
+#define KMA_PERMANENT   0x40
+#define KMA_NOENCRYPT   0x80
+#define KMA_KSTACK      0x100
+#define KMA_VAONLY      0x200
+#define KMA_COMPRESSOR  0x400   /* Pages belonging to the compressor are not on the paging queues, nor are they counted as wired. */
+#define KMA_ATOMIC      0x800
+#define KMA_ZERO        0x1000
+#define KMA_PAGEABLE    0x2000
 
 struct pmap_statistics {
     integer_t	resident_count;	/* # of pages mapped (total)*/
@@ -234,6 +253,10 @@ static void desc_xnuspy_tramp(struct xnuspy_tramp *t, uint32_t orig_tramp_len){
 
 MARK_AS_KERNEL_OFFSET struct xnuspy_tramp *xnuspy_tramp_page;
 MARK_AS_KERNEL_OFFSET uint8_t *xnuspy_tramp_page_end;
+
+/* Contiguous "array" of pages */
+MARK_AS_KERNEL_OFFSET uint8_t *usercode_reflector_pages_start;
+MARK_AS_KERNEL_OFFSET uint8_t *usercode_reflector_pages_end;
 
 static int xnuspy_init_flag = 0;
 
@@ -594,52 +617,213 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
     uint16_t curcpu = *(uint16_t *)cpudata;
     desc_xnuspy_tramp(tramp, orig_tramp_len);
 
-    kprintf("%s: on this CPU, ttbr0_el1 == %#llx baddr phys %#llx baddr kva %#llx\n",
-            __func__, ttbr0_el1, ttbr0_el1 & 0xfffffffffffe,
-            phystokv(ttbr0_el1 & 0xfffffffffffe));
+    uint64_t replacement_phys = uvtophys(replacement);
+    uint64_t replacement_physpage = replacement_phys & ~0x3fffuLL;
+    uint64_t replacement_pageoff = replacement_phys & 0x3fffuLL;
 
+    kprintf("%s: replacement @ %#llx, replacement phys @ %#llx"
+            ", replacement phys page @ %#llx, pageoff %#llx\n", __func__,
+            replacement_phys, replacement_physpage, replacement_pageoff);
 
-#if 0
-    kprintf("%s: xnuspy_ctl is @ %#llx (phys=%#llx)\n", __func__, (uint64_t)xnuspy_ctl,
-            kvtophys((uint64_t)xnuspy_ctl));
-    pte_t *xnuspy_ctl_ptep = el1_ptep((uint64_t)xnuspy_ctl);
-    pte_t *replacement_ptep = el0_ptep(replacement);
+    pte_t *reflector_page_ptep = el1_ptep(usercode_reflector_pages_start);
 
-    kprintf("%s: xnuspy_ctl pte @ %#llx phys %#llx pte == %#llx\n", __func__,
-            xnuspy_ctl_ptep, kvtophys((uint64_t)xnuspy_ctl_ptep),
-            *xnuspy_ctl_ptep);
-    uint64_t replacement_phys = kvtophys(replacement);
-    uint64_t replacement_kv = phystokv(replacement_phys);
-    kprintf("%s: replacement (%#llx, phys=%#llx (phystokv on that = %#llx))"
-            " pte @ %#llx phys ptep %#llx pte == %#llx\n",
-            __func__,
-            replacement, replacement_phys, replacement_kv, replacement_ptep,
-            kvtophys((uint64_t)replacement_ptep), *replacement_ptep);
+    kprintf("%s: first reflector page @ %#llx ptep @ %#llx pte == %#llx\n", __func__,
+            usercode_reflector_pages_start, reflector_page_ptep, *reflector_page_ptep);
 
-    uint32_t *cursor = (uint32_t *)replacement_kv;
+    pte_t orig_reflector_page_pte = *reflector_page_ptep;
 
-    int pmap_expand_ret = pmap_expand(kernel_pmap, replacement_kv, 0, 3);
-    kprintf("%s: pmap_expand returned %d\n", __func__, pmap_expand_ret);
+    pte_t new_reflector_page_pte = *reflector_page_ptep & ~0xfffffffff000uLL;
+    new_reflector_page_pte |= replacement_physpage;
+    new_reflector_page_pte &= ~(ARM_PTE_PNX | ARM_PTE_NX);
 
-    kprintf("%s: gonna try and read from replacement_kv @ %#llx\n", __func__,
-            replacement_kv);
+    kprintf("%s: new reflector page pte == %#llx\n", __func__,
+            new_reflector_page_pte);
 
-    *cursor = 0x41414141;
+    kwrite(reflector_page_ptep, &new_reflector_page_pte,
+            sizeof(new_reflector_page_pte));
 
     asm volatile("isb");
-    asm volatile("dsb ish");
+    asm volatile("dsb sy");
     asm volatile("tlbi vmalle1");
-    asm volatile("dsb ish");
+    asm volatile("dsb sy");
     asm volatile("isb");
 
-    for(int i=0; i<15; i++){
-        kprintf("%s: %#llx:   %#x\n", __func__, (uint64_t)(cursor+i), cursor[i]);
+    uint64_t reflected_user_code =
+        (uint64_t)usercode_reflector_pages_start & ~0xfffuLL;
+    reflected_user_code |= replacement_pageoff;
+
+    uint32_t *userreplacement_cursor = (uint32_t *)reflected_user_code;
+
+    for(int i=0; i<200; i++){
+        kprintf("%s: %#llx:   %#x\n", __func__, (uint64_t)(userreplacement_cursor+i),
+                userreplacement_cursor[i]);
     }
 
-    pte_t *replacement_kv_pte = el1_ptep(replacement_kv);
 
-    kprintf("%s: replacement_kv pte @ %#llx pte == %#llx\n", __func__,
-            (uint64_t)replacement_kv_pte, *replacement_kv_pte);
+    /* IOSleep(5000); */
+
+    /* void (*usercode_fxn)(void) = (void (*)(void))reflected_user_code; */
+    int (*usercode_fxn)(void) = (int (*)(void))reflected_user_code;
+    int cur_cpu_id = usercode_fxn();
+    /* usercode_fxn(); */
+    kprintf("%s: user code returned CPU ID %d, correct CPU ID = %d\n", __func__,
+            cur_cpu_id, curcpu);
+
+    kwrite(reflector_page_ptep, &orig_reflector_page_pte,
+            sizeof(orig_reflector_page_pte));
+
+    asm volatile("isb");
+    asm volatile("dsb sy");
+    asm volatile("tlbi vmalle1");
+    asm volatile("dsb sy");
+    asm volatile("isb");
+
+
+    /* kprintf("%s: on this CPU, ttbr0_el1 == %#llx baddr phys %#llx baddr kva %#llx\n", */
+    /*         __func__, ttbr0_el1, ttbr0_el1 & 0xfffffffffffe, */
+    /*         phystokv(ttbr0_el1 & 0xfffffffffffe)); */
+
+
+    /* kprintf("%s: xnuspy_ctl is @ %#llx (phys=%#llx)\n", __func__, (uint64_t)xnuspy_ctl, */
+    /*         kvtophys((uint64_t)xnuspy_ctl)); */
+    /* pte_t *xnuspy_ctl_ptep = el1_ptep((uint64_t)xnuspy_ctl); */
+    /* pte_t *replacement_ptep = el0_ptep(replacement); */
+
+    /* kprintf("%s: xnuspy_ctl pte @ %#llx phys %#llx pte == %#llx\n", __func__, */
+    /*         xnuspy_ctl_ptep, kvtophys((uint64_t)xnuspy_ctl_ptep), */
+    /*         *xnuspy_ctl_ptep); */
+    /* uint64_t replacement_phys = uvtophys(replacement); */
+    /* uint64_t replacement_kv = phystokv(replacement_phys); */
+    /* kprintf("%s: replacement (%#llx, phys=%#llx (phystokv on that = %#llx))" */
+    /*         " ptep @ %#llx phys ptep %#llx pte == %#llx\n", */
+    /*         __func__, */
+    /*         replacement, replacement_phys, replacement_kv, replacement_ptep, */
+    /*         kvtophys((uint64_t)replacement_ptep), *replacement_ptep); */
+
+    /* uint32_t *cursor = (uint32_t *)replacement_kv; */
+
+    /* int pmap_expand_ret = pmap_expand(kernel_pmap, replacement_kv, 0, 3); */
+    /* kprintf("%s: pmap_expand returned %d\n", __func__, pmap_expand_ret); */
+
+    /* pte_t *replacement_kv_pte = el1_ptep(replacement_kv); */
+
+    /* kprintf("%s: replacement_kv pte @ %#llx pte == %#llx\n", __func__, */
+    /*         (uint64_t)replacement_kv_pte, *replacement_kv_pte); */
+
+    /* kprintf("%s: gonna try and read from replacement_kv @ %#llx\n", __func__, */
+    /*         replacement_kv); */
+
+    /* *cursor = 0x41414141; */
+
+    /* asm volatile("isb"); */
+    /* asm volatile("dsb ish"); */
+    /* asm volatile("tlbi vmalle1"); */
+    /* asm volatile("dsb ish"); */
+    /* asm volatile("isb"); */
+
+    /* for(int i=0; i<15; i++){ */
+    /*     kprintf("%s: %#llx:   %#x\n", __func__, (uint64_t)(cursor+i), cursor[i]); */
+    /* } */
+
+    /* pte_t new_replacement_pte = *replacement_ptep & ~ARM_PTE_PNX; */
+    /* kwrite(replacement_ptep, &new_replacement_pte, sizeof(new_replacement_pte)); */
+
+    /* asm volatile("isb"); */
+    /* asm volatile("dsb ish"); */
+    /* asm volatile("tlbi vmalle1"); */
+    /* asm volatile("dsb ish"); */
+    /* asm volatile("isb"); */
+
+    /* asm volatile("mov x4, 0x5454"); */
+    /* asm volatile("mov x5, %0" : : "r" (replacement_kv)); */
+    /* asm volatile("br x5"); */
+
+    /* size_t sz = 0x8000; */
+    /* uint64_t mem = (uint64_t)kalloc_canblock(&sz, false, NULL); */
+
+    /* if(!mem) */
+    /*     return ENOMEM; */
+
+    /* uint64_t mem = 0; */
+    /* kern_return_t kret = kernel_memory_allocate(kernel_map, &mem, 0x4000, 0x3fff, */
+    /*         KMA_LOMEM, 0); */
+
+    /* if(kret){ */
+    /*     kprintf("%s: kernel_memory_allocate failed: %#x\n", __func__, kret); */
+    /*     return ENOMEM; */
+    /* } */
+
+    /* uint64_t mem = (uint64_t)xnuspy_tramp_page; */
+
+    /* pte_t *mem_ptep = el1_ptep(mem); */
+
+    /* kprintf("%s: mem @ %#llx phys @ %#llx ptep @ %#llx pte == %#llx\n", __func__, */
+    /*         mem, kvtophys(mem), mem_ptep, *mem_ptep); */
+    /* uint64_t replacement_physpage = replacement_phys & ~0x3fffuLL; */
+    /* pte_t new_mem_pte = (*mem_ptep & ~0xfffffffff000uLL) | replacement_physpage; */
+    /* new_mem_pte &= ~(ARM_PTE_NX | ARM_PTE_PNX); */
+    /* pte_t new_mem_pte = *mem_ptep & ~(ARM_PTE_NX | ARM_PTE_PNX); */
+    /* kprintf("%s: new_mem_pte == %#llx\n", __func__, new_mem_pte); */
+
+    /* kwrite(mem_ptep, &new_mem_pte, sizeof(new_mem_pte)); */
+
+    /* asm volatile("isb"); */
+    /* asm volatile("dsb sy"); */
+    /* asm volatile("tlbi vmalle1"); */
+    /* asm volatile("dsb sy"); */
+    /* asm volatile("isb"); */
+
+    /* asm volatile("" */
+    /*         "tlbi vmalle1\n" */
+    /*         "ic iallu\n" */
+    /*         "dsb sy\n" */
+    /*         "isb sy\n" */
+    /*         ); */
+
+    /* uint64_t mem_phys = kvtophys(mem); */
+    /* uint64_t mem_kv2 = phystokv(mem_phys); */
+    /* pte_t *mem_kv2_ptep = el1_ptep(mem_kv2); */
+
+    /* kprintf("%s: mem @ %#llx phys %#llx mem_kv2 %#llx ptep for mem_kv2 @ %#llx" */
+    /*         " mem_kv2 PTE == %#llx\n", __func__, mem, mem_phys, mem_kv2, */
+    /*         mem_kv2_ptep, *mem_kv2_ptep); */
+
+    /* mem_ptep = el1_ptep(mem); */
+
+    /* kprintf("%s: NOW: mem @ %#llx phys @ %#llx ptep @ %#llx pte == %#llx\n", __func__, */
+    /*         mem, kvtophys(mem), mem_ptep, *mem_ptep); */
+
+    /* kprintf("%s: gonna try and read the mem from kalloc_canblock:\n", __func__); */
+
+    /* cursor = (uint32_t *)mem; */
+
+    /* for(int i=0; i<4096; i++){ */
+    /*     kprintf("%s: %#llx:   %#x\n", __func__, (uint64_t)(cursor+i), cursor[i]); */
+    /* } */
+
+    /* mem now reflects the userland replacement page, get the page offset
+     * of the replacement function itself and try to branch to it */
+    /* uint64_t target_kva = mem | (replacement & 0xfff); */
+
+    /* *(uint32_t *)target_kva = 0x41424344; */
+
+    /* void (*func)(void) = (void (*)(void))target_kva; */
+    /* func(); */
+
+    /* uint64_t target_kva = mem; */
+    /* *(uint32_t *)mem = 0x41424344; */
+    /* asm volatile("isb"); */
+    /* asm volatile("dsb ish"); */
+    /* asm volatile("tlbi vmalle1"); */
+    /* asm volatile("dsb ish"); */
+    /* asm volatile("isb"); */
+
+    /* asm volatile("mov x3, 0x4141"); */
+
+    /* void (*fxn)(void) = (void (*)(void))mem; */
+    /* fxn(); */
+    /* asm volatile("mov x4, %0" : "=r" (mem)); */
+    /* asm volatile("br x4"); */
 
 
 
@@ -665,15 +849,14 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
     /* kwrite(replacement_kv_pte, &new_replacement_kv_pte, */
     /*         sizeof(new_replacement_kv_pte)); */
             
-    asm volatile("isb");
-    asm volatile("dsb ish");
-    asm volatile("tlbi vmalle1");
-    asm volatile("dsb ish");
-    asm volatile("isb");
+    /* asm volatile("isb"); */
+    /* asm volatile("dsb ish"); */
+    /* asm volatile("tlbi vmalle1"); */
+    /* asm volatile("dsb ish"); */
+    /* asm volatile("isb"); */
 
     /* asm volatile("mov x4, 0x5454"); */
     /* asm volatile("br %0" : : "r" (replacement_kv)); */
-#endif
 
     /* uint64_t ttbr1_el1; */
     /* asm volatile("mrs %0, ttbr1_el1" : "=r" (ttbr1_el1)); */
@@ -707,18 +890,18 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
      * segment as executable from EL1 so the user can call other functions
      * they write inside their program from their kernel hook. */
     // XXX something like get_calling_process_text_segment
-    uprotect(tramp->replacement, 0x4000, VM_PROT_READ | VM_PROT_EXECUTE);
+    /* uprotect(tramp->replacement, 0x4000, VM_PROT_READ | VM_PROT_EXECUTE); */
 
     /* All the trampolines are set up, write the branch */
-    kprotect(target, 0x4000, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE);
+    /* kprotect(target, 0x4000, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE); */
 
-    *(uint32_t *)target = assemble_b(target, (uint64_t)tramp->tramp);
+    /* *(uint32_t *)target = assemble_b(target, (uint64_t)tramp->tramp); */
 
-    asm volatile("dc cvau, %0" : : "r" (target));
-    asm volatile("dsb ish");
-    asm volatile("ic ivau, %0" : : "r" (target));
-    asm volatile("dsb ish");
-    asm volatile("isb sy");
+    /* asm volatile("dc cvau, %0" : : "r" (target)); */
+    /* asm volatile("dsb ish"); */
+    /* asm volatile("ic ivau, %0" : : "r" (target)); */
+    /* asm volatile("dsb ish"); */
+    /* asm volatile("isb sy"); */
 
     return 0;
 }

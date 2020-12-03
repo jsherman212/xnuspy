@@ -2,6 +2,7 @@
 #define MEM
 
 __attribute__((naked)) uint64_t kvtophys(uint64_t);
+__attribute__((naked)) uint64_t uvtophys(uint64_t);
 
 void kwrite(void *, void *, size_t);
 

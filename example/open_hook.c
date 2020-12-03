@@ -90,8 +90,9 @@ struct sysctl_req {
 
 static int (*sysctl_handle_long_orig)(void *, void *, int, struct sysctl_req *);
 
-static int sysctl_handle_long(void *oidp, void *arg1, int arg2,
-        struct sysctl_req *req){
+/* static int sysctl_handle_long(void *oidp, void *arg1, int arg2, */
+/*         struct sysctl_req *req){ */
+static int sysctl_handle_long(void){
     /* (*kprotect)((uint64_t)arg1, 0x4000, VM_PROT_READ | VM_PROT_WRITE); */
     /* *(long *)arg1 = 0x123456789abcdef; */
 
@@ -108,11 +109,11 @@ static int sysctl_handle_long(void *oidp, void *arg1, int arg2,
     /* req->oldidx = 8; */
     /* return ENOENT; */
 
-    /* uint64_t tpidr_el1; */
-    /* asm volatile("mrs %0, tpidr_el1" : "=r" (tpidr_el1)); */
+    uint64_t tpidr_el1;
+    asm volatile("mrs %0, tpidr_el1" : "=r" (tpidr_el1));
 
-    /* void *cpudata = *(void **)(tpidr_el1 + 0x478); */
-    /* uint16_t curcpu = *(uint16_t *)cpudata; */
+    void *cpudata = *(void **)(tpidr_el1 + 0x478);
+    uint16_t curcpu = *(uint16_t *)cpudata;
 
     /* asm volatile("mrs x3, ttbr0_el1"); */
     /* asm volatile("mov x4, 0x4141"); */
@@ -133,7 +134,10 @@ static int sysctl_handle_long(void *oidp, void *arg1, int arg2,
 
     /* kprintf("%s: *****We are on CPU %d\n", __func__, curcpu); */
 
-    return sysctl_handle_long_orig(oidp, arg1, arg2, req);
+    /* return (int)curcpu; */
+    return 100;
+
+    /* return sysctl_handle_long_orig(oidp, arg1, arg2, req); */
 }
 
 static kern_return_t (*host_kernel_version_orig)(void *, char *);
@@ -316,7 +320,6 @@ static uint64_t kaddr_of_port(uint64_t task, mach_port_t port){
     return kaddr;
 }
 
-
 #define EL0 0
 #define EL1 1
 static void sideband_buffer_shmem_tests(void){
@@ -334,9 +337,7 @@ static void sideband_buffer_shmem_tests(void){
         DumpKernelMemory(p_kaddr, 0x100);
 
     /* syscall(SYS_xnuspy_ctl, XNUSPY_DUMP_TTES, current_task, EL1, 0, 0); */
-
     /* DumpKernelMemory(current_task, 0x100); */
-
 }
 
 int main(int argc, char **argv){
@@ -367,9 +368,9 @@ int main(int argc, char **argv){
     printf("xnuspy_ctl was patched correctly\n");
     printf("pid == %d\n", getpid());
 
-    sideband_buffer_shmem_tests();
-    getchar();
-    return 0;
+    /* sideband_buffer_shmem_tests(); */
+    /* getchar(); */
+    /* return 0; */
 
     ret = syscall(SYS_xnuspy_ctl, XNUSPY_GET_FUNCTION, KPROTECT, &kprotect, 0);
     printf("got kprotect @ %#llx\n", kprotect);
@@ -403,6 +404,15 @@ int main(int argc, char **argv){
             sysctl_handle_long, &sysctl_handle_long_orig);
 
     printf("sysctl_handle_long_orig = %#llx\n", sysctl_handle_long_orig);
+
+    if(ret){
+        printf("%s\n", strerror(errno));
+    }
+
+    /* sleep(2); */
+    /* printf("%s: %#x\n", __func__, *(uint32_t *)sysctl_handle_long); */
+
+    /* DumpKernelMemory(0xfffffff0ac000440, 0x10); */
     /* ret = sysctlbyname("kern.xnuspy_ctl_callnum", &SYS_xnuspy_ctl, */
     /*         &oldlen, NULL, 0); */
     /* printf("ret %d\n", ret); */

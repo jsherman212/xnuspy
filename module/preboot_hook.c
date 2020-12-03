@@ -81,6 +81,9 @@ static uint64_t g_xnuspy_tramp_page_addr = 0;
 /* needed for when we are too far away for an immediate branch */
 static uint64_t g_xnuspy_tramp_page_end = 0;
 
+static uint64_t g_usercode_reflector_pages_start = 0;
+static uint64_t g_usercode_reflector_pages_end = 0;
+
 uint64_t *xnuspy_cache_base = NULL;
 
 #define WRITE_INSTR_TO_SCRATCH_SPACE(opcode) \
@@ -134,6 +137,8 @@ static struct xnuspy_ctl_offset {
     { "_lck_rw_done", &g_lck_rw_done_addr },
     { "_lck_rw_lock_shared", &g_lck_rw_lock_shared_addr },
     { "_phystokv", &g_phystokv_addr },
+    { "_usercode_reflector_pages_start", &g_usercode_reflector_pages_start },
+    { "_usercode_reflector_pages_end", &g_usercode_reflector_pages_end },
     { "_xnuspy_tramp_page", &g_xnuspy_tramp_page_addr },
     { "_xnuspy_tramp_page_end", &g_xnuspy_tramp_page_end },
 };
@@ -531,12 +536,19 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
             *va = 0xFFFFFFF007D09210 + kernel_slide;
             return;
         }
+        else if(strcmp(ksym, "_kernel_memory_allocate") == 0){
+            *va = 0xFFFFFFF007C89084 + kernel_slide;
+            return;
+        }
+        else if(strcmp(ksym, "_kernel_map") == 0){
+            *va = 0xFFFFFFF0079316C0 + kernel_slide;
+            return;
+        }
     }
 }
 
 /* fill in all our kernel offsets in __koff, initialize g_xnuspy_ctl_addr
- * and g_xnuspy_ctl_img_codesz
- */
+ * and g_xnuspy_ctl_img_codesz */
 static void process_xnuspy_ctl_image(void *xnuspy_ctl_image){
     struct mach_header_64 *mh = xnuspy_ctl_image;
     struct load_command *lc = (struct load_command *)(mh + 1);
@@ -688,9 +700,41 @@ void (*next_preboot_hook)(void);
 void xnuspy_preboot_hook(void){
     anything_missing();
 
-    /* XXX check if there's enough executable free space */
+    /* We are going to allocate a bunch of pages that xnuspy will use
+     * to reflect the user's replacement code on. Allocating them inside of
+     * the module will relieve the system from the stress of doing a bunch
+     * of page sized allocations.
+     *
+     * We need to figure out *how* much static memory can be allocated before
+     * we hit the limit and panic. From the output in checkra1n's KPF, the
+     * ramdisk is 0x110000 bytes, so we need to make sure there's space for
+     * that.  Unfortunately alloc_static_current and alloc_static_end aren't
+     * exported so we need to calculate them outselves. These calculations are
+     * the ones done inside src/kernel/std.c. I don't think anything before
+     * us has called alloc_static so these calculations are fine here. */
+    uint64_t alloc_static_current =
+        (kCacheableView - 0x800000000 + gBootArgs->topOfKernelData) & ~0x3fff;
+    uint64_t alloc_static_base = alloc_static_current;
+    uint64_t alloc_static_end = 0x417fe0000;
+    uint64_t alloc_static_hardcap = alloc_static_base + (1024 * 1024 * 64);
+
+    if(alloc_static_end > alloc_static_hardcap)
+        alloc_static_end = alloc_static_hardcap;
+
+    printf("%s: alloc static current %#llx hardcap %#llx end %#llx\n", __func__,
+            alloc_static_current, alloc_static_hardcap, alloc_static_end);
+
+    uint64_t free_static_memory = alloc_static_end - alloc_static_current;
+
+    printf("%s: starting with %#llx bytes of static memory\n", __func__,
+            free_static_memory);
+
+    /* make sure the ramdisk is accounted for, +- a couple pages for safety */
+    free_static_memory -= 0x110000 + (PAGE_SIZE * 6);
 
     void *xnuspy_tramp_page = alloc_static(PAGE_SIZE);
+
+    free_static_memory -= PAGE_SIZE;
 
     /* For every function someone wants to hook, I will write a single
      * unconditional immediate branch into some point on the above page
@@ -731,6 +775,8 @@ void xnuspy_preboot_hook(void){
 
     xnuspy_cache_base = alloc_static(PAGE_SIZE);
 
+    free_static_memory -= PAGE_SIZE;
+
     if(!xnuspy_cache_base){
         puts("xnuspy: alloc_static");
         puts("   returned NULL while");
@@ -739,6 +785,7 @@ void xnuspy_preboot_hook(void){
 
         xnuspy_fatal_error();
     }
+
 
     printf("%s: xnuspy_ctl img is %#x bytes\n", __func__,
             loader_xfer_recv_count);
@@ -756,11 +803,32 @@ void xnuspy_preboot_hook(void){
         xnuspy_fatal_error();
     }
 
+    free_static_memory -= (loader_xfer_recv_count + PAGE_SIZE) & ~(PAGE_SIZE - 1);
+
 
     /* printf("%s: xnuspy_ctl image %#llx loader_xfer_recv_data %#llx\n", __func__, */
     /*         xnuspy_ctl_image, loader_xfer_recv_data); */
 
     memcpy(xnuspy_ctl_image, loader_xfer_recv_data, loader_xfer_recv_count);
+
+    printf("%s: left with %#llx bytes of static memory\n", __func__,
+            free_static_memory);
+
+    /* Now we can create the array of pages xnuspy will use to reflect user code. */
+
+    g_usercode_reflector_pages_start = alloc_static(free_static_memory);
+    g_usercode_reflector_pages_end =
+        g_usercode_reflector_pages_start + free_static_memory;
+
+    g_usercode_reflector_pages_start = xnu_ptr_to_va(g_usercode_reflector_pages_start);
+    g_usercode_reflector_pages_end = xnu_ptr_to_va(g_usercode_reflector_pages_end);
+
+    free_static_memory = 0;
+
+    printf("%s: usercode reflector pages start @ %#llx end @ %#llx\n",
+            __func__, g_usercode_reflector_pages_start - kernel_slide,
+            g_usercode_reflector_pages_end - kernel_slide);
+
 
     process_xnuspy_ctl_image(xnuspy_ctl_image);
 
@@ -775,7 +843,9 @@ void xnuspy_preboot_hook(void){
     /* replace an enosys sysent with xnuspy_ctl_tramp */
     scratch_space = install_xnuspy_ctl_tramp(scratch_space, &num_free_instrs);
 
-    printf("%s: xnuspy_ctl_tramp @ %#llx\n", __func__, xnu_ptr_to_va(scratch_space)-kernel_slide);
+    printf("%s: xnuspy_ctl_tramp @ %#llx\n", __func__,
+            xnu_ptr_to_va(scratch_space)-kernel_slide);
+
     /* write the code for xnuspy_ctl_tramp */
     scratch_space = write_xnuspy_ctl_tramp_instrs(scratch_space,
             &num_free_instrs);
