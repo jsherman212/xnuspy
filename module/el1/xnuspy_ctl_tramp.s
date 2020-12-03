@@ -90,6 +90,7 @@ nextpage:
     isb
     dsb sy
     tlbi vmalle1
+    ic iallu
     dsb sy
     isb
 

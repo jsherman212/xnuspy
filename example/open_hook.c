@@ -90,9 +90,9 @@ struct sysctl_req {
 
 static int (*sysctl_handle_long_orig)(void *, void *, int, struct sysctl_req *);
 
-/* static int sysctl_handle_long(void *oidp, void *arg1, int arg2, */
-/*         struct sysctl_req *req){ */
-static int sysctl_handle_long(void){
+static int sysctl_handle_long(void *oidp, void *arg1, int arg2,
+        struct sysctl_req *req){
+/* static int sysctl_handle_long(void){ */
     /* (*kprotect)((uint64_t)arg1, 0x4000, VM_PROT_READ | VM_PROT_WRITE); */
     /* *(long *)arg1 = 0x123456789abcdef; */
 
@@ -107,7 +107,8 @@ static int sysctl_handle_long(void){
     /* *(long *)req->oldptr = 1122334455667788; */
     /* req->oldlen = sizeof(nonsense); */
     /* req->oldidx = 8; */
-    /* return ENOENT; */
+    // XXX XXX XXX XXX XXX
+    return ENOENT;
 
     uint64_t tpidr_el1;
     asm volatile("mrs %0, tpidr_el1" : "=r" (tpidr_el1));
@@ -134,8 +135,7 @@ static int sysctl_handle_long(void){
 
     /* kprintf("%s: *****We are on CPU %d\n", __func__, curcpu); */
 
-    /* return (int)curcpu; */
-    return 100;
+    return (int)curcpu;
 
     /* return sysctl_handle_long_orig(oidp, arg1, arg2, req); */
 }
