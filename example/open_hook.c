@@ -340,6 +340,18 @@ static void sideband_buffer_shmem_tests(void){
     /* DumpKernelMemory(current_task, 0x100); */
 }
 
+static void address_space_tests(void){
+    uint64_t current_task = 0;
+    syscall(SYS_xnuspy_ctl, XNUSPY_GET_CURRENT_TASK, &current_task, 0, 0, 0);
+
+    printf("%s: current task @ %#llx\n", __func__, current_task);
+
+    if(!current_task)
+        return;
+
+
+}
+
 int main(int argc, char **argv){
     /* before we begin, figure out what system call was patched */
     size_t oldlen = sizeof(long);
@@ -399,7 +411,9 @@ int main(int argc, char **argv){
     /* try and hook sysctl_handle_long */
     /* iphone 8 13.6.1 */
     /* for(;;){ */
-    /* uint64_t sysctl_handle_long = 0xfffffff00800d508; */
+    extern struct mach_header_64 *_mh_execute_header;
+    printf("%#llx\n", &_mh_execute_header);
+    uint64_t sysctl_handle_long = 0xfffffff00800d508;
     ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xfffffff00800d508,
             sysctl_handle_long, &sysctl_handle_long_orig);
 
@@ -409,6 +423,8 @@ int main(int argc, char **argv){
         printf("%s\n", strerror(errno));
     }
 
+
+    /* address_space_tests(); */
     /* sleep(2); */
     /* printf("%s: %#x\n", __func__, *(uint32_t *)sysctl_handle_long); */
 

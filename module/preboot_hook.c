@@ -816,6 +816,11 @@ void xnuspy_preboot_hook(void){
 
     /* Now we can create the array of pages xnuspy will use to reflect user code. */
 
+    if(free_static_memory > 0x800000){
+        printf("%s: too much static memory left, defaulting to 512 pages\n", __func__);
+        free_static_memory = 0x800000;
+    }
+
     g_usercode_reflector_pages_start = alloc_static(free_static_memory);
     g_usercode_reflector_pages_end =
         g_usercode_reflector_pages_start + free_static_memory;

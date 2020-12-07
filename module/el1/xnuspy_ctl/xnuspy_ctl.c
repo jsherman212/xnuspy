@@ -126,7 +126,38 @@ struct pmap {
     } lock;
     struct pmap_statistics stats;
     queue_chain_t pmaps;
+};
 
+struct vm_map_links {
+    struct vm_map_entry *prev;
+    struct vm_map_entry *next;
+    uint64_t start;
+    uint64_t end;
+};
+
+struct vm_map_entry {
+    struct vm_map_links links;
+#define vme_prev		links.prev
+#define vme_next		links.next
+#define vme_start		links.start
+#define vme_end			links.end
+};
+
+struct vm_map_header {
+    struct vm_map_links links;
+};
+
+struct _vm_map {
+    char lck[16];
+    /* struct { */
+    /*     struct { */
+    /*         void *prev; */
+    /*         void *next; */
+    /*         uint64_t start; */
+    /*         uint64_t end; */
+    /*     } links; */
+    /* } hdr; */
+    struct vm_map_header hdr;
 };
 
 MARK_AS_KERNEL_OFFSET struct pmap *(*get_task_pmap)(void *task);
@@ -317,7 +348,7 @@ __attribute__ ((naked)) void reletramp0(void){
             "mov x0, x19\n"
             "mrs x29, dbgbvr1_el1\n"
             "mrs x30, dbgbvr0_el1\n"
-            "ret"
+            "ret\n"
             );
 }
 
@@ -331,7 +362,7 @@ __attribute__ ((naked)) void reletramp1(void){
             "mov x0, x19\n"
             "mrs x29, dbgbvr4_el1\n"
             "mrs x30, dbgbvr3_el1\n"
-            "ret"
+            "ret\n"
             /* : : [ttbr0_el1_dist] "r" (DIST_FROM_REFCNT_TO(ttbr0_el1)) */
             );
 }
@@ -465,6 +496,87 @@ struct xnuspy_ctl_args {
     uint64_t arg3;
 };
     int xnuspy_ctl(void *, struct xnuspy_ctl_args *, int *);
+
+static int xnuspy_install_hook2(uint64_t target, uint64_t replacement,
+        uint64_t /* __user */ origp){
+    kprintf("%s: called with target %#llx replacement %#llx origp %#llx\n",
+            __func__, target, replacement, origp);
+
+    /* slide target */
+    target += kernel_slide;
+
+    /* Find a free xnuspy_tramp inside the trampoline page */
+    struct xnuspy_tramp *tramp = xnuspy_tramp_page;
+
+    while((uint8_t *)tramp < xnuspy_tramp_page_end){
+        if(!tramp->refcnt)
+            break;
+
+        tramp++;
+    }
+
+    if(!tramp){
+        kprintf("%s: no free xnuspy_tramp structs\n", __func__);
+        return ENOSPC;
+    }
+
+    kprintf("%s: got free xnuspy_ctl struct @ %#llx\n", __func__, tramp);
+
+    /* +1 for creation */
+    tramp->refcnt = 1;
+    /* tramp->replacement = replacement; */
+
+    /* Build the trampoline to the replacement as well as the trampoline
+     * that represents the original function */
+
+    uint32_t orig_tramp_len = 0;
+
+    generate_replacement_tramp(save_original_state0, reftramp0, tramp->tramp);
+    generate_original_tramp(target + 4, save_original_state1, reftramp1,
+            tramp->orig, &orig_tramp_len);
+
+    /* copyout the original function trampoline before the replacement
+     * is called */
+    uint32_t *orig_tramp = tramp->orig;
+    int err = copyout(&orig_tramp, origp, sizeof(origp));
+
+    uint64_t tpidr_el1;
+    asm volatile("mrs %0, tpidr_el1" : "=r" (tpidr_el1));
+    /* cpuDatap offset found in _machine_switch_context */
+    void *cpudata = *(void **)(tpidr_el1 + 0x478);
+    uint16_t curcpu = *(uint16_t *)cpudata;
+    desc_xnuspy_tramp(tramp, orig_tramp_len);
+
+    /* struct pmap *pmap = get_task_pmap(current_task()); */
+
+    /* kprintf("%s: pmap min %#llx max %#llx\n", __func__, pmap->min, pmap->max); */
+
+    struct _vm_map *current_map = *(struct _vm_map **)(tpidr_el1 + 0x320);
+
+    kprintf("%s: current map %#llx\n", __func__, current_map);
+
+    if(!current_map)
+        return 0;
+
+    kprintf("%s: start %#llx end %#llx\n", __func__, current_map->hdr.links.start,
+            current_map->hdr.links.end);
+
+    /* struct vm_map_links *cur_links = &current_map->hdr.links; */
+    /* struct vm_map_entry *cur_entry = (struct vm_map_entry *)1; */
+
+    /* for(int i=0; i<20; i++){ */
+    /*     if(!cur_entry) */
+    /*         break; */
+
+
+
+    /*     cur_entry = cur_entry */ 
+    /* } */
+
+
+    return 0;
+}
+
 static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
         uint64_t /* __user */ origp){
     kprintf("%s: called with target %#llx replacement %#llx origp %#llx\n",
@@ -574,11 +686,11 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
     /* IOSleep(5000); */
 
     /* void (*usercode_fxn)(void) = (void (*)(void))reflected_user_code; */
-    int (*usercode_fxn)(void) = (int (*)(void))reflected_user_code;
-    int cur_cpu_id = usercode_fxn();
+    /* int (*usercode_fxn)(void) = (int (*)(void))reflected_user_code; */
+    /* int cur_cpu_id = usercode_fxn(); */
     /* usercode_fxn(); */
-    kprintf("%s: user code returned CPU ID %d, correct CPU ID = %d\n", __func__,
-            cur_cpu_id, curcpu);
+    /* kprintf("%s: user code returned CPU ID %d, correct CPU ID = %d\n", __func__, */
+    /*         cur_cpu_id, curcpu); */
 
     /* kwrite(reflector_page_ptep, &orig_reflector_page_pte, */
     /*         sizeof(orig_reflector_page_pte)); */
@@ -969,7 +1081,8 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
             *retval = 999;
             return 0;
         case XNUSPY_INSTALL_HOOK:
-            res = xnuspy_install_hook(uap->arg1, uap->arg2, uap->arg3);
+            /* res = xnuspy_install_hook(uap->arg1, uap->arg2, uap->arg3); */
+            res = xnuspy_install_hook2(uap->arg1, uap->arg2, uap->arg3);
             break;
         case XNUSPY_UNINSTALL_HOOK:
             res = xnuspy_uninstall_hook(uap->arg1);
