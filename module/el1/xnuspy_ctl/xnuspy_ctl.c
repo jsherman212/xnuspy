@@ -1,5 +1,6 @@
 #include <errno.h>
 #include <mach/mach.h>
+#include <mach-o/loader.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -177,7 +178,7 @@ MARK_AS_KERNEL_OFFSET queue_head_t *map_pmap_list;
 /* This structure represents a function hook. Every xnuspy_tramp struct resides
  * on writeable, executable memory. */
 struct xnuspy_tramp {
-    /* Kernel virtual address of reflected userland replacement */
+    /* Kernel virtual address of copied userland replacement */
     uint64_t replacement;
     _Atomic uint32_t refcnt;
     /* The trampoline for a hooked function. When the user installs a hook
@@ -288,6 +289,10 @@ static void xnuspy_init(void){
     vm_prot_t prot = VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE;
     kprotect((uint64_t)xnuspy_tramp_page, 0x4000, prot);
 
+    /* Do the same for the pages which will hold user code */
+    uint64_t len = usercode_reflector_pages_end - usercode_reflector_pages_start;
+    kprotect((uint64_t)usercode_reflector_pages_start, len, prot);
+
     /* Zero out PAN in case no instruction did it before us. After our kernel
      * patches, the PAN bit cannot be set to 1 again.
      *
@@ -303,6 +308,8 @@ static void xnuspy_init(void){
     /* asm volatile(".align 14"); */
 
     xnuspy_init_flag = 1;
+
+    kprintf("%s: xnuspy inited\n", __func__);
 }
 
 void disable_preemption(void){
@@ -495,7 +502,98 @@ struct xnuspy_ctl_args {
     uint64_t arg2;
     uint64_t arg3;
 };
-    int xnuspy_ctl(void *, struct xnuspy_ctl_args *, int *);
+int xnuspy_ctl(void *, struct xnuspy_ctl_args *, int *);
+
+/* #undef strcmp */
+int strcmp(const char *s1, const char *s2){
+    while(*s1 && (*s1 == *s2)){
+        s1++;
+        s2++;
+    }
+
+    return *(const unsigned char *)s1 - *(const unsigned char *)s2;
+}
+
+/* Copy the calling process' __TEXT and __DATA onto a contiguous set
+ * of the pages we reserved before booting XNU. Lame, but safe. Swapping
+ * translation table base registers and changing PTE OutputAddress'es
+ * was hacky and left me at the mercy of the scheduler.
+ *
+ * Returns the kernel virtual address of the start of the user's
+ * replacement function, or 0 upon failure.
+ */
+static uint64_t copy_caller_segments(struct mach_header_64 *umh,
+        uint64_t replacement){
+    uint64_t replacement_kva = 0;
+    uint64_t aslr_slide = (uintptr_t)umh - 0x100000000;
+
+    struct load_command *lc = umh + 1;
+
+    /* XXX temporary: future implementation will alloc a contiguous
+     * set of n pages */
+    uint8_t *curpage = usercode_reflector_pages_start;
+
+    for(int i=0; i<umh->ncmds; i++){
+        kprintf("%s: got cmd %d\n", __func__, lc->cmd);
+
+        if(lc->cmd != LC_SEGMENT_64)
+            goto next;
+
+        struct segment_command_64 *sc64 = (struct segment_command_64 *)lc;
+
+        int is_text = strcmp(sc64->segname, "__TEXT") == 0;
+
+        if(is_text || strcmp(sc64->segname, "__DATA") == 0){
+            /* These will always be page aligned */
+            uint64_t start = sc64->vmaddr + aslr_slide;
+            uint64_t end = start + sc64->vmsize;
+
+            /* __builtin_memcpy(sc64, start, 0x4); */
+
+            kprintf("%s: segment '%s' start %#llx end %#llx\n", __func__,
+                    sc64->segname, start, end);
+
+            /* Copy the segment into kernelspace */
+            while(start < end){
+                uint64_t *us = (uint64_t *)start;
+                uint64_t *ks = (uint64_t *)curpage;
+                uint64_t *ke = (uint64_t *)(curpage + 0x4000);
+
+                kprintf("%s: us %#llx ks %#llx ke %#llx\n", __func__, us, ks, ke);
+
+                while(ks < ke){
+                    *ks++ = *us++;
+                }
+
+                start += 0x4000;
+                curpage += 0x4000;
+            }
+
+            /* __TEXT includes the mach header, so we can just add the
+             * distance from the header to the user's replacement function
+             * to the first page we used */
+            if(is_text && !replacement_kva){
+                uint64_t dist = replacement - (uintptr_t)umh;
+                kprintf("%s: dist %#llx replacement %#llx umh %#llx\n", __func__,
+                        dist, replacement, (uint64_t)umh);
+                /* XXX temporary */
+                replacement_kva = usercode_reflector_pages_start + dist;
+            }
+
+            /* for(int k=0; k<sc64->vmsize/0x4000; k++){ */
+            /*     __builtin_memcpy(curpage, start, 0x4000); */
+
+            /*     start += 0x4000; */
+            /*     curpage += 0x4000; */
+            /* } */
+        }
+
+next:
+        lc = (struct load_command *)((uintptr_t)lc + lc->cmdsize);
+    }
+
+    return replacement_kva;
+}
 
 static int xnuspy_install_hook2(uint64_t target, uint64_t replacement,
         uint64_t /* __user */ origp){
@@ -551,6 +649,7 @@ static int xnuspy_install_hook2(uint64_t target, uint64_t replacement,
 
     /* kprintf("%s: pmap min %#llx max %#llx\n", __func__, pmap->min, pmap->max); */
 
+    /* Offset found in mmap */
     struct _vm_map *current_map = *(struct _vm_map **)(tpidr_el1 + 0x320);
 
     kprintf("%s: current map %#llx\n", __func__, current_map);
@@ -561,6 +660,30 @@ static int xnuspy_install_hook2(uint64_t target, uint64_t replacement,
     kprintf("%s: start %#llx end %#llx\n", __func__, current_map->hdr.links.start,
             current_map->hdr.links.end);
 
+    /* Mach header of the calling process */
+    struct mach_header_64 *umh = (struct mach_header_64 *)current_map->hdr.links.start;
+
+    uint64_t replacement_kva = copy_caller_segments(umh, replacement);
+
+    kprintf("%s: replacment kva @ %#llx\n", __func__, replacement_kva);
+
+    tramp->replacement = replacement_kva;
+
+    /* uint32_t *cursor = (uint32_t *)replacement_kva; */
+    /* for(int i=0; i<200; i++){ */
+    /*     kprintf("%s: %#llx:      %#x\n", __func__, cursor+i, cursor[i]); */
+    /* } */
+
+    /* All the trampolines are set up, write the branch */
+    kprotect(target, 0x4000, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE);
+
+    *(uint32_t *)target = assemble_b(target, (uint64_t)tramp->tramp);
+
+    asm volatile("dc cvau, %0" : : "r" (target));
+    asm volatile("dsb ish");
+    asm volatile("ic ivau, %0" : : "r" (target));
+    asm volatile("dsb ish");
+    asm volatile("isb sy");
     /* struct vm_map_links *cur_links = &current_map->hdr.links; */
     /* struct vm_map_entry *cur_entry = (struct vm_map_entry *)1; */
 

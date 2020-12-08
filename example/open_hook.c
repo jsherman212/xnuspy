@@ -1,6 +1,7 @@
 #include <errno.h>
 #include <limits.h>
 #include <mach/mach.h>
+#include <mach-o/loader.h>
 #include <pthread.h>
 #include <signal.h>
 #include <stdio.h>
@@ -108,7 +109,8 @@ static int sysctl_handle_long(void *oidp, void *arg1, int arg2,
     /* req->oldlen = sizeof(nonsense); */
     /* req->oldidx = 8; */
     // XXX XXX XXX XXX XXX
-    return ENOENT;
+    /* return ENOENT; */
+    return 0;
 
     uint64_t tpidr_el1;
     asm volatile("mrs %0, tpidr_el1" : "=r" (tpidr_el1));
@@ -340,6 +342,8 @@ static void sideband_buffer_shmem_tests(void){
     /* DumpKernelMemory(current_task, 0x100); */
 }
 
+const int a = 42;
+
 static void address_space_tests(void){
     uint64_t current_task = 0;
     syscall(SYS_xnuspy_ctl, XNUSPY_GET_CURRENT_TASK, &current_task, 0, 0, 0);
@@ -350,6 +354,51 @@ static void address_space_tests(void){
         return;
 
 
+}
+
+/* Copy the calling process' __TEXT and __DATA onto a contiguous set
+ * of the pages we reserved before booting XNU. Lame, but safe. Swapping
+ * out translation table base registers and changing PTE OutputAddress'es
+ * was hacky and left me at the mercy of the scheduler.
+ *
+ * Returns the kernel virtual address of the start of the user's
+ * replacement function, or 0 upon failure.
+ */
+static uint64_t map_user_replacement(struct mach_header_64 *umh,
+        uint64_t replacement){
+    uint64_t replacement_kva = 0;
+
+    struct load_command *lc = umh + 1;
+    /* DumpMemory(lc, lc, 0x500); */
+
+    uint64_t aslr_slide = (uintptr_t)umh - 0x100000000;
+
+    for(int i=0; i<umh->ncmds; i++){
+        printf("%s: got cmd %d\n", __func__, lc->cmd);
+
+        if(lc->cmd != LC_SEGMENT_64)
+            goto next;
+
+        struct segment_command_64 *sc64 = (struct segment_command_64 *)lc;
+
+        if(strcmp(sc64->segname, "__TEXT") == 0){
+            printf("%s: __TEXT segment start %#llx end %#llx\n", __func__,
+                    sc64->vmaddr + aslr_slide,
+                    sc64->vmaddr + sc64->vmsize + aslr_slide);
+
+
+        }
+        if(strcmp(sc64->segname, "__DATA") == 0){
+            printf("%s: __DATA segment start %#llx end %#llx\n", __func__,
+                    sc64->vmaddr + aslr_slide,
+                    sc64->vmaddr + sc64->vmsize + aslr_slide);
+        }
+
+next:
+        lc = (struct load_command *)((uintptr_t)lc + lc->cmdsize);
+    }
+
+    return replacement_kva;
 }
 
 int main(int argc, char **argv){
@@ -413,7 +462,9 @@ int main(int argc, char **argv){
     /* for(;;){ */
     extern struct mach_header_64 *_mh_execute_header;
     printf("%#llx\n", &_mh_execute_header);
-    uint64_t sysctl_handle_long = 0xfffffff00800d508;
+    /* map_user_replacement(&_mh_execute_header, (uint64_t)sysctl_handle_long); */
+
+    /* uint64_t sysctl_handle_long = 0xfffffff00800d508; */
     ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xfffffff00800d508,
             sysctl_handle_long, &sysctl_handle_long_orig);
 
