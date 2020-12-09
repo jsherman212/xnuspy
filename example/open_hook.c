@@ -175,7 +175,12 @@ static kern_return_t _host_kernel_version(void *host, char *host_version){
 static void *(*kalloc_canblock_orig)(size_t *sizep, int canblock, void *site);
 
 static void *kalloc_canblock(size_t *sizep, int canblock, void *site){
-    return kalloc_canblock_orig(sizep, canblock, site);
+    void *mem = kalloc_canblock_orig(sizep, canblock, site);
+
+
+    return mem;
+
+    /* return kalloc_canblock_orig(sizep, canblock, site); */
 }
 
 static void DumpMemory(void *startaddr, void *data, size_t size){
