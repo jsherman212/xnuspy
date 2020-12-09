@@ -75,6 +75,7 @@ static void code(void){
 static int (*copyout)(const void *, uint64_t, vm_size_t);
 static int (*kprotect)(uint64_t, uint64_t, vm_prot_t);
 static void (*kprintf)(const char *, ...);
+static void (*IOSleep)(unsigned int mills);
 
 struct sysctl_req {
     void            *p;
@@ -110,7 +111,7 @@ static int sysctl_handle_long(void *oidp, void *arg1, int arg2,
     /* req->oldidx = 8; */
     // XXX XXX XXX XXX XXX
     /* return ENOENT; */
-    return 0;
+    /* return 0; */
 
     uint64_t tpidr_el1;
     asm volatile("mrs %0, tpidr_el1" : "=r" (tpidr_el1));
@@ -135,9 +136,23 @@ static int sysctl_handle_long(void *oidp, void *arg1, int arg2,
 
     /* return ENOENT; */
 
-    /* kprintf("%s: *****We are on CPU %d\n", __func__, curcpu); */
+    kprintf("%s: *****We are on CPU %d\n", __func__, curcpu);
 
-    return (int)curcpu;
+    /* int i = 0; */
+    /* for(;;){ */
+    /*     uint64_t dbgbvr2_el1; */
+    /*     /1* uint64_t revidr_el1; *1/ */
+    /*     asm volatile("mrs %0, dbgbvr2_el1" : "=r" (dbgbvr2_el1)); */
+    /*     /1* asm volatile("mrs %0, tpidr_el0" : "=r" (tpidr_el0)); *1/ */
+    /*     kprintf("%s(%d): *****dbgbvr2_el1 = %#llx tpidr_el0 = %#llx\n", */
+    /*             __func__, i, dbgbvr2_el1, tpidr_el0); */
+
+    /*     IOSleep(1000); */
+    /*     i++; */
+    /* } */
+
+    return 0;
+    /* return (int)curcpu; */
 
     /* return sysctl_handle_long_orig(oidp, arg1, arg2, req); */
 }
@@ -439,6 +454,8 @@ int main(int argc, char **argv){
     printf("got copyout @ %#llx\n", copyout);
     ret = syscall(SYS_xnuspy_ctl, XNUSPY_GET_FUNCTION, KPRINTF, &kprintf, 0);
     printf("got kprintf @ %#llx\n", kprintf);
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_GET_FUNCTION, IOSLEEP, &IOSleep, 0);
+    printf("got IOSleep @ %#llx\n", IOSleep);
     /* printf("%llx\n", *kprotect); */
 
     /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, g_num_pointer, 0, 0); */

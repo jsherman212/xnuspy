@@ -25,7 +25,8 @@
 #define KPROTECT                    (0)
 #define COPYOUT                     (1)
 #define KPRINTF                     (2)
-#define MAX_FUNCTION                KPRINTF
+#define IOSLEEP                     (3)
+#define MAX_FUNCTION                IOSLEEP
 
 #define MARK_AS_KERNEL_OFFSET __attribute__((section("__DATA,__koff")))
 
@@ -261,6 +262,43 @@ struct xnuspy_tramp {
     uint32_t orig[12];
 };
 
+/* Since I can't use the stack to persist stack frames across function calls,
+ * there will be a saved state struct for each CPU. If I were to use the
+ * stack, functions which rely on the stack to pass arguments would have
+ * incorrect parameters.
+ *
+ * refcntp:  a pointer to the refcnt of the current xnuspy_tramp struct
+ * entry_fp: original frame pointer when the kernel calls the hooked function
+ * entry_lr: original link register when the kernel calls the hooked function
+ * orig_fp:  original frame pointer when the user calls the original function
+ * orig_lr:  original link register when the user calls the original function
+ *
+ * Six saved state structs because the most powerful chips which checkra1n
+ * supports has six CPUs.
+ */
+struct xnuspy_saved_state {
+    /* struct xnuspy_tramp *tramp; */
+    _Atomic uint32_t *refcntp;      /* 0x0 */
+    uint64_t entry_fp;              /* 0x8 */
+    uint64_t entry_lr;              /* 0x10 */
+    uint64_t orig_fp;               /* 0x18 */
+    uint64_t orig_lr;               /* 0x20 */
+} g_saved_states[6] = {
+    { NULL, 0, 0, 0, 0 },
+};
+
+/* __attribute__ ((no_caller_saved_registers)) static void save_entry_regs(void){ */
+
+/* } */
+
+/* __attribute__ ((no_caller_saved_registers)) */
+/*     struct xnuspy_saved_state get_saved_state(void){ */
+/*     uint8_t cpuid; */
+/*     uint64_t mpidr_el1; */
+/*     asm volatile("mrs %0, mpidr_el1" : "=r" (mpidr_el1)); */
+/*     return k */
+/* } */
+
 static void desc_xnuspy_tramp(struct xnuspy_tramp *t, uint32_t orig_tramp_len){
     kprintf("This xnuspy_tramp is @ %#llx\n", (uint64_t)t);
     kprintf("Replacement: %#llx\n", t->replacement);
@@ -320,11 +358,34 @@ void enable_preemption(void){
     _enable_preemption();
 }
 
+/* Get a pointer to the xnuspy_saved_state struct for this CPU.
+ *
+ * Parameters:
+ *  $0: the register to store the pointer to the xnuspy_saved_state struct.
+ *  $1: the first temporary register we can use
+ *  $2: the second temporary register we can use
+ *  $3: the third temporary register we can use
+ */
+asm(""
+        ".macro GET_SAVED_STATE\n"
+        "adrp $1, _g_saved_states@PAGE\n"
+        "add $1, $1, _g_saved_states@PAGEOFF\n"
+        "mrs $2, mpidr_el1\n"
+        "and $2, $2, 0xff\n"
+        /* hardcoded sizeof(struct xnuspy_saved_state) - 0x28 */
+        "mov $3, 0x28\n"
+        "madd $0, $2, $3, $1\n"
+        ".endmacro\n"
+   );
+
 /* If you decide to edit the functions marked as naked, you need to make
  * sure clang isn't clobbering registers. */
 
 /* reletramp: release a reference, using the reference count pointer held
  * inside DBGBVR2_EL1.
+ *
+ * reletramp: release a reference, using the pointer to the saved state
+ * struct in X17.
  *
  * TODO actually sever the branch from the hooked function to the tramp
  * when the count hits zero
@@ -332,10 +393,14 @@ void enable_preemption(void){
  * reletramp0 and reletramp1 will call reletramp_common to drop a reference,
  * and then they'll branch back to their original callers. Because we're
  * restoring LR in both those functions, using BL is safe.
+ *
+ * XXX Sometimes we panic because DBGBVR2_EL1 is NULL?
  */
 __attribute__ ((naked)) void reletramp_common(void){
     asm volatile(""
-            "mrs x16, dbgbvr2_el1\n"
+            /* "mrs x16, dbgbvr2_el1\n" */
+            /* "isb sy\n" */
+            "ldr x16, [x17]\n"
             "1:\n"
             "ldaxr w14, [x16]\n"
             "mov x15, x14\n"
@@ -347,14 +412,17 @@ __attribute__ ((naked)) void reletramp_common(void){
 }
 
 /* This function is only called when the replacement code returns back to
- * its caller. We are always returning back kernel code if we're here. */
+ * its caller. We are always returning back to kernel code if we're here. */
 __attribute__ ((naked)) void reletramp0(void){
     asm volatile(""
-            "mov x19, x0\n"
+            "GET_SAVED_STATE x17, x11, x12, x13\n"
+            /* "mov x16, x17\n" */
             "bl _reletramp_common\n"
-            "mov x0, x19\n"
-            "mrs x29, dbgbvr1_el1\n"
-            "mrs x30, dbgbvr0_el1\n"
+            "ldr x29, [x17, 0x8]\n"
+            "ldr x30, [x17, 0x10]\n"
+            /* "mrs x29, dbgbvr1_el1\n" */
+            /* "mrs x30, dbgbvr0_el1\n" */
+            /* "isb sy\n" */
             "ret\n"
             );
 }
@@ -364,11 +432,14 @@ __attribute__ ((naked)) void reletramp0(void){
  * code if we're here. */ 
 __attribute__ ((naked)) void reletramp1(void){
     asm volatile(""
-            "mov x19, x0\n"
+            "GET_SAVED_STATE x17, x11, x12, x13\n"
+            /* "mov x16, x17\n" */
             "bl _reletramp_common\n"
-            "mov x0, x19\n"
-            "mrs x29, dbgbvr4_el1\n"
-            "mrs x30, dbgbvr3_el1\n"
+            "ldr x29, [x17, 0x18]\n"
+            "ldr x30, [x17, 0x20]\n"
+            /* "mrs x29, dbgbvr4_el1\n" */
+            /* "mrs x30, dbgbvr3_el1\n" */
+            /* "isb sy\n" */
             "ret\n"
             /* : : [ttbr0_el1_dist] "r" (DIST_FROM_REFCNT_TO(ttbr0_el1)) */
             );
@@ -402,29 +473,44 @@ __attribute__ ((naked)) void reletramp1(void){
  * software breakpoints, though. You're able to specify whether you want a
  * software breakpoint or a hardware breakpoint inside of LLDB.
  */
+/* __attribute__ ((naked)) void save_original_state0(void){ */
+/*     asm volatile("" */
+/*             /1* turn off PAN bit *1/ */
+/*             ".long 0xd500409f\n" */
+/*             "msr dbgbvr0_el1, x30\n" */
+/*             "msr dbgbvr1_el1, x29\n" */
+/*             "msr dbgbvr2_el1, x16\n" */
+/*             "isb sy\n" */
+/*             "mov x30, %[reletramp0]\n" */
+/*             /1* branch back to tramp+2 *1/ */
+/*             "add x16, x16, %[tramp_plus_2_dist]\n" */
+/*             "br x16\n" */
+/*             : : [reletramp0] "r" (reletramp0), */
+/*             [tramp_plus_2_dist] "r" (DIST_FROM_REFCNT_TO(tramp[2])) */
+/*             /1* [disable_preemption] "r" (_disable_preemption) *1/ */
+/*             ); */
+/* } */
+
 __attribute__ ((naked)) void save_original_state0(void){
     asm volatile(""
             /* turn off PAN bit */
             ".long 0xd500409f\n"
-            /* turn off SCTLR_EL1.WXN */
-            /* "mrs x9, sctlr_el1\n" */
-            /* "and x9, x9, ~0x80000\n" */
-            /* "msr sctlr_el1, x9\n" */
-            /* "mrs x9, DAIF\n" */
-            /* "msr dbgwvr0_el1, x9\n" */
-            /* "msr DAIFSet, #0xf\n" */
-            "msr dbgbvr0_el1, x30\n"
-            "msr dbgbvr1_el1, x29\n"
-            "msr dbgbvr2_el1, x16\n"
-            /* "mov x21, %[tramp_plus_2_dist]\n" */
+            "GET_SAVED_STATE x17, x11, x12, x13\n"
+            "str x16, [x17]\n"
+            "str x29, [x17, 0x8]\n"
+            "str x30, [x17, 0x10]\n"
+            /* "dsb sy\n" */
+            /* "isb sy\n" */
+            /* "msr dbgbvr0_el1, x30\n" */
+            /* "msr dbgbvr1_el1, x29\n" */
+            /* "msr dbgbvr2_el1, x16\n" */
+            /* "isb sy\n" */
             "mov x30, %[reletramp0]\n"
             /* branch back to tramp+2 */
-            /* "add x16, x16, x21\n" */
             "add x16, x16, %[tramp_plus_2_dist]\n"
             "br x16\n"
             : : [reletramp0] "r" (reletramp0),
             [tramp_plus_2_dist] "r" (DIST_FROM_REFCNT_TO(tramp[2]))
-            /* [disable_preemption] "r" (_disable_preemption) */
             );
 }
 
@@ -432,24 +518,20 @@ __attribute__ ((naked)) void save_original_state0(void){
  * the user calls the original function from their replacement code. */
 __attribute__ ((naked)) void save_original_state1(void){
     asm volatile(""
-            "msr dbgbvr3_el1, x30\n"
-            "msr dbgbvr4_el1, x29\n"
-            /* "mov x21, %[orig_plus_1_dist]\n" */
-            /* "mov x20, %[reletramp1]\n" */
-            /* "mov x19, %[enable_preemption]\n" */
-            /* "blr x19\n" */
-            /* "mov x30, x20\n" */
+            "GET_SAVED_STATE x17, x11, x12, x13\n"
+            "str x29, [x17, 0x18]\n"
+            "str x30, [x17, 0x20]\n"
+            /* "msr dbgbvr3_el1, x30\n" */
+            /* "msr dbgbvr4_el1, x29\n" */
             "mov x30, %[reletramp1]\n"
-            /* "mrs x16, dbgwvr0_el1\n" */
-            /* "msr DAIF, x16\n" */
-            "mrs x16, dbgbvr2_el1\n"
+            /* "mrs x16, dbgbvr2_el1\n" */
+            /* "isb sy\n" */
             /* branch back to orig+1 */
-            /* "add x16, x16, x21\n" */
+            "ldr x16, [x17]\n"
             "add x16, x16, %[orig_plus_1_dist]\n"
             "br x16\n"
             : : [orig_plus_1_dist] "r" (DIST_FROM_REFCNT_TO(orig[1])),
             [reletramp1] "r" (reletramp1)
-            /* [enable_preemption] "r" (_enable_preemption) */
             );
 }
 
@@ -466,7 +548,10 @@ __attribute__ ((naked)) void save_original_state1(void){
  */
 __attribute__ ((naked)) void reftramp0(void){
     asm volatile(""
-            "mrs x16, dbgbvr2_el1\n"
+            "GET_SAVED_STATE x17, x11, x12, x13\n"
+            "ldr x16, [x17]\n"
+            /* "mrs x16, dbgbvr2_el1\n" */
+            /* "isb sy\n" */
             "1:\n"
             "ldaxr w14, [x16]\n"
             "mov x15, x14\n"
@@ -482,7 +567,10 @@ __attribute__ ((naked)) void reftramp0(void){
 
 __attribute__ ((naked)) void reftramp1(void){
     asm volatile(""
-            "mrs x16, dbgbvr2_el1\n"
+            /* "mrs x16, dbgbvr2_el1\n" */
+            /* "isb sy\n" */
+            "GET_SAVED_STATE x17, x11, x12, x13\n"
+            "ldr x16, [x17]\n"
             "1:\n"
             "ldaxr w14, [x16]\n"
             "mov x15, x14\n"
@@ -517,7 +605,7 @@ int strcmp(const char *s1, const char *s2){
 /* Copy the calling process' __TEXT and __DATA onto a contiguous set
  * of the pages we reserved before booting XNU. Lame, but safe. Swapping
  * translation table base registers and changing PTE OutputAddress'es
- * was hacky and left me at the mercy of the scheduler.
+ * was hacky.
  *
  * Returns the kernel virtual address of the start of the user's
  * replacement function, or 0 upon failure.
@@ -684,18 +772,6 @@ static int xnuspy_install_hook2(uint64_t target, uint64_t replacement,
     asm volatile("ic ivau, %0" : : "r" (target));
     asm volatile("dsb ish");
     asm volatile("isb sy");
-    /* struct vm_map_links *cur_links = &current_map->hdr.links; */
-    /* struct vm_map_entry *cur_entry = (struct vm_map_entry *)1; */
-
-    /* for(int i=0; i<20; i++){ */
-    /*     if(!cur_entry) */
-    /*         break; */
-
-
-
-    /*     cur_entry = cur_entry */ 
-    /* } */
-
 
     return 0;
 }
@@ -1073,6 +1149,9 @@ static int xnuspy_get_function(uint64_t which, uint64_t /* __user */ outp){
             break;
         case KPRINTF:
             which = (uint64_t)kprintf;
+            break;
+        case IOSLEEP:
+            which = (uint64_t)IOSleep;
             break;
         default:
             break;

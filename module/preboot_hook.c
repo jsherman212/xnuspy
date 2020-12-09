@@ -875,6 +875,11 @@ void xnuspy_preboot_hook(void){
     uint32_t *copyio_zalloc_check = xnu_va_to_ptr(0xFFFFFFF00792E370 + kernel_slide);
     *copyio_zalloc_check = 0;
 
+    /* iphone 8 13.6.1: Do not let XNU use the hardware breakpoint registers */
+    /* uint32_t *hwbp_reg_patch = xnu_va_to_ptr(0xFFFFFFF007D12714 + kernel_slide); */
+    /* mov x10, xzr */
+    /* *hwbp_reg_patch = 0xaa1f03ea; */
+
     /* combat short read */
     asm volatile(".align 14");
     

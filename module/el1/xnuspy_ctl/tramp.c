@@ -67,7 +67,7 @@ static void generate_tbz_or_tbnz_equivalent(uint32_t orig_instr, uint32_t **tram
      *  n < 32: tst[n] == TST W0, (1 << (n-1))
      *  n > 32: tst[n] == TST X0, (1 << (n-1))
      */
-    const uint32_t tst[] = {
+    static const uint32_t tst[] = {
         0x7200001f, 0x721f001f, 0x721e001f, 0x721d001f, 0x721c001f, 0x721b001f,
         0x721a001f, 0x7219001f, 0x7218001f, 0x7217001f, 0x7216001f, 0x7215001f,
         0x7214001f, 0x7213001f, 0x7212001f, 0x7211001f, 0x7210001f, 0x720f001f,

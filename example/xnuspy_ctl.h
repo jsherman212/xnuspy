@@ -14,5 +14,6 @@
 #define KPROTECT                                                    (0)
 #define COPYOUT                                                     (1)
 #define KPRINTF                     (2)
+#define IOSLEEP (3)
 
 #endif
