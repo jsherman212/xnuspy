@@ -277,7 +277,6 @@ struct xnuspy_tramp {
  * supports has six CPUs.
  */
 struct xnuspy_saved_state {
-    /* struct xnuspy_tramp *tramp; */
     _Atomic uint32_t *refcntp;      /* 0x0 */
     uint64_t entry_fp;              /* 0x8 */
     uint64_t entry_lr;              /* 0x10 */
@@ -305,7 +304,7 @@ static void desc_xnuspy_tramp(struct xnuspy_tramp *t, uint32_t orig_tramp_len){
     kprintf("Refcount:    %d\n", t->refcnt);
     
     kprintf("Replacement trampoline:\n");
-    for(int i=0; i<5; i++)
+    for(int i=0; i<sizeof(t->tramp)/sizeof(t->tramp[0]); i++)
         kprintf("\ttramp[%d]    %#x\n", i, t->tramp[i]);
 
     kprintf("Original trampoline:\n");
@@ -732,6 +731,8 @@ static int xnuspy_install_hook2(uint64_t target, uint64_t replacement,
     void *cpudata = *(void **)(tpidr_el1 + 0x478);
     uint16_t curcpu = *(uint16_t *)cpudata;
     desc_xnuspy_tramp(tramp, orig_tramp_len);
+
+    IOSleep(10000);
 
     /* struct pmap *pmap = get_task_pmap(current_task()); */
 

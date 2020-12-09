@@ -136,7 +136,8 @@ static int sysctl_handle_long(void *oidp, void *arg1, int arg2,
 
     /* return ENOENT; */
 
-    kprintf("%s: *****We are on CPU %d\n", __func__, curcpu);
+    kprintf("%s: *****We are on CPU %d, calling orig function...\n", __func__,
+            curcpu);
 
     /* int i = 0; */
     /* for(;;){ */
@@ -151,10 +152,10 @@ static int sysctl_handle_long(void *oidp, void *arg1, int arg2,
     /*     i++; */
     /* } */
 
-    return 0;
+    /* return 0; */
     /* return (int)curcpu; */
 
-    /* return sysctl_handle_long_orig(oidp, arg1, arg2, req); */
+    return sysctl_handle_long_orig(oidp, arg1, arg2, req);
 }
 
 static kern_return_t (*host_kernel_version_orig)(void *, char *);
@@ -171,10 +172,10 @@ static kern_return_t _host_kernel_version(void *host, char *host_version){
     return KERN_SUCCESS;
 }
 
-static void *(*kalloc_canblock_orig)(size_t *sz, void *site, int block);
+static void *(*kalloc_canblock_orig)(size_t *sizep, int canblock, void *site);
 
-static void *kalloc_canblock(size_t *sz, void *site, int block){
-    return kalloc_canblock_orig(sz, site, block);
+static void *kalloc_canblock(size_t *sizep, int canblock, void *site){
+    return kalloc_canblock_orig(sizep, canblock, site);
 }
 
 static void DumpMemory(void *startaddr, void *data, size_t size){
@@ -464,10 +465,10 @@ int main(int argc, char **argv){
     /* iphone 8 13.6.1 */
     /* uint64_t kalloc_canblock = 0xFFFFFFF007C031E4; */
     /* void *(*kalloc_canblock_orig)(size_t *, void *, bool) = NULL; */
-    /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF007C031E4, */
-    /*         kalloc_canblock, &kalloc_canblock_orig); */
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF007C031E4,
+            kalloc_canblock, &kalloc_canblock_orig);
 
-    /* printf("kalloc_canblock_orig = %#llx\n", kalloc_canblock_orig); */
+    printf("kalloc_canblock_orig = %#llx\n", kalloc_canblock_orig);
 
     /* uint64_t some_fxn_with_cbz_as_first = 0xFFFFFFF007E5FFCC; */
     /* void (*dummy)(void) = NULL; */
@@ -482,14 +483,14 @@ int main(int argc, char **argv){
     /* map_user_replacement(&_mh_execute_header, (uint64_t)sysctl_handle_long); */
 
     /* uint64_t sysctl_handle_long = 0xfffffff00800d508; */
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xfffffff00800d508,
-            sysctl_handle_long, &sysctl_handle_long_orig);
+    /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xfffffff00800d508, */
+    /*         sysctl_handle_long, &sysctl_handle_long_orig); */
 
-    printf("sysctl_handle_long_orig = %#llx\n", sysctl_handle_long_orig);
+    /* printf("sysctl_handle_long_orig = %#llx\n", sysctl_handle_long_orig); */
 
-    if(ret){
-        printf("%s\n", strerror(errno));
-    }
+    /* if(ret){ */
+    /*     printf("%s\n", strerror(errno)); */
+    /* } */
 
 
     /* address_space_tests(); */

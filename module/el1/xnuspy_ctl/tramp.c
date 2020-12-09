@@ -5,6 +5,8 @@
 #include "asm.h"
 #include "externs.h"
 
+#define NOP 0xD503201F
+
 static void generate_b_cond_equivalent(uint32_t orig_instr, uint32_t **tramp,
         uint32_t *len_out){
     /* get the condition of this branch, and we'll use that to build
@@ -155,9 +157,11 @@ void generate_original_tramp(uint64_t addrof_second_instr,
     uint32_t *tramp_base = tramp;
 
     /* B _save_original_state1 */
-    *tramp++ = assemble_b((uint64_t)tramp_base, (uint64_t)save_original_state1);
+    /* *tramp++ = assemble_b((uint64_t)tramp_base, (uint64_t)save_original_state1); */
+    *tramp++ = NOP;
     /* B _reftramp1 */
-    *tramp++ = assemble_b((uint64_t)(tramp_base + 1), (uint64_t)reftramp1);
+    /* *tramp++ = assemble_b((uint64_t)(tramp_base + 1), (uint64_t)reftramp1); */
+    *tramp++ = NOP;
 
     uint32_t tramp_len = 2;
 
@@ -262,9 +266,11 @@ void generate_replacement_tramp(void (*save_original_state0)(void),
     /* ADR X16, #-0x4 */
     tramp[0] = 0x10fffff0;
     /* B _save_original_state0 */
-    tramp[1] = assemble_b((uint64_t)(tramp + 1), (uint64_t)save_original_state0);
+    /* tramp[1] = assemble_b((uint64_t)(tramp + 1), (uint64_t)save_original_state0); */
+    tramp[1] = NOP;
     /* B _reftramp */
-    tramp[2] = assemble_b((uint64_t)(tramp + 2), (uint64_t)reftramp0);
+    /* tramp[2] = assemble_b((uint64_t)(tramp + 2), (uint64_t)reftramp0); */
+    tramp[2] = NOP;
     /* ADR X16, #-0x18 */
     tramp[3] = 0x10ffff50;
     /* LDR X16, [X16] */
