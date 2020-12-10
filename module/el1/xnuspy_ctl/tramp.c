@@ -148,22 +148,12 @@ static void generate_adr_equivalent(uint32_t orig_instr, uint64_t orig_instr_pc,
  *
  * 'addrof_second_instr' is to know where to branch back to. */
 void generate_original_tramp(uint64_t addrof_second_instr,
-        void (*save_original_state1)(void), void (*reftramp1)(void),
         uint32_t *tramp, uint32_t *tramp_len_out){
     uint32_t orig_instr = *(uint32_t *)(addrof_second_instr - 4);
 
     kprintf("%s: original instruction %#x\n", __func__, orig_instr);
 
-    uint32_t *tramp_base = tramp;
-
-    /* B _save_original_state1 */
-    /* *tramp++ = assemble_b((uint64_t)tramp_base, (uint64_t)save_original_state1); */
-    *tramp++ = NOP;
-    /* B _reftramp1 */
-    /* *tramp++ = assemble_b((uint64_t)(tramp_base + 1), (uint64_t)reftramp1); */
-    *tramp++ = NOP;
-
-    uint32_t tramp_len = 2;
+    uint32_t tramp_len = 0;
 
     if((orig_instr & 0xff000010) == 0x54000000){
         generate_b_cond_equivalent(orig_instr, &tramp, &tramp_len);
@@ -259,22 +249,13 @@ void generate_original_tramp(uint64_t addrof_second_instr,
     *tramp_len_out = tramp_len;
 }
 
-/* This function generates a replacement trampoline and returns it through
- * the 'tramp' parameter. 'tramp' is expected to be an array of 5 uint32_t's */
-void generate_replacement_tramp(void (*save_original_state0)(void),
-        void (*reftramp0)(void), uint32_t *tramp){
-    /* ADR X16, #-0x4 */
-    tramp[0] = 0x10fffff0;
-    /* B _save_original_state0 */
-    /* tramp[1] = assemble_b((uint64_t)(tramp + 1), (uint64_t)save_original_state0); */
-    tramp[1] = NOP;
-    /* B _reftramp */
-    /* tramp[2] = assemble_b((uint64_t)(tramp + 2), (uint64_t)reftramp0); */
-    tramp[2] = NOP;
-    /* ADR X16, #-0x18 */
-    tramp[3] = 0x10ffff50;
+/* this function generates a replacement trampoline and returns it through
+ * the 'tramp' parameter. 'tramp' is expected to be an array of 4 uint32_t's */
+void generate_replacement_tramp(uint32_t *tramp){
+    /* ADR X16, #-0x8 */
+    tramp[0] = 0x10ffffd0;
     /* LDR X16, [X16] */
-    tramp[4] = 0xf9400210;
+    tramp[1] = 0xf9400210;
     /* BR X16 */
-    tramp[5] = 0xd61f0200;
+    tramp[2] = 0xd61f0200;
 }

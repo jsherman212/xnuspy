@@ -181,31 +181,23 @@ MARK_AS_KERNEL_OFFSET queue_head_t *map_pmap_list;
 struct xnuspy_tramp {
     /* Kernel virtual address of copied userland replacement */
     uint64_t replacement;
-    _Atomic uint32_t refcnt;
     /* The trampoline for a hooked function. When the user installs a hook
      * on a function, the first instruction of that function is replaced
      * with a branch to here. An xnuspy trampoline looks like this:
-     *  tramp[0]    ADR X16, <refcntp>
-     *  tramp[1]    B _save_original_state0
-     *  tramp[2]    B _reftramp0
-     *  tramp[3]    ADR X16, <replacementp>
-     *  tramp[4]    LDR X16, [X16]
-     *  tramp[5]    BR X16
+     *  tramp[0]    ADR X16, <replacementp>
+     *  tramp[1]    LDR X16, [X16]
+     *  tramp[2]    BR X16
      */
-    uint32_t tramp[6];
+    uint32_t tramp[3];
     /* An abstraction that represents the original function. It's just another
-     * trampoline, but it can take on one of five forms. Every form starts
-     * with this header:
-     *  orig[0]     B _save_original_state1
-     *  orig[1]     B _reftramp1
-     *
-     * Continuing from that header, the most common form is:
-     *  orig[2]     <original first instruction of the hooked function>
-     *  orig[3]     ADR X16, #0xc
-     *  orig[4]     LDR X16, [X16]
-     *  orig[5]     BR X16
-     *  orig[6]     <address of second instruction of the hooked function>[31:0]
-     *  orig[7]     <address of second instruction of the hooked function>[63:32]
+     * trampoline, but it can take on one of five forms. The most common
+     * form is this:
+     *  orig[0]     <original first instruction of the hooked function>
+     *  orig[1]     ADR X16, #0xc
+     *  orig[2]     LDR X16, [X16]
+     *  orig[3]     BR X16
+     *  orig[4]     <address of second instruction of the hooked function>[31:0]
+     *  orig[5]     <address of second instruction of the hooked function>[63:32]
      *
      * The above form is taken when the original first instruction of the hooked
      * function is not an immediate conditional branch (b.cond), an immediate
@@ -216,92 +208,55 @@ struct xnuspy_tramp {
      * of instructions.
      *
      * If the first instruction was B.cond <label>
-     *  orig[2]     ADR X16, #0x14
-     *  orig[3]     ADR X17, #0x18
-     *  orig[4]     CSEL X16, X16, X17, <cond>
-     *  orig[5]     LDR X16, [X16]
-     *  orig[6]     BR X16
-     *  orig[7]     <destination if condition holds>[31:0]
-     *  orig[8]     <destination if condition holds>[63:32]
-     *  orig[9]     <address of second instruction of the hooked function>[31:0]
-     *  orig[10]    <address of second instruction of the hooked function>[63:32]
-     *
-     * If the first instruction was CBZ Rn, <label> or CBNZ Rn, <label>
-     *  orig[2]     ADR X16, #0x18
-     *  orig[3]     ADR X17, #0x1c
-     *  orig[4]     CMP Rn, #0
-     *  orig[5]     CSEL X16, X16, X17, <if CBZ, eq, if CBNZ, ne>
-     *  orig[6]     LDR X16, [X16]
-     *  orig[7]     BR X16
-     *  orig[8]     <destination if condition holds>[31:0]
-     *  orig[9]     <destination if condition holds>[63:32]
-     *  orig[10]    <address of second instruction of the hooked function>[31:0]
-     *  orig[11]    <address of second instruction of the hooked function>[63:32]
-     *
-     * If the first instruction was TBZ Rn, #n, <label> or TBNZ Rn, #n, <label>
-     *  orig[2]     ADR X16, #0x18
-     *  orig[3]     ADR X17, #0x1c
-     *  orig[4]     TST Rn, #(1 << n)
-     *  orig[5]     CSEL X16, X16, X17, <if TBZ, eq, if TBNZ, ne>
-     *  orig[6]     LDR X16, [X16]
-     *  orig[7]     BR X16
-     *  orig[8]     <destination if condition holds>[31:0]
-     *  orig[9]     <destination if condition holds>[63:32]
-     *  orig[10]    <address of second instruction of the hooked function>[31:0]
-     *  orig[11]    <address of second instruction of the hooked function>[63:32]
-     *
-     * If the first instruction was ADR Rn, #n
-     *  orig[2]     ADRP Rn, #n@PAGE
-     *  orig[3]     ADD Rn, Rn, #n@PAGEOFF
-     *  orig[4]     ADR X16, #0xc
-     *  orig[5]     LDR X16, [X16]
-     *  orig[6]     BR X16
+     *  orig[0]     ADR X16, #0x14
+     *  orig[1]     ADR X17, #0x18
+     *  orig[2]     CSEL X16, X16, X17, <cond>
+     *  orig[3]     LDR X16, [X16]
+     *  orig[4]     BR X16
+     *  orig[5]     <destination if condition holds>[31:0]
+     *  orig[6]     <destination if condition holds>[63:32]
      *  orig[7]     <address of second instruction of the hooked function>[31:0]
      *  orig[8]     <address of second instruction of the hooked function>[63:32]
+     *
+     * If the first instruction was CBZ Rn, <label> or CBNZ Rn, <label>
+     *  orig[0]     ADR X16, #0x18
+     *  orig[1]     ADR X17, #0x1c
+     *  orig[2]     CMP Rn, #0
+     *  orig[3]     CSEL X16, X16, X17, <if CBZ, eq, if CBNZ, ne>
+     *  orig[4]     LDR X16, [X16]
+     *  orig[5]     BR X16
+     *  orig[6]     <destination if condition holds>[31:0]
+     *  orig[7]     <destination if condition holds>[63:32]
+     *  orig[8]     <address of second instruction of the hooked function>[31:0]
+     *  orig[9]     <address of second instruction of the hooked function>[63:32]
+     *
+     * If the first instruction was TBZ Rn, #n, <label> or TBNZ Rn, #n, <label>
+     *  orig[0]     ADR X16, #0x18
+     *  orig[1]     ADR X17, #0x1c
+     *  orig[2]     TST Rn, #(1 << n)
+     *  orig[3]     CSEL X16, X16, X17, <if TBZ, eq, if TBNZ, ne>
+     *  orig[4]     LDR X16, [X16]
+     *  orig[5]     BR X16
+     *  orig[6]     <destination if condition holds>[31:0]
+     *  orig[7]     <destination if condition holds>[63:32]
+     *  orig[8]     <address of second instruction of the hooked function>[31:0]
+     *  orig[9]     <address of second instruction of the hooked function>[63:32]
+     *
+     * If the first instruction was ADR Rn, #n
+     *  orig[0]     ADRP Rn, #n@PAGE
+     *  orig[1]     ADD Rn, Rn, #n@PAGEOFF
+     *  orig[2]     ADR X16, #0xc
+     *  orig[3]     LDR X16, [X16]
+     *  orig[4]     BR X16
+     *  orig[5]     <address of second instruction of the hooked function>[31:0]
+     *  orig[6]     <address of second instruction of the hooked function>[63:32]
      */
-    uint32_t orig[12];
+    uint32_t orig[10];
 };
-
-/* Since I can't use the stack to persist stack frames across function calls,
- * there will be a saved state struct for each CPU. If I were to use the
- * stack, functions which rely on the stack to pass arguments would have
- * incorrect parameters.
- *
- * refcntp:  a pointer to the refcnt of the current xnuspy_tramp struct
- * entry_fp: original frame pointer when the kernel calls the hooked function
- * entry_lr: original link register when the kernel calls the hooked function
- * orig_fp:  original frame pointer when the user calls the original function
- * orig_lr:  original link register when the user calls the original function
- *
- * Six saved state structs because the most powerful chips which checkra1n
- * supports has six CPUs.
- */
-struct xnuspy_saved_state {
-    _Atomic uint32_t *refcntp;      /* 0x0 */
-    uint64_t entry_fp;              /* 0x8 */
-    uint64_t entry_lr;              /* 0x10 */
-    uint64_t orig_fp;               /* 0x18 */
-    uint64_t orig_lr;               /* 0x20 */
-} g_saved_states[6] = {
-    { NULL, 0, 0, 0, 0 },
-};
-
-/* __attribute__ ((no_caller_saved_registers)) static void save_entry_regs(void){ */
-
-/* } */
-
-/* __attribute__ ((no_caller_saved_registers)) */
-/*     struct xnuspy_saved_state get_saved_state(void){ */
-/*     uint8_t cpuid; */
-/*     uint64_t mpidr_el1; */
-/*     asm volatile("mrs %0, mpidr_el1" : "=r" (mpidr_el1)); */
-/*     return k */
-/* } */
 
 static void desc_xnuspy_tramp(struct xnuspy_tramp *t, uint32_t orig_tramp_len){
     kprintf("This xnuspy_tramp is @ %#llx\n", (uint64_t)t);
     kprintf("Replacement: %#llx\n", t->replacement);
-    kprintf("Refcount:    %d\n", t->refcnt);
     
     kprintf("Replacement trampoline:\n");
     for(int i=0; i<sizeof(t->tramp)/sizeof(t->tramp[0]); i++)
@@ -357,240 +312,6 @@ void enable_preemption(void){
     _enable_preemption();
 }
 
-/* Get a pointer to the xnuspy_saved_state struct for this CPU.
- *
- * Parameters:
- *  $0: the register to store the pointer to the xnuspy_saved_state struct.
- *  $1: the first temporary register we can use
- *  $2: the second temporary register we can use
- *  $3: the third temporary register we can use
- */
-asm(""
-        ".macro GET_SAVED_STATE\n"
-        "adrp $1, _g_saved_states@PAGE\n"
-        "add $1, $1, _g_saved_states@PAGEOFF\n"
-        "mrs $2, mpidr_el1\n"
-        "and $2, $2, 0xff\n"
-        /* hardcoded sizeof(struct xnuspy_saved_state) - 0x28 */
-        "mov $3, 0x28\n"
-        "madd $0, $2, $3, $1\n"
-        ".endmacro\n"
-   );
-
-/* If you decide to edit the functions marked as naked, you need to make
- * sure clang isn't clobbering registers. */
-
-/* reletramp: release a reference, using the reference count pointer held
- * inside DBGBVR2_EL1.
- *
- * reletramp: release a reference, using the pointer to the saved state
- * struct in X17.
- *
- * TODO actually sever the branch from the hooked function to the tramp
- * when the count hits zero
- *
- * reletramp0 and reletramp1 will call reletramp_common to drop a reference,
- * and then they'll branch back to their original callers. Because we're
- * restoring LR in both those functions, using BL is safe.
- *
- * XXX Sometimes we panic because DBGBVR2_EL1 is NULL?
- */
-__attribute__ ((naked)) void reletramp_common(void){
-    asm volatile(""
-            /* "mrs x16, dbgbvr2_el1\n" */
-            /* "isb sy\n" */
-            "ldr x16, [x17]\n"
-            "1:\n"
-            "ldaxr w14, [x16]\n"
-            "mov x15, x14\n"
-            "sub w14, w15, #1\n"
-            "stlxr w15, w14, [x16]\n"
-            "cbnz w15, 1b\n"
-            "ret\n"
-            );
-}
-
-/* This function is only called when the replacement code returns back to
- * its caller. We are always returning back to kernel code if we're here. */
-__attribute__ ((naked)) void reletramp0(void){
-    asm volatile(""
-            "GET_SAVED_STATE x17, x11, x12, x13\n"
-            /* "mov x16, x17\n" */
-            "bl _reletramp_common\n"
-            "ldr x29, [x17, 0x8]\n"
-            "ldr x30, [x17, 0x10]\n"
-            /* "mrs x29, dbgbvr1_el1\n" */
-            /* "mrs x30, dbgbvr0_el1\n" */
-            /* "isb sy\n" */
-            "ret\n"
-            );
-}
-
-/* This function is only called when the original function returns back
- * to the user's replacement code. We are always returning back to the user's
- * code if we're here. */ 
-__attribute__ ((naked)) void reletramp1(void){
-    asm volatile(""
-            "GET_SAVED_STATE x17, x11, x12, x13\n"
-            /* "mov x16, x17\n" */
-            "bl _reletramp_common\n"
-            "ldr x29, [x17, 0x18]\n"
-            "ldr x30, [x17, 0x20]\n"
-            /* "mrs x29, dbgbvr4_el1\n" */
-            /* "mrs x30, dbgbvr3_el1\n" */
-            /* "isb sy\n" */
-            "ret\n"
-            /* : : [ttbr0_el1_dist] "r" (DIST_FROM_REFCNT_TO(ttbr0_el1)) */
-            );
-}
-
-/* save_original_state0: save this CPU's original FP, LR, and
- * X16, and set LR to the appropriate 'reletramp' routine. This is only called
- * when the kernel calls the hooked function. X16 holds a pointer to the refcnt
- * of an xnuspy_tramp when this is called.
- *
- * For both save_original_state functions, I need a way to persist data. For
- * save_original_state0, I need to save a pointer to the reference count of
- * whatever xnuspy_tramp struct X16 holds. For both, I also need to save the
- * current stack frame because I set LR to 'reletramp' and have to be able to
- * branch back to the original caller.
- *
- * Normally, I would just use the stack, but functions like
- * kprintf rely on some arguments being passed on the stack. If I were
- * to modify it, the parameters would be incorrect inside of the user's
- * replacement code. Instead of using the stack, I will use the first five
- * debug breakpoint value registers in the following way:
- *  
- * DBGBVR0_EL1: Original link register when the kernel calls the hooked function.
- * DBGBVR1_EL1: Original frame pointer when the kernel calls the hooked function.
- * DBGBVR2_EL1: A pointer to the current xnuspy_tramp's reference count.
- * DBGBVR3_EL1: Original link register when the user calls the original function.
- * DBGBVR4_EL1: Original frame pointer when the user calls the original function.
- *
- * Because I am using these registers, you CANNOT set any hardware breakpoints
- * if you're debugging something while xnuspy is doing its thing. You can set
- * software breakpoints, though. You're able to specify whether you want a
- * software breakpoint or a hardware breakpoint inside of LLDB.
- */
-/* __attribute__ ((naked)) void save_original_state0(void){ */
-/*     asm volatile("" */
-/*             /1* turn off PAN bit *1/ */
-/*             ".long 0xd500409f\n" */
-/*             "msr dbgbvr0_el1, x30\n" */
-/*             "msr dbgbvr1_el1, x29\n" */
-/*             "msr dbgbvr2_el1, x16\n" */
-/*             "isb sy\n" */
-/*             "mov x30, %[reletramp0]\n" */
-/*             /1* branch back to tramp+2 *1/ */
-/*             "add x16, x16, %[tramp_plus_2_dist]\n" */
-/*             "br x16\n" */
-/*             : : [reletramp0] "r" (reletramp0), */
-/*             [tramp_plus_2_dist] "r" (DIST_FROM_REFCNT_TO(tramp[2])) */
-/*             /1* [disable_preemption] "r" (_disable_preemption) *1/ */
-/*             ); */
-/* } */
-
-__attribute__ ((naked)) void save_original_state0(void){
-    asm volatile(""
-            /* turn off PAN bit */
-            ".long 0xd500409f\n"
-            "GET_SAVED_STATE x17, x11, x12, x13\n"
-            "str x16, [x17]\n"
-            "str x29, [x17, 0x8]\n"
-            "str x30, [x17, 0x10]\n"
-            /* "dsb sy\n" */
-            /* "isb sy\n" */
-            /* "msr dbgbvr0_el1, x30\n" */
-            /* "msr dbgbvr1_el1, x29\n" */
-            /* "msr dbgbvr2_el1, x16\n" */
-            /* "isb sy\n" */
-            "mov x30, %[reletramp0]\n"
-            /* branch back to tramp+2 */
-            "add x16, x16, %[tramp_plus_2_dist]\n"
-            "br x16\n"
-            : : [reletramp0] "r" (reletramp0),
-            [tramp_plus_2_dist] "r" (DIST_FROM_REFCNT_TO(tramp[2]))
-            );
-}
-
-/* save_original_state1: save this CPU's FP and LR. This is only called when
- * the user calls the original function from their replacement code. */
-__attribute__ ((naked)) void save_original_state1(void){
-    asm volatile(""
-            "GET_SAVED_STATE x17, x11, x12, x13\n"
-            "str x29, [x17, 0x18]\n"
-            "str x30, [x17, 0x20]\n"
-            /* "msr dbgbvr3_el1, x30\n" */
-            /* "msr dbgbvr4_el1, x29\n" */
-            "mov x30, %[reletramp1]\n"
-            /* "mrs x16, dbgbvr2_el1\n" */
-            /* "isb sy\n" */
-            /* branch back to orig+1 */
-            "ldr x16, [x17]\n"
-            "add x16, x16, %[orig_plus_1_dist]\n"
-            "br x16\n"
-            : : [orig_plus_1_dist] "r" (DIST_FROM_REFCNT_TO(orig[1])),
-            [reletramp1] "r" (reletramp1)
-            );
-}
-
-/* reftramp0 and reftramp1: take a reference on an xnuspy_tramp.
- *
- * reftramp0 is called when the kernel calls the hooked function.
- *
- * reftramp1 is called when the original function, called through the 'orig'
- * trampoline, is called by the user.
- *
- * Sadly, these can't be merged into one function because we cannot modify
- * LR and we have no way of knowing what context (tramp or orig) it would be
- * called from.
- */
-__attribute__ ((naked)) void reftramp0(void){
-    asm volatile(""
-            "GET_SAVED_STATE x17, x11, x12, x13\n"
-            "ldr x16, [x17]\n"
-            /* "mrs x16, dbgbvr2_el1\n" */
-            /* "isb sy\n" */
-            "1:\n"
-            "ldaxr w14, [x16]\n"
-            "mov x15, x14\n"
-            "add w14, w15, #1\n"
-            "stlxr w15, w14, [x16]\n"
-            "cbnz w15, 1b\n"
-            /* branch back to tramp+3 */
-            "add x16, x16, %[tramp_plus_3_dist]\n"
-            "br x16\n"
-            : : [tramp_plus_3_dist] "r" (DIST_FROM_REFCNT_TO(tramp[3]))
-            );
-}
-
-__attribute__ ((naked)) void reftramp1(void){
-    asm volatile(""
-            /* "mrs x16, dbgbvr2_el1\n" */
-            /* "isb sy\n" */
-            "GET_SAVED_STATE x17, x11, x12, x13\n"
-            "ldr x16, [x17]\n"
-            "1:\n"
-            "ldaxr w14, [x16]\n"
-            "mov x15, x14\n"
-            "add w14, w15, #1\n"
-            "stlxr w15, w14, [x16]\n"
-            "cbnz w15, 1b\n"
-            /* branch back to orig+2 */
-            "add x16, x16, %[orig_plus_2_dist]\n"
-            "br x16\n"
-            : : [orig_plus_2_dist] "r" (DIST_FROM_REFCNT_TO(orig[2]))
-            );
-}
-
-struct xnuspy_ctl_args {
-    uint64_t flavor;
-    uint64_t arg1;
-    uint64_t arg2;
-    uint64_t arg3;
-};
-int xnuspy_ctl(void *, struct xnuspy_ctl_args *, int *);
-
 /* #undef strcmp */
 int strcmp(const char *s1, const char *s2){
     while(*s1 && (*s1 == *s2)){
@@ -635,8 +356,6 @@ static uint64_t copy_caller_segments(struct mach_header_64 *umh,
             uint64_t start = sc64->vmaddr + aslr_slide;
             uint64_t end = start + sc64->vmsize;
 
-            /* __builtin_memcpy(sc64, start, 0x4); */
-
             kprintf("%s: segment '%s' start %#llx end %#llx\n", __func__,
                     sc64->segname, start, end);
 
@@ -666,13 +385,6 @@ static uint64_t copy_caller_segments(struct mach_header_64 *umh,
                 /* XXX temporary */
                 replacement_kva = usercode_reflector_pages_start + dist;
             }
-
-            /* for(int k=0; k<sc64->vmsize/0x4000; k++){ */
-            /*     __builtin_memcpy(curpage, start, 0x4000); */
-
-            /*     start += 0x4000; */
-            /*     curpage += 0x4000; */
-            /* } */
         }
 
 next:
@@ -682,7 +394,7 @@ next:
     return replacement_kva;
 }
 
-static int xnuspy_install_hook2(uint64_t target, uint64_t replacement,
+static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
         uint64_t /* __user */ origp){
     kprintf("%s: called with target %#llx replacement %#llx origp %#llx\n",
             __func__, target, replacement, origp);
@@ -694,7 +406,7 @@ static int xnuspy_install_hook2(uint64_t target, uint64_t replacement,
     struct xnuspy_tramp *tramp = xnuspy_tramp_page;
 
     while((uint8_t *)tramp < xnuspy_tramp_page_end){
-        if(!tramp->refcnt)
+        if(!tramp->replacement)
             break;
 
         tramp++;
@@ -707,18 +419,12 @@ static int xnuspy_install_hook2(uint64_t target, uint64_t replacement,
 
     kprintf("%s: got free xnuspy_ctl struct @ %#llx\n", __func__, tramp);
 
-    /* +1 for creation */
-    tramp->refcnt = 1;
-    /* tramp->replacement = replacement; */
-
     /* Build the trampoline to the replacement as well as the trampoline
      * that represents the original function */
-
     uint32_t orig_tramp_len = 0;
 
-    generate_replacement_tramp(save_original_state0, reftramp0, tramp->tramp);
-    generate_original_tramp(target + 4, save_original_state1, reftramp1,
-            tramp->orig, &orig_tramp_len);
+    generate_replacement_tramp(tramp->tramp);
+    generate_original_tramp(target + 4, tramp->orig, &orig_tramp_len);
 
     /* copyout the original function trampoline before the replacement
      * is called */
@@ -730,9 +436,7 @@ static int xnuspy_install_hook2(uint64_t target, uint64_t replacement,
     /* cpuDatap offset found in _machine_switch_context */
     void *cpudata = *(void **)(tpidr_el1 + 0x478);
     uint16_t curcpu = *(uint16_t *)cpudata;
-    desc_xnuspy_tramp(tramp, orig_tramp_len);
 
-    IOSleep(10000);
 
     /* struct pmap *pmap = get_task_pmap(current_task()); */
 
@@ -758,362 +462,13 @@ static int xnuspy_install_hook2(uint64_t target, uint64_t replacement,
 
     tramp->replacement = replacement_kva;
 
+    desc_xnuspy_tramp(tramp, orig_tramp_len);
     /* uint32_t *cursor = (uint32_t *)replacement_kva; */
     /* for(int i=0; i<200; i++){ */
     /*     kprintf("%s: %#llx:      %#x\n", __func__, cursor+i, cursor[i]); */
     /* } */
 
-    /* All the trampolines are set up, write the branch */
-    kprotect(target, 0x4000, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE);
-
-    *(uint32_t *)target = assemble_b(target, (uint64_t)tramp->tramp);
-
-    asm volatile("dc cvau, %0" : : "r" (target));
-    asm volatile("dsb ish");
-    asm volatile("ic ivau, %0" : : "r" (target));
-    asm volatile("dsb ish");
-    asm volatile("isb sy");
-
-    return 0;
-}
-
-static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
-        uint64_t /* __user */ origp){
-    kprintf("%s: called with target %#llx replacement %#llx origp %#llx\n",
-            __func__, target, replacement, origp);
-
-    /* slide target */
-    target += kernel_slide;
-
-    /* Find a free xnuspy_tramp inside the trampoline page */
-    struct xnuspy_tramp *tramp = xnuspy_tramp_page;
-
-    while((uint8_t *)tramp < xnuspy_tramp_page_end){
-        if(!tramp->refcnt)
-            break;
-
-        tramp++;
-    }
-
-    if(!tramp){
-        kprintf("%s: no free xnuspy_tramp structs\n", __func__);
-        return ENOSPC;
-    }
-
-    kprintf("%s: got free xnuspy_ctl struct @ %#llx\n", __func__, tramp);
-
-    /* +1 for creation */
-    tramp->refcnt = 1;
-    /* tramp->replacement = replacement; */
-
-    /* Build the trampoline to the replacement as well as the trampoline
-     * that represents the original function */
-
-    uint32_t orig_tramp_len = 0;
-
-    /* generate_replacement_tramp(save_original_state0, reftramp0, swap_ttbr0, */
-    /*         tramp->tramp); */
-    generate_replacement_tramp(save_original_state0, reftramp0, tramp->tramp);
-
-    /* generate_original_tramp(target + 4, save_original_state1, reftramp1, */
-    /*         restore_ttbr0, tramp->orig, &orig_tramp_len); */
-    generate_original_tramp(target + 4, save_original_state1, reftramp1,
-            tramp->orig, &orig_tramp_len);
-
-    /* copyout the original function trampoline before the replacement
-     * is called */
-    uint32_t *orig_tramp = tramp->orig;
-    int err = copyout(&orig_tramp, origp, sizeof(origp));
-
-    /* XXX do something if copyout fails */
-
-    uint64_t ttbr0_el1;
-    asm volatile("mrs %0, ttbr0_el1" : "=r" (ttbr0_el1));
-    /* tramp->ttbr0_el1 = ttbr0_el1; */
-
-    uint64_t tpidr_el1;
-    asm volatile("mrs %0, tpidr_el1" : "=r" (tpidr_el1));
-    /* cpuDatap offset found in _machine_switch_context */
-    void *cpudata = *(void **)(tpidr_el1 + 0x478);
-    uint16_t curcpu = *(uint16_t *)cpudata;
-    desc_xnuspy_tramp(tramp, orig_tramp_len);
-
-    uint64_t replacement_phys = uvtophys(replacement);
-    uint64_t replacement_physpage = replacement_phys & ~0x3fffuLL;
-    uint64_t replacement_pageoff = replacement_phys & 0x3fffuLL;
-
-    kprintf("%s: replacement @ %#llx, replacement phys @ %#llx"
-            ", replacement phys page @ %#llx, pageoff %#llx\n", __func__,
-            replacement_phys, replacement_physpage, replacement_pageoff);
-
-    pte_t *reflector_page_ptep = el1_ptep(usercode_reflector_pages_start);
-
-    kprintf("%s: first reflector page @ %#llx ptep @ %#llx pte == %#llx\n", __func__,
-            usercode_reflector_pages_start, reflector_page_ptep, *reflector_page_ptep);
-
-    pte_t orig_reflector_page_pte = *reflector_page_ptep;
-
-    pte_t new_reflector_page_pte = *reflector_page_ptep & ~0xfffffffff000uLL;
-    new_reflector_page_pte |= replacement_physpage;
-    new_reflector_page_pte &= ~(ARM_PTE_PNX | ARM_PTE_NX);
-
-    kprintf("%s: new reflector page pte == %#llx\n", __func__,
-            new_reflector_page_pte);
-
-    kwrite(reflector_page_ptep, &new_reflector_page_pte,
-            sizeof(new_reflector_page_pte));
-
-    asm volatile("isb");
-    asm volatile("dsb sy");
-    asm volatile("tlbi vmalle1");
-    asm volatile("dsb sy");
-    asm volatile("isb");
-
-    uint64_t reflected_user_code =
-        (uint64_t)usercode_reflector_pages_start & ~0xfffuLL;
-    reflected_user_code |= replacement_pageoff;
-
-    tramp->replacement = reflected_user_code;
-
-    uint32_t *userreplacement_cursor = (uint32_t *)reflected_user_code;
-
-    for(int i=0; i<200; i++){
-        kprintf("%s: %#llx:   %#x\n", __func__, (uint64_t)(userreplacement_cursor+i),
-                userreplacement_cursor[i]);
-    }
-
-
-    /* IOSleep(5000); */
-
-    /* void (*usercode_fxn)(void) = (void (*)(void))reflected_user_code; */
-    /* int (*usercode_fxn)(void) = (int (*)(void))reflected_user_code; */
-    /* int cur_cpu_id = usercode_fxn(); */
-    /* usercode_fxn(); */
-    /* kprintf("%s: user code returned CPU ID %d, correct CPU ID = %d\n", __func__, */
-    /*         cur_cpu_id, curcpu); */
-
-    /* kwrite(reflector_page_ptep, &orig_reflector_page_pte, */
-    /*         sizeof(orig_reflector_page_pte)); */
-
-    /* asm volatile("isb"); */
-    /* asm volatile("dsb sy"); */
-    /* asm volatile("tlbi vmalle1"); */
-    /* asm volatile("dsb sy"); */
-    /* asm volatile("isb"); */
-
-
-    /* kprintf("%s: on this CPU, ttbr0_el1 == %#llx baddr phys %#llx baddr kva %#llx\n", */
-    /*         __func__, ttbr0_el1, ttbr0_el1 & 0xfffffffffffe, */
-    /*         phystokv(ttbr0_el1 & 0xfffffffffffe)); */
-
-
-    /* kprintf("%s: xnuspy_ctl is @ %#llx (phys=%#llx)\n", __func__, (uint64_t)xnuspy_ctl, */
-    /*         kvtophys((uint64_t)xnuspy_ctl)); */
-    /* pte_t *xnuspy_ctl_ptep = el1_ptep((uint64_t)xnuspy_ctl); */
-    /* pte_t *replacement_ptep = el0_ptep(replacement); */
-
-    /* kprintf("%s: xnuspy_ctl pte @ %#llx phys %#llx pte == %#llx\n", __func__, */
-    /*         xnuspy_ctl_ptep, kvtophys((uint64_t)xnuspy_ctl_ptep), */
-    /*         *xnuspy_ctl_ptep); */
-    /* uint64_t replacement_phys = uvtophys(replacement); */
-    /* uint64_t replacement_kv = phystokv(replacement_phys); */
-    /* kprintf("%s: replacement (%#llx, phys=%#llx (phystokv on that = %#llx))" */
-    /*         " ptep @ %#llx phys ptep %#llx pte == %#llx\n", */
-    /*         __func__, */
-    /*         replacement, replacement_phys, replacement_kv, replacement_ptep, */
-    /*         kvtophys((uint64_t)replacement_ptep), *replacement_ptep); */
-
-    /* uint32_t *cursor = (uint32_t *)replacement_kv; */
-
-    /* int pmap_expand_ret = pmap_expand(kernel_pmap, replacement_kv, 0, 3); */
-    /* kprintf("%s: pmap_expand returned %d\n", __func__, pmap_expand_ret); */
-
-    /* pte_t *replacement_kv_pte = el1_ptep(replacement_kv); */
-
-    /* kprintf("%s: replacement_kv pte @ %#llx pte == %#llx\n", __func__, */
-    /*         (uint64_t)replacement_kv_pte, *replacement_kv_pte); */
-
-    /* kprintf("%s: gonna try and read from replacement_kv @ %#llx\n", __func__, */
-    /*         replacement_kv); */
-
-    /* *cursor = 0x41414141; */
-
-    /* asm volatile("isb"); */
-    /* asm volatile("dsb ish"); */
-    /* asm volatile("tlbi vmalle1"); */
-    /* asm volatile("dsb ish"); */
-    /* asm volatile("isb"); */
-
-    /* for(int i=0; i<15; i++){ */
-    /*     kprintf("%s: %#llx:   %#x\n", __func__, (uint64_t)(cursor+i), cursor[i]); */
-    /* } */
-
-    /* pte_t new_replacement_pte = *replacement_ptep & ~ARM_PTE_PNX; */
-    /* kwrite(replacement_ptep, &new_replacement_pte, sizeof(new_replacement_pte)); */
-
-    /* asm volatile("isb"); */
-    /* asm volatile("dsb ish"); */
-    /* asm volatile("tlbi vmalle1"); */
-    /* asm volatile("dsb ish"); */
-    /* asm volatile("isb"); */
-
-    /* asm volatile("mov x4, 0x5454"); */
-    /* asm volatile("mov x5, %0" : : "r" (replacement_kv)); */
-    /* asm volatile("br x5"); */
-
-    /* size_t sz = 0x8000; */
-    /* uint64_t mem = (uint64_t)kalloc_canblock(&sz, false, NULL); */
-
-    /* if(!mem) */
-    /*     return ENOMEM; */
-
-    /* uint64_t mem = 0; */
-    /* kern_return_t kret = kernel_memory_allocate(kernel_map, &mem, 0x4000, 0x3fff, */
-    /*         KMA_LOMEM, 0); */
-
-    /* if(kret){ */
-    /*     kprintf("%s: kernel_memory_allocate failed: %#x\n", __func__, kret); */
-    /*     return ENOMEM; */
-    /* } */
-
-    /* uint64_t mem = (uint64_t)xnuspy_tramp_page; */
-
-    /* pte_t *mem_ptep = el1_ptep(mem); */
-
-    /* kprintf("%s: mem @ %#llx phys @ %#llx ptep @ %#llx pte == %#llx\n", __func__, */
-    /*         mem, kvtophys(mem), mem_ptep, *mem_ptep); */
-    /* uint64_t replacement_physpage = replacement_phys & ~0x3fffuLL; */
-    /* pte_t new_mem_pte = (*mem_ptep & ~0xfffffffff000uLL) | replacement_physpage; */
-    /* new_mem_pte &= ~(ARM_PTE_NX | ARM_PTE_PNX); */
-    /* pte_t new_mem_pte = *mem_ptep & ~(ARM_PTE_NX | ARM_PTE_PNX); */
-    /* kprintf("%s: new_mem_pte == %#llx\n", __func__, new_mem_pte); */
-
-    /* kwrite(mem_ptep, &new_mem_pte, sizeof(new_mem_pte)); */
-
-    /* asm volatile("isb"); */
-    /* asm volatile("dsb sy"); */
-    /* asm volatile("tlbi vmalle1"); */
-    /* asm volatile("dsb sy"); */
-    /* asm volatile("isb"); */
-
-    /* asm volatile("" */
-    /*         "tlbi vmalle1\n" */
-    /*         "ic iallu\n" */
-    /*         "dsb sy\n" */
-    /*         "isb sy\n" */
-    /*         ); */
-
-    /* uint64_t mem_phys = kvtophys(mem); */
-    /* uint64_t mem_kv2 = phystokv(mem_phys); */
-    /* pte_t *mem_kv2_ptep = el1_ptep(mem_kv2); */
-
-    /* kprintf("%s: mem @ %#llx phys %#llx mem_kv2 %#llx ptep for mem_kv2 @ %#llx" */
-    /*         " mem_kv2 PTE == %#llx\n", __func__, mem, mem_phys, mem_kv2, */
-    /*         mem_kv2_ptep, *mem_kv2_ptep); */
-
-    /* mem_ptep = el1_ptep(mem); */
-
-    /* kprintf("%s: NOW: mem @ %#llx phys @ %#llx ptep @ %#llx pte == %#llx\n", __func__, */
-    /*         mem, kvtophys(mem), mem_ptep, *mem_ptep); */
-
-    /* kprintf("%s: gonna try and read the mem from kalloc_canblock:\n", __func__); */
-
-    /* cursor = (uint32_t *)mem; */
-
-    /* for(int i=0; i<4096; i++){ */
-    /*     kprintf("%s: %#llx:   %#x\n", __func__, (uint64_t)(cursor+i), cursor[i]); */
-    /* } */
-
-    /* mem now reflects the userland replacement page, get the page offset
-     * of the replacement function itself and try to branch to it */
-    /* uint64_t target_kva = mem | (replacement & 0xfff); */
-
-    /* *(uint32_t *)target_kva = 0x41424344; */
-
-    /* void (*func)(void) = (void (*)(void))target_kva; */
-    /* func(); */
-
-    /* uint64_t target_kva = mem; */
-    /* *(uint32_t *)mem = 0x41424344; */
-    /* asm volatile("isb"); */
-    /* asm volatile("dsb ish"); */
-    /* asm volatile("tlbi vmalle1"); */
-    /* asm volatile("dsb ish"); */
-    /* asm volatile("isb"); */
-
-    /* asm volatile("mov x3, 0x4141"); */
-
-    /* void (*fxn)(void) = (void (*)(void))mem; */
-    /* fxn(); */
-    /* asm volatile("mov x4, %0" : "=r" (mem)); */
-    /* asm volatile("br x4"); */
-
-
-
-    /* replacement_phys &= ~0x3fff; */
-    /* replacement_kv &= ~0x3fffuLL; */
-
-    /* uint64_t pmap_map_ret = pmap_map(replacement_kv, replacement_phys, */
-    /*         replacement_phys + 0x4000, VM_PROT_READ | VM_PROT_WRITE, 0); */
-
-    /* kprintf("%s: pmap_map returned %#llx\n", __func__, pmap_map_ret); */
-
-    /* return 0; */
-
-    /* replacement_kv_pte = el1_ptep(replacement_kv); */
-
-    /* kprintf("%s: after pmap_map, replacement_kv pte is @ %#llx, pte == %#llx\n", */
-    /*         __func__, replacement_kv_pte, *replacement_kv_pte); */
-
-    /* pte_t new_replacement_kv_pte = *replacement_kv_pte & */
-    /*     ~(ARM_PTE_NS | ARM_PTE_ATTRINDXMASK); */
-    /* new_replacement_kv_pte |= 1; */
-
-    /* kwrite(replacement_kv_pte, &new_replacement_kv_pte, */
-    /*         sizeof(new_replacement_kv_pte)); */
-            
-    /* asm volatile("isb"); */
-    /* asm volatile("dsb ish"); */
-    /* asm volatile("tlbi vmalle1"); */
-    /* asm volatile("dsb ish"); */
-    /* asm volatile("isb"); */
-
-    /* asm volatile("mov x4, 0x5454"); */
-    /* asm volatile("br %0" : : "r" (replacement_kv)); */
-
-    /* uint64_t ttbr1_el1; */
-    /* asm volatile("mrs %0, ttbr1_el1" : "=r" (ttbr1_el1)); */
-    /* uint64_t l1_table = phystokv(ttbr1_el1 & 0xfffffffffffe); */
-    /* uint64_t l1_idx = (replacement >> ARM_TT_L1_SHIFT) & 0x7; */
-    /* uint64_t *l1_ttep = (uint64_t *)(l1_table + (0x8 * l1_idx)); */
-
-    /* kprintf("%s: l1 tte from ttbr1_el1 with replacement %#llx == %#llx\n", */
-    /*         __func__, replacement, (uint64_t)l1_ttep); */
-
-    /* uint64_t l2_table = phystokv(*l1_ttep & ARM_TTE_TABLE_MASK); */
-    /* uint64_t l2_idx = (replacement >> ARM_TT_L2_SHIFT) & 0x7ff; */
-    /* uint64_t *l2_ttep = (uint64_t *)(l2_table + (0x8 * l2_idx)); */
-
-    /* kprintf("%s: l2 tte from ttbr1_el1 with replacement %#llx == %#llx\n", */
-    /*         __func__, replacement, (uint64_t)l2_ttep); */
-
-    /* uint64_t l3_table = phystokv(*l2_ttep & ARM_TTE_TABLE_MASK); */
-    /* uint64_t l3_idx = (replacement >> ARM_TT_L3_SHIFT) & 0x7ff; */
-    /* uint64_t *l3_ptep = (uint64_t *)(l3_table + (0x8 * l3_idx)); */
-
-    /* kprintf("%s: l3 tte from ttbr1_el1 with replacement %#llx == %#llx\n", */
-    /*         __func__, replacement, (uint64_t)l3_ptep); */
-
-
-    /* XXX we don't need to unset nG bit in user pte if we are just swapping ttbr0? */
-    
-    /* Mark the user replacement as executable from EL1. This function
-     * will clear NX as well as PXN. */
-    /* TODO We need to mark the entirety of the calling processes' __text
-     * segment as executable from EL1 so the user can call other functions
-     * they write inside their program from their kernel hook. */
-    // XXX something like get_calling_process_text_segment
-    /* uprotect(tramp->replacement, 0x4000, VM_PROT_READ | VM_PROT_EXECUTE); */
+    IOSleep(10000);
 
     /* All the trampolines are set up, write the branch */
     kprotect(target, 0x4000, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE);
@@ -1161,71 +516,6 @@ static int xnuspy_get_function(uint64_t which, uint64_t /* __user */ outp){
     return copyout(&which, outp, sizeof(outp));
 }
 
-static int xnuspy_make_callable(uint64_t target, uint64_t /* __user */ origp){
-    kprintf("%s: called with target %#llx origp %#llx\n", __func__, target, origp);
-
-    /* slide target */
-    target += kernel_slide;
-
-    /* The problem we have is the following: we are swapping the current CPU's
-     * TTBR0_EL1 with the TTBR0_EL1 from the CPU which installed a hook. The
-     * user is allowed to call other kernel functions from within their
-     * userland replacement. So what happens if some kernel function the user
-     * calls within their replacement relies on seeing the original TTBR0_EL1?
-     *
-     * To solve this problem, an external kernel function will be represented
-     * as an xnuspy_wrapper struct. Every xnuspy_wrapper struct resides on
-     * writable, executable memory. The wrapper will contain a small trampoline
-     * to restore the original TTBR0, call the actual kernel function, swap
-     * back the TTBR0 of the CPU that installed the hook, and then return
-     * back to the user's replacement code.
-     *
-     * Again, we cannot use the stack to persist data across function calls.
-     * Since I'm already using most of the debug breakpoint value registers,
-     * I'll just use callee-saved registers instead.
-     *
-     * An xnuspy_wrapper trampoline looks like this:
-     *  wtramp[0]   MOV X28, X29
-     *  wtramp[1]   MOV X27, X30
-     *  wtramp[2]   MOV X26, X19
-     *  wtramp[3]   MOV X25, X20
-     *  wtramp[4]   MOV X24, X21
-     *  wtramp[5]   MOV X23, X22
-     *
-     *  XXX here we have x19-x22 to work with
-     *  
-     *  ; FAR_EL1 is the register we're persisting the original value
-     *  ; of TTBR0_EL1 with.
-     *  wtramp[6]   MRS X19, FAR_EL1
-     *
-     *  ; Back up current TTBR0
-     *  wtramp[7]   MRS X20, TTBR0_EL1
-     *
-     *  ; Set original TTBR0_EL1
-     *  wtramp[8]   MSR TTBR0_EL1, X19
-     *
-     *  wtramp[9,13] barriers, invalidate TLBs
-     *
-     *  XXX stick a pointer to the kernel function in some register
-     *
-     *  wtramp[.]   BLR <kernel_functionp>
-     *
-     *  wtramp[.]   MSR TTBR0_EL1, X20
-     *
-     *  wtramp[...] barriers, invalidate TLBs
-     *
-     *  wtramp[.]   MOV X22, X23
-     *  wtramp[.]   MOV X21, X24
-     *  wtramp[.]   MOV X20, X25
-     *  wtramp[.]   MOV X19, X26
-     *  wtramp[.]   MOV X30, X27
-     *  wtramp[.]   MOV X29, X28
-     *  wtramp[.]   RET
-     */
-
-    return 0;
-}
-
 static int xnuspy_dump_ttes(uint64_t addr, uint64_t el){
     uint64_t ttbr;
 
@@ -1257,6 +547,13 @@ static int xnuspy_dump_ttes(uint64_t addr, uint64_t el){
     return 0;
 }
 
+struct xnuspy_ctl_args {
+    uint64_t flavor;
+    uint64_t arg1;
+    uint64_t arg2;
+    uint64_t arg3;
+};
+
 int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
     uint64_t flavor = uap->flavor;
 
@@ -1284,8 +581,7 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
             *retval = 999;
             return 0;
         case XNUSPY_INSTALL_HOOK:
-            /* res = xnuspy_install_hook(uap->arg1, uap->arg2, uap->arg3); */
-            res = xnuspy_install_hook2(uap->arg1, uap->arg2, uap->arg3);
+            res = xnuspy_install_hook(uap->arg1, uap->arg2, uap->arg3);
             break;
         case XNUSPY_UNINSTALL_HOOK:
             res = xnuspy_uninstall_hook(uap->arg1);

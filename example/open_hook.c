@@ -177,10 +177,47 @@ static void *(*kalloc_canblock_orig)(size_t *sizep, int canblock, void *site);
 static void *kalloc_canblock(size_t *sizep, int canblock, void *site){
     void *mem = kalloc_canblock_orig(sizep, canblock, site);
 
+    /* uint64_t tpidr_el1; */
+    /* asm volatile("mrs %0, tpidr_el1" : "=r" (tpidr_el1)); */
+
+    /* void *cpudata = *(void **)(tpidr_el1 + 0x478); */
+    /* uint16_t curcpu = *(uint16_t *)cpudata; */
+
+    uint64_t mpidr_el1;
+    asm volatile("mrs %0, mpidr_el1" : "=r" (mpidr_el1));
+
+    uint8_t curcpu = mpidr_el1 & 0xff;
+
+    uint64_t caller = (uint64_t)__builtin_return_address(0);
+
+    kprintf("*****kalloc_canblock hook (CPU %d, caller=%#llx): returned mem @ "
+            " %#llx for size %#llx\n", curcpu, caller, mem, *sizep);
 
     return mem;
 
     /* return kalloc_canblock_orig(sizep, canblock, site); */
+}
+
+static void (*zone_require_orig)(void *addr, void *expected_zone);
+
+static void zone_require(void *addr, void *expected_zone){
+    uint64_t mpidr_el1;
+    asm volatile("mrs %0, mpidr_el1" : "=r" (mpidr_el1));
+    uint8_t cpuid = mpidr_el1 & 0xff;
+
+    uint64_t caller = (uint64_t)__builtin_return_address(0);
+
+    char *zname = *(char **)((uint8_t *)expected_zone + 0x120);
+
+    kprintf("CPU %d, caller %#llx: zone_require called with addr %#llx,"
+            " expected zone", cpuid, caller, addr);
+
+    if(zname)
+        kprintf(" '%s'\n", zname);
+    else
+        kprintf(" %#llx\n", expected_zone);
+
+    zone_require_orig(addr, expected_zone);
 }
 
 static void DumpMemory(void *startaddr, void *data, size_t size){
@@ -422,6 +459,119 @@ next:
     return replacement_kva;
 }
 
+static uint64_t kernel_slide = 0x16330000;
+
+static void *gIOUserClientClassKey = NULL;
+static void *IOService_metaClass = NULL;
+
+static void *(*OSMetaClassBase_safeMetaCast)(void *me, void *to_type) = NULL;
+
+static const char *(*getClassName)(const void *OSObject) = NULL;
+
+struct IOService_vtab {
+    uint8_t pad[0x138];
+    /* Found in IOService::newUserClient */
+    void *(*copyProperty)(void *this, void *key);
+};
+
+struct IOService {
+    struct IOService_vtab *vt;
+};
+
+struct IOUserClient_vtab {
+    /* uint8_t pad0[0x38]; */
+    /* void *(*getMetaClass)(void *this); */
+
+    uint8_t pad0[0x118];
+    /* Found in is_io_service_open_extended */
+    void *(*getProperty)(void *this, const char *key);
+    uint8_t pad120[0x370 - 0x120];
+    struct IOService *(*getProvider)(void *this);
+};
+
+struct IOUserClient {
+    struct IOUserClient_vtab *vt;
+    /* uint8_t pad8[0xd0]; */
+    /* struct IOService *__provider; */
+};
+
+#define kIOUserClientClassKey       "IOUserClientClass"
+
+static kern_return_t (*is_io_service_open_extended_orig)(void *_service,
+        void *owning_task, uint32_t connect_type, NDR_record_t ndr,
+        char *properties, mach_msg_type_number_t properties_cnt,
+        kern_return_t *result, void *connection);
+
+static kern_return_t is_io_service_open_extended(void *_service,
+        void *owning_task, uint32_t connect_type, NDR_record_t ndr,
+        char *properties, mach_msg_type_number_t properties_cnt,
+        kern_return_t *result, void *connection){
+    uint64_t mpidr_el1;
+    asm volatile("mrs %0, mpidr_el1" : "=r" (mpidr_el1));
+    uint8_t cpuid = mpidr_el1 & 0xff;
+    uint64_t caller = (uint64_t)__builtin_return_address(0);
+
+    kern_return_t kret = is_io_service_open_extended_orig(_service, owning_task,
+            connect_type, ndr, properties, properties_cnt, result,
+            connection);
+
+    kprintf("(CPU %d, unslid caller %#llx): connect type %d: ", cpuid,
+            caller - kernel_slide, connect_type);
+
+    if(*result != KERN_SUCCESS){
+        kprintf("failed. Returned %#x, result = %#x\n", kret, *result);
+        return kret;
+    }
+
+    struct IOUserClient *client = *(struct IOUserClient **)connection;
+
+    kprintf("opened user client = %#llx ", client);
+
+    if(!client){
+        kprintf("\n");
+        return kret;
+    }
+
+    const char *class_name = getClassName(client);
+
+    if(!class_name){
+        kprintf("getClassName failed.\n");
+        return kret;
+    }
+
+    kprintf("class: '%s'", class_name);
+
+    struct IOService *provider = client->vt->getProvider(client);
+
+    if(!provider)
+        kprintf(" unknown provider");
+    else{
+        const char *provider_class_name = getClassName(provider);
+
+        if(provider_class_name)
+            kprintf(" provider: '%s'", provider_class_name);
+    }
+
+    /* OSString */
+    void *creator_name_prop = client->vt->getProperty(client, "IOUserClientCreator");
+
+    if(!creator_name_prop){
+        kprintf(" unknown creator\n");
+        return kret;
+    }
+
+    const char *creator_name = *(const char **)((uint8_t *)creator_name_prop + 0x10);
+
+    if(!creator_name){
+        kprintf(" unknown creator\n");
+        return kret;
+    }
+
+    kprintf(" creator: '%s'\n", creator_name);
+
+    return kret;
+}
+
 int main(int argc, char **argv){
     /* before we begin, figure out what system call was patched */
     size_t oldlen = sizeof(long);
@@ -466,19 +616,44 @@ int main(int argc, char **argv){
 
     /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, g_num_pointer, 0, 0); */
 
+    /* Found in IOService::newUserClient */
+    gIOUserClientClassKey = (void *)(0xFFFFFFF00925B840 + kernel_slide);
+
+    OSMetaClassBase_safeMetaCast =
+        (void *(*)(void *, void *))(0xFFFFFFF0080EA930 + kernel_slide);
+
+    /* Found in _container_init */
+    IOService_metaClass = (void *)(0xFFFFFFF00793DA88 + kernel_slide);
+
+    getClassName = (const char *(*)(const void *))(0xFFFFFFF0080EC9A8 + kernel_slide);
+
+    /* iphone 8 13.6.1 */
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF0081994DC,
+            is_io_service_open_extended, &is_io_service_open_extended_orig);
+
+    printf("is_io_service_open_extended_orig = %#llx\n",
+            is_io_service_open_extended_orig);
+
     /* try and hook kalloc_canblock */
     /* iphone 8 13.6.1 */
     /* uint64_t kalloc_canblock = 0xFFFFFFF007C031E4; */
     /* void *(*kalloc_canblock_orig)(size_t *, void *, bool) = NULL; */
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF007C031E4,
-            kalloc_canblock, &kalloc_canblock_orig);
+    /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF007C031E4, */
+    /*         kalloc_canblock, &kalloc_canblock_orig); */
 
-    printf("kalloc_canblock_orig = %#llx\n", kalloc_canblock_orig);
+    /* printf("kalloc_canblock_orig = %#llx\n", kalloc_canblock_orig); */
 
     /* uint64_t some_fxn_with_cbz_as_first = 0xFFFFFFF007E5FFCC; */
     /* void (*dummy)(void) = NULL; */
     /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, some_fxn_with_cbz_as_first, code, */
     /*         &dummy); */
+
+    /* iphone 8 13.6.1 */
+    /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF007C4B420, */
+    /*         zone_require, &zone_require_orig); */
+
+    /* printf("zone_require_orig = %#llx\n", zone_require_orig); */
+
 
     /* try and hook sysctl_handle_long */
     /* iphone 8 13.6.1 */
