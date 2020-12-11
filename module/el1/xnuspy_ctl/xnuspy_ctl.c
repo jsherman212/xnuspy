@@ -10,6 +10,8 @@
 #include "queue.h"
 #include "tramp.h"
 
+#include "../../common/xnuspy_structs.h"
+
 #undef current_task
 
 #define XNUSPY_INSTALL_HOOK         (0)
@@ -165,94 +167,16 @@ struct _vm_map {
 MARK_AS_KERNEL_OFFSET struct pmap *(*get_task_pmap)(void *task);
 MARK_AS_KERNEL_OFFSET queue_head_t *map_pmap_list;
 
-#define tt1_index(pmap, addr)								\
-	(((addr) & ARM_TT_L1_INDEX_MASK) >> ARM_TT_L1_SHIFT)
-#define tt2_index(pmap, addr)								\
-	(((addr) & ARM_TT_L2_INDEX_MASK) >> ARM_TT_L2_SHIFT)
-#define tt3_index(pmap, addr)								\
-	(((addr) & ARM_TT_L3_INDEX_MASK) >> ARM_TT_L3_SHIFT)
+/* #define tt1_index(pmap, addr)								\ */
+/* 	(((addr) & ARM_TT_L1_INDEX_MASK) >> ARM_TT_L1_SHIFT) */
+/* #define tt2_index(pmap, addr)								\ */
+/* 	(((addr) & ARM_TT_L2_INDEX_MASK) >> ARM_TT_L2_SHIFT) */
+/* #define tt3_index(pmap, addr)								\ */
+/* 	(((addr) & ARM_TT_L3_INDEX_MASK) >> ARM_TT_L3_SHIFT) */
 
 /* shorter macros so I can stay under 80 column lines */
-#define DIST_FROM_REFCNT_TO(x) __builtin_offsetof(struct xnuspy_tramp, x) - \
-    __builtin_offsetof(struct xnuspy_tramp, refcnt)
-
-/* This structure represents a function hook. Every xnuspy_tramp struct resides
- * on writeable, executable memory. */
-struct xnuspy_tramp {
-    /* Kernel virtual address of copied userland replacement */
-    uint64_t replacement;
-    /* The trampoline for a hooked function. When the user installs a hook
-     * on a function, the first instruction of that function is replaced
-     * with a branch to here. An xnuspy trampoline looks like this:
-     *  tramp[0]    ADR X16, <replacementp>
-     *  tramp[1]    LDR X16, [X16]
-     *  tramp[2]    BR X16
-     */
-    uint32_t tramp[3];
-    /* An abstraction that represents the original function. It's just another
-     * trampoline, but it can take on one of five forms. The most common
-     * form is this:
-     *  orig[0]     <original first instruction of the hooked function>
-     *  orig[1]     ADR X16, #0xc
-     *  orig[2]     LDR X16, [X16]
-     *  orig[3]     BR X16
-     *  orig[4]     <address of second instruction of the hooked function>[31:0]
-     *  orig[5]     <address of second instruction of the hooked function>[63:32]
-     *
-     * The above form is taken when the original first instruction of the hooked
-     * function is not an immediate conditional branch (b.cond), an immediate
-     * compare and branch (cbz/cbnz), an immediate test and branch (tbz/tbnz),
-     * or an ADR.
-     * These are special cases because the immediates do not contain enough
-     * bits for me to just "fix up", so I need to emit an equivalent sequence
-     * of instructions.
-     *
-     * If the first instruction was B.cond <label>
-     *  orig[0]     ADR X16, #0x14
-     *  orig[1]     ADR X17, #0x18
-     *  orig[2]     CSEL X16, X16, X17, <cond>
-     *  orig[3]     LDR X16, [X16]
-     *  orig[4]     BR X16
-     *  orig[5]     <destination if condition holds>[31:0]
-     *  orig[6]     <destination if condition holds>[63:32]
-     *  orig[7]     <address of second instruction of the hooked function>[31:0]
-     *  orig[8]     <address of second instruction of the hooked function>[63:32]
-     *
-     * If the first instruction was CBZ Rn, <label> or CBNZ Rn, <label>
-     *  orig[0]     ADR X16, #0x18
-     *  orig[1]     ADR X17, #0x1c
-     *  orig[2]     CMP Rn, #0
-     *  orig[3]     CSEL X16, X16, X17, <if CBZ, eq, if CBNZ, ne>
-     *  orig[4]     LDR X16, [X16]
-     *  orig[5]     BR X16
-     *  orig[6]     <destination if condition holds>[31:0]
-     *  orig[7]     <destination if condition holds>[63:32]
-     *  orig[8]     <address of second instruction of the hooked function>[31:0]
-     *  orig[9]     <address of second instruction of the hooked function>[63:32]
-     *
-     * If the first instruction was TBZ Rn, #n, <label> or TBNZ Rn, #n, <label>
-     *  orig[0]     ADR X16, #0x18
-     *  orig[1]     ADR X17, #0x1c
-     *  orig[2]     TST Rn, #(1 << n)
-     *  orig[3]     CSEL X16, X16, X17, <if TBZ, eq, if TBNZ, ne>
-     *  orig[4]     LDR X16, [X16]
-     *  orig[5]     BR X16
-     *  orig[6]     <destination if condition holds>[31:0]
-     *  orig[7]     <destination if condition holds>[63:32]
-     *  orig[8]     <address of second instruction of the hooked function>[31:0]
-     *  orig[9]     <address of second instruction of the hooked function>[63:32]
-     *
-     * If the first instruction was ADR Rn, #n
-     *  orig[0]     ADRP Rn, #n@PAGE
-     *  orig[1]     ADD Rn, Rn, #n@PAGEOFF
-     *  orig[2]     ADR X16, #0xc
-     *  orig[3]     LDR X16, [X16]
-     *  orig[4]     BR X16
-     *  orig[5]     <address of second instruction of the hooked function>[31:0]
-     *  orig[6]     <address of second instruction of the hooked function>[63:32]
-     */
-    uint32_t orig[10];
-};
+/* #define DIST_FROM_REFCNT_TO(x) __builtin_offsetof(struct xnuspy_tramp, x) - \ */
+/*     __builtin_offsetof(struct xnuspy_tramp, refcnt) */
 
 static void desc_xnuspy_tramp(struct xnuspy_tramp *t, uint32_t orig_tramp_len){
     kprintf("This xnuspy_tramp is @ %#llx\n", (uint64_t)t);
@@ -265,14 +189,23 @@ static void desc_xnuspy_tramp(struct xnuspy_tramp *t, uint32_t orig_tramp_len){
     kprintf("Original trampoline:\n");
     for(int i=0; i<orig_tramp_len; i++)
         kprintf("\ttramp[%d]    %#x\n", i, t->orig[i]);
+
+    kprintf("Owner: %#llx\n", t->metadata->owner);
+}
+
+static void desc_xnuspy_usercode_page(struct xnuspy_usercode_page *p){
+    kprintf("This usercode page is @ %#llx\n", (uint64_t)p);
+    kprintf("\tnext: %#llx refcnt: %lld page %#llx\n", p->next, p->refcnt,
+            p->page);
 }
 
 MARK_AS_KERNEL_OFFSET struct xnuspy_tramp *xnuspy_tramp_page;
 MARK_AS_KERNEL_OFFSET uint8_t *xnuspy_tramp_page_end;
 
-/* Contiguous "array" of pages */
-MARK_AS_KERNEL_OFFSET uint8_t *usercode_reflector_pages_start;
-MARK_AS_KERNEL_OFFSET uint8_t *usercode_reflector_pages_end;
+MARK_AS_KERNEL_OFFSET struct xnuspy_usercode_page *first_usercode_page;
+
+/* MARK_AS_KERNEL_OFFSET uint8_t *usercode_pages_start; */
+/* MARK_AS_KERNEL_OFFSET uint8_t *usercode_pages_end; */
 
 static int xnuspy_init_flag = 0;
 
@@ -282,8 +215,27 @@ static void xnuspy_init(void){
     kprotect((uint64_t)xnuspy_tramp_page, 0x4000, prot);
 
     /* Do the same for the pages which will hold user code */
-    uint64_t len = usercode_reflector_pages_end - usercode_reflector_pages_start;
-    kprotect((uint64_t)usercode_reflector_pages_start, len, prot);
+    /* uint64_t len = (uint64_t)(usercode_pages_end - usercode_pages_start); */
+    /* kprotect((uint64_t)usercode_pages_start, len, prot); */
+
+    int limit = 1000;
+    int i = 0;
+    struct xnuspy_usercode_page *cur = first_usercode_page;
+    
+    while(cur){
+        if(i > limit){
+            kprintf("%s: limit reached, breaking\n", __func__);
+            break;
+        }
+
+        desc_xnuspy_usercode_page(cur);
+
+        cur = cur->next;
+        i++;
+    }
+
+    IOSleep(30000);
+
 
     /* Zero out PAN in case no instruction did it before us. After our kernel
      * patches, the PAN bit cannot be set to 1 again.
@@ -296,7 +248,7 @@ static void xnuspy_init(void){
     asm volatile("isb sy");
 
     /* combat short read of this image */
-    asm volatile(".align 14");
+    /* asm volatile(".align 14"); */
     /* asm volatile(".align 14"); */
 
     xnuspy_init_flag = 1;
@@ -312,7 +264,6 @@ void enable_preemption(void){
     _enable_preemption();
 }
 
-/* #undef strcmp */
 int strcmp(const char *s1, const char *s2){
     while(*s1 && (*s1 == *s2)){
         s1++;
@@ -321,6 +272,14 @@ int strcmp(const char *s1, const char *s2){
 
     return *(const unsigned char *)s1 - *(const unsigned char *)s2;
 }
+
+/* static uint64_t replacement_kva(struct mach_header_64 *umh, */
+/*         uint64_t /1* __user *1/ replacement){ */
+/*     uint64_t dist = replacement - (uintptr_t)umh; */
+/*     kprintf("%s: dist %#llx replacement %#llx umh %#llx\n", __func__, */
+/*             dist, replacement, (uint64_t)umh); */
+/*     return (uint64_t)(usercode_pages_start + dist); */
+/* } */
 
 /* Copy the calling process' __TEXT and __DATA onto a contiguous set
  * of the pages we reserved before booting XNU. Lame, but safe. Swapping
@@ -335,11 +294,12 @@ static uint64_t copy_caller_segments(struct mach_header_64 *umh,
     uint64_t replacement_kva = 0;
     uint64_t aslr_slide = (uintptr_t)umh - 0x100000000;
 
-    struct load_command *lc = umh + 1;
+    struct load_command *lc = (struct load_command *)(umh + 1);
 
     /* XXX temporary: future implementation will alloc a contiguous
      * set of n pages */
-    uint8_t *curpage = usercode_reflector_pages_start;
+    /* uint8_t *curpage = usercode_pages_start; */
+    uint8_t *curpage = (uint8_t*)0x4142434445464748;
 
     for(int i=0; i<umh->ncmds; i++){
         kprintf("%s: got cmd %d\n", __func__, lc->cmd);
@@ -367,9 +327,8 @@ static uint64_t copy_caller_segments(struct mach_header_64 *umh,
 
                 kprintf("%s: us %#llx ks %#llx ke %#llx\n", __func__, us, ks, ke);
 
-                while(ks < ke){
+                while(ks < ke)
                     *ks++ = *us++;
-                }
 
                 start += 0x4000;
                 curpage += 0x4000;
@@ -383,7 +342,8 @@ static uint64_t copy_caller_segments(struct mach_header_64 *umh,
                 kprintf("%s: dist %#llx replacement %#llx umh %#llx\n", __func__,
                         dist, replacement, (uint64_t)umh);
                 /* XXX temporary */
-                replacement_kva = usercode_reflector_pages_start + dist;
+                /* replacement_kva = (uint64_t)(usercode_pages_start + dist); */
+                replacement_kva = 0x55565758595a5b5c;
             }
         }
 
@@ -394,27 +354,48 @@ next:
     return replacement_kva;
 }
 
+/* This function finds a free xnuspy_tramp struct. If the calling process
+ * has already installed more than one hook, then its __TEXT and __DATA
+ * segments have already been copied onto the usercode pages. */
+static int find_free_xnuspy_tramp(int *copy_segments,
+        struct xnuspy_tramp **out){
+    struct xnuspy_tramp *cursor = xnuspy_tramp_page;
+    void *ct = current_task();
+
+    while((uint8_t *)cursor < xnuspy_tramp_page_end){
+        if(cursor->metadata->owner == ct)
+            *copy_segments = 0;
+
+        if(!cursor->replacement){
+            *out = cursor;
+            return 0;
+        }
+
+        cursor++;
+    }
+
+    *out = NULL;
+
+    return ENOSPC;
+}
+
 static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
         uint64_t /* __user */ origp){
     kprintf("%s: called with target %#llx replacement %#llx origp %#llx\n",
             __func__, target, replacement, origp);
+    int res = 0;
 
     /* slide target */
     target += kernel_slide;
 
-    /* Find a free xnuspy_tramp inside the trampoline page */
-    struct xnuspy_tramp *tramp = xnuspy_tramp_page;
+    struct xnuspy_tramp *tramp = NULL;
+    int copy_segments = 1;
 
-    while((uint8_t *)tramp < xnuspy_tramp_page_end){
-        if(!tramp->replacement)
-            break;
+    res = find_free_xnuspy_tramp(&copy_segments, &tramp);
 
-        tramp++;
-    }
-
-    if(!tramp){
+    if(res){
         kprintf("%s: no free xnuspy_tramp structs\n", __func__);
-        return ENOSPC;
+        return res;
     }
 
     kprintf("%s: got free xnuspy_ctl struct @ %#llx\n", __func__, tramp);
@@ -429,7 +410,7 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
     /* copyout the original function trampoline before the replacement
      * is called */
     uint32_t *orig_tramp = tramp->orig;
-    int err = copyout(&orig_tramp, origp, sizeof(origp));
+    res = copyout(&orig_tramp, origp, sizeof(origp));
 
     uint64_t tpidr_el1;
     asm volatile("mrs %0, tpidr_el1" : "=r" (tpidr_el1));
@@ -460,17 +441,17 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
 
     kprintf("%s: replacment kva @ %#llx\n", __func__, replacement_kva);
 
+    /* At this point, we are guarenteed success, so set owner and replacement */
     tramp->replacement = replacement_kva;
 
+
+    /* tramp->owner = current_task(); */
+
     desc_xnuspy_tramp(tramp, orig_tramp_len);
-    /* uint32_t *cursor = (uint32_t *)replacement_kva; */
-    /* for(int i=0; i<200; i++){ */
-    /*     kprintf("%s: %#llx:      %#x\n", __func__, cursor+i, cursor[i]); */
-    /* } */
 
     IOSleep(10000);
 
-    /* All the trampolines are set up, write the branch */
+    /* All the trampolines are set up, hook the target */
     kprotect(target, 0x4000, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE);
 
     *(uint32_t *)target = assemble_b(target, (uint64_t)tramp->tramp);
@@ -481,7 +462,7 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
     asm volatile("dsb ish");
     asm volatile("isb sy");
 
-    return 0;
+    return res;
 }
 
 static int xnuspy_uninstall_hook(uint64_t target){
@@ -573,6 +554,9 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
 
     if(!xnuspy_init_flag)
         xnuspy_init();
+
+    kprintf("%s: ********RETURNING\n", __func__);
+    return 0;
 
     int res;
 

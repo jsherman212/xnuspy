@@ -1,6 +1,9 @@
 #ifndef EXTERNS
 #define EXTERNS
 
+#define iOS_13_x        (19)
+#define iOS_14_x        (20)
+
 extern uint64_t iOS_version;
 extern void *(*kalloc_canblock)(vm_size_t *sizep, bool canblock,
         void *site);

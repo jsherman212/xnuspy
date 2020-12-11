@@ -6,6 +6,7 @@
 
 #include "common/common.h"
 #include "common/pongo.h"
+#include "common/xnuspy_structs.h"
 
 #include "el1/hook_system_check_sysctlbyname_hook_instrs.h"
 #include "el1/xnuspy_ctl_tramp_instrs.h"
@@ -57,7 +58,6 @@ static void DumpMemory(void *startaddr, void *data, size_t size){
     }
 }
 
-
 static uint64_t g_xnuspy_ctl_addr = 0;
 
 /* address of start of __TEXT_EXEC in xnuspy_ctl image */
@@ -81,8 +81,10 @@ static uint64_t g_xnuspy_tramp_page_addr = 0;
 /* needed for when we are too far away for an immediate branch */
 static uint64_t g_xnuspy_tramp_page_end = 0;
 
-static uint64_t g_usercode_reflector_pages_start = 0;
-static uint64_t g_usercode_reflector_pages_end = 0;
+/* static uint64_t g_usercode_pages_start = 0; */
+/* static uint64_t g_usercode_pages_end = 0; */
+
+static uint64_t g_first_usercode_page = 0;
 
 uint64_t *xnuspy_cache_base = NULL;
 
@@ -126,6 +128,7 @@ static struct xnuspy_ctl_offset {
     { "_bcopy_phys", &g_bcopy_phys_addr },
     { "_copyin", &g_copyin_addr },
     { "_copyout", &g_copyout_addr },
+    { "_first_usercode_page", &g_first_usercode_page },
     { "_iOS_version", &g_kern_version_major },
     { "_kalloc_canblock", &g_kalloc_canblock_addr },
     { "_kalloc_external", &g_kalloc_external_addr },
@@ -137,8 +140,8 @@ static struct xnuspy_ctl_offset {
     { "_lck_rw_done", &g_lck_rw_done_addr },
     { "_lck_rw_lock_shared", &g_lck_rw_lock_shared_addr },
     { "_phystokv", &g_phystokv_addr },
-    { "_usercode_reflector_pages_start", &g_usercode_reflector_pages_start },
-    { "_usercode_reflector_pages_end", &g_usercode_reflector_pages_end },
+    /* { "_usercode_pages_start", &g_usercode_pages_start }, */
+    /* { "_usercode_pages_end", &g_usercode_pages_end }, */
     { "_xnuspy_tramp_page", &g_xnuspy_tramp_page_addr },
     { "_xnuspy_tramp_page_end", &g_xnuspy_tramp_page_end },
 };
@@ -786,7 +789,6 @@ void xnuspy_preboot_hook(void){
         xnuspy_fatal_error();
     }
 
-
     printf("%s: xnuspy_ctl img is %#x bytes\n", __func__,
             loader_xfer_recv_count);
 
@@ -798,7 +800,7 @@ void xnuspy_preboot_hook(void){
         puts("xnuspy: alloc_static");
         puts("   returned NULL while");
         puts("   allocating pages for");
-        puts("   compiled xnuspy_ctl");
+        puts("   xnuspy_ctl image");
 
         xnuspy_fatal_error();
     }
@@ -814,26 +816,76 @@ void xnuspy_preboot_hook(void){
     printf("%s: left with %#llx bytes of static memory\n", __func__,
             free_static_memory);
 
-    /* Now we can create the array of pages xnuspy will use to reflect user code. */
-
     if(free_static_memory > 0x800000){
-        printf("%s: too much static memory left, defaulting to 512 pages\n", __func__);
+        printf("%s: too much static memory left, defaulting to 512 more pages\n",
+                __func__);
         free_static_memory = 0x800000;
     }
 
-    g_usercode_reflector_pages_start = alloc_static(free_static_memory);
-    g_usercode_reflector_pages_end =
-        g_usercode_reflector_pages_start + free_static_memory;
+    uint64_t usercode_pages_allocsz = (free_static_memory / PAGE_SIZE) *
+        sizeof(struct xnuspy_usercode_page);
 
-    g_usercode_reflector_pages_start = xnu_ptr_to_va(g_usercode_reflector_pages_start);
-    g_usercode_reflector_pages_end = xnu_ptr_to_va(g_usercode_reflector_pages_end);
+    printf("%s: usercode_pages_allocsz %#llx\n", __func__, usercode_pages_allocsz);
+
+    /* Now we can start to create the linked list of pages xnuspy will
+     * use to hold user code. alloc_static rounds up to the nearest page */
+    struct xnuspy_usercode_page *usercode_pages = alloc_static(usercode_pages_allocsz);
+
+    if(!usercode_pages){
+        puts("xnuspy: alloc_static");
+        puts("   returned NULL while");
+        puts("   allocating usercode");
+        puts("   pages linked list");
+
+        xnuspy_fatal_error();
+    }
+
+    free_static_memory -= (usercode_pages_allocsz + PAGE_SIZE) & ~(PAGE_SIZE - 1);
+
+    /* g_usercode_pages_start = alloc_static(free_static_memory); */
+    /* g_usercode_pages_end = g_usercode_pages_start + free_static_memory; */
+
+    /* /1* turn these into kernel virtual addresses *1/ */
+    /* g_usercode_pages_start = xnu_ptr_to_va(g_usercode_pages_start); */
+    /* g_usercode_pages_end = xnu_ptr_to_va(g_usercode_pages_end); */
+
+    /* Build the linked list of usercode pages */
+    uint64_t num_usercode_pages = free_static_memory / PAGE_SIZE;
+    struct xnuspy_usercode_page *curpage = usercode_pages;
+
+    printf("%s: %lld pages for user code\n", __func__, num_usercode_pages);
+
+    while(num_usercode_pages > 0){
+        curpage->next = xnu_ptr_to_va(curpage + 1);
+        curpage->refcnt = 0;
+        curpage->page = alloc_static(PAGE_SIZE);
+
+        if(!curpage->page){
+            puts("xnuspy: alloc_static");
+            puts("   returned NULL while");
+            puts("   allocating single");
+            puts("   usercode page");
+
+            xnuspy_fatal_error();
+        }
+
+        curpage->page = xnu_ptr_to_va(curpage->page);
+
+        curpage++;
+        num_usercode_pages--;
+    }
+
+    /* Terminate this linked list */
+    curpage--;
+    curpage->next = NULL;
+
+    g_first_usercode_page = xnu_ptr_to_va(usercode_pages);
 
     free_static_memory = 0;
 
-    printf("%s: usercode reflector pages start @ %#llx end @ %#llx\n",
-            __func__, g_usercode_reflector_pages_start - kernel_slide,
-            g_usercode_reflector_pages_end - kernel_slide);
-
+    /* printf("%s: usercode reflector pages start @ %#llx end @ %#llx\n", */
+    /*         __func__, g_usercode_pages_start - kernel_slide, */
+    /*         g_usercode_pages_end - kernel_slide); */
 
     process_xnuspy_ctl_image(xnuspy_ctl_image);
 
@@ -881,7 +933,7 @@ void xnuspy_preboot_hook(void){
     /* *hwbp_reg_patch = 0xaa1f03ea; */
 
     /* combat short read */
-    asm volatile(".align 14");
+    /* asm volatile(".align 14"); */
     
     if(next_preboot_hook)
         next_preboot_hook();

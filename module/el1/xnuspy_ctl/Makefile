@@ -1,5 +1,5 @@
 CFLAGS += -mkernel
-LDFLAGS = -Xlinker -kext
+LDFLAGS = -Xlinker -kext -nostdlib
 
 # XXX compress later
 
@@ -17,5 +17,6 @@ pte.o : pte.c pte.h externs.h
 tramp.o : tramp.c tramp.h externs.h
 	$(CC) $(CFLAGS) tramp.c -c
 
-xnuspy_ctl : xnuspy_ctl.c asm.o mem.o pte.o tramp.o externs.h
+xnuspy_ctl : xnuspy_ctl.c asm.o mem.o pte.o tramp.o externs.h \
+	../../common/xnuspy_structs.h
 	$(CC) $(CFLAGS) $(LDFLAGS) asm.o mem.o pte.o tramp.o xnuspy_ctl.c -o xnuspy_ctl
