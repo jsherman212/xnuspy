@@ -81,9 +81,6 @@ static uint64_t g_xnuspy_tramp_page_addr = 0;
 /* needed for when we are too far away for an immediate branch */
 static uint64_t g_xnuspy_tramp_page_end = 0;
 
-/* static uint64_t g_usercode_pages_start = 0; */
-/* static uint64_t g_usercode_pages_end = 0; */
-
 static uint64_t g_first_usercode_page = 0;
 
 uint64_t *xnuspy_cache_base = NULL;
@@ -140,8 +137,6 @@ static struct xnuspy_ctl_offset {
     { "_lck_rw_done", &g_lck_rw_done_addr },
     { "_lck_rw_lock_shared", &g_lck_rw_lock_shared_addr },
     { "_phystokv", &g_phystokv_addr },
-    /* { "_usercode_pages_start", &g_usercode_pages_start }, */
-    /* { "_usercode_pages_end", &g_usercode_pages_end }, */
     { "_xnuspy_tramp_page", &g_xnuspy_tramp_page_addr },
     { "_xnuspy_tramp_page_end", &g_xnuspy_tramp_page_end },
 };

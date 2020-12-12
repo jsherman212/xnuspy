@@ -21,7 +21,8 @@ $(TARGET_DIRS) :
 OBJECT_FILES = $(shell find ./common ./pf -type f -name "*.o")
 INSTR_FILES = $(shell find ./el1 -type f -name "*_instrs.h")
 
-preboot_hook.o : $(INSTR_FILES) preboot_hook.c preboot_hook.h
+preboot_hook.o : $(INSTR_FILES) preboot_hook.c preboot_hook.h \
+	common/xnuspy_structs.h
 	$(CC) $(CFLAGS) preboot_hook.c -c
 
 xnuspy : $(OBJECT_FILES) xnuspy.c preboot_hook.o common/common.h \
