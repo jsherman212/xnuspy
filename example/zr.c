@@ -53,6 +53,10 @@ int main(int argc, char **argv){
             zone_require, &zone_require_orig);
 
     printf("zone_require_orig = %#llx\n", zone_require_orig);
+    syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF007C4B420,
+            main, &zone_require_orig);
+
+    printf("zone_require_orig = %#llx\n", zone_require_orig);
 
     printf("Ctrl C to quit\n");
     getchar();

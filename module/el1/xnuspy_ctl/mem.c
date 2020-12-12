@@ -156,7 +156,7 @@ struct objhdr {
     size_t sz;
 };
 
-struct objhdr *common_kalloc(size_t sz){
+void *common_kalloc(size_t sz){
     struct objhdr *mem;
 
     if(iOS_version == iOS_13_x)
@@ -179,5 +179,5 @@ void common_kfree(struct objhdr *obj){
     if(iOS_version == iOS_13_x)
         kfree_addr(obj);
     else
-        kfree_ext(obj, obj->sz);
+        kfree_ext(obj, ((struct objhdr *)obj)->sz);
 }

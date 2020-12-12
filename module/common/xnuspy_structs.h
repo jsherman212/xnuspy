@@ -9,17 +9,20 @@ struct objhdr {
 struct xnuspy_usercode_page {
     struct xnuspy_usercode_page *next;
     _Atomic uint64_t refcnt;
-    void *page;
+    uint8_t *page;
 };
 
 struct xnuspy_tramp_metadata {
     struct objhdr hdr;
     /* Process which installed this hook */
+    /* XXX XXX SHOULD USE PID INSTEAD */
     void *owner;
     /* Pointer to the first usercode page used for the hook */
     struct xnuspy_usercode_page *first_usercode_page;
     /* How many usercode pages were used */
     uint64_t used_usercode_pages;
+    /* EL0 virtual address of Mach header of calling process which owns this hook */
+    /* struct mach_header_64 *umh; */
 };
 
 /* This structure represents a function hook. Every xnuspy_tramp struct resides

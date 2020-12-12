@@ -13,6 +13,9 @@
 #include "../../common/xnuspy_structs.h"
 
 #undef current_task
+#undef PAGE_SIZE
+
+#define PAGE_SIZE                   (0x4000)
 
 #define XNUSPY_INSTALL_HOOK         (0)
 #define XNUSPY_UNINSTALL_HOOK       (1)
@@ -178,6 +181,17 @@ MARK_AS_KERNEL_OFFSET queue_head_t *map_pmap_list;
 /* #define DIST_FROM_REFCNT_TO(x) __builtin_offsetof(struct xnuspy_tramp, x) - \ */
 /*     __builtin_offsetof(struct xnuspy_tramp, refcnt) */
 
+static void _desc_xnuspy_usercode_page(const char *indent,
+        struct xnuspy_usercode_page *p){
+    kprintf("%sThis usercode page is @ %#llx. "
+            "next: %#llx refcnt: %lld page %#llx\n", indent, (uint64_t)p, p->next,
+            p->refcnt, p->page);
+}
+
+static void desc_xnuspy_usercode_page(struct xnuspy_usercode_page *p){
+    _desc_xnuspy_usercode_page("", p);
+}
+
 static void desc_xnuspy_tramp(struct xnuspy_tramp *t, uint32_t orig_tramp_len){
     kprintf("This xnuspy_tramp is @ %#llx\n", (uint64_t)t);
     kprintf("Replacement: %#llx\n", t->replacement);
@@ -190,22 +204,23 @@ static void desc_xnuspy_tramp(struct xnuspy_tramp *t, uint32_t orig_tramp_len){
     for(int i=0; i<orig_tramp_len; i++)
         kprintf("\ttramp[%d]    %#x\n", i, t->orig[i]);
 
-
     if(!t->metadata)
         kprintf("NULL metadata\n");
     else{
         kprintf("Owner: %#llx\n", t->metadata->owner);
-        kprintf("First usercode page: %#llx\n", t->metadata->first_usercode_page->page);
         kprintf("# of used usercode pages: %lld\n", t->metadata->used_usercode_pages);
-    }
-}
+        kprintf("Usercode pages:\n");
 
-static void desc_xnuspy_usercode_page(struct xnuspy_usercode_page *p){
-    kprintf("This usercode page is @ %#llx. "
-            "next: %#llx refcnt: %lld page %#llx\n", (uint64_t)p, p->next,
-            p->refcnt, p->page);
-    /* kprintf("\tnext: %#llx refcnt: %lld page %#llx\n", p->next, p->refcnt, */
-    /*         p->page); */
+        struct xnuspy_usercode_page *cur = t->metadata->first_usercode_page;
+
+        for(int i=0; i<t->metadata->used_usercode_pages; i++){
+            if(!cur)
+                break;
+
+            _desc_xnuspy_usercode_page("    ", cur);
+            cur = cur->next;
+        }
+    }
 }
 
 static int xnuspy_usercode_page_free(struct xnuspy_usercode_page *p){
@@ -226,16 +241,13 @@ static int xnuspy_init_flag = 0;
 static void xnuspy_init(void){
     /* Mark the xnuspy_tramp page as writeable/executable */
     vm_prot_t prot = VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE;
-    kprotect((uint64_t)xnuspy_tramp_page, 0x4000, prot);
+    kprotect((uint64_t)xnuspy_tramp_page, PAGE_SIZE, prot);
 
     /* Do the same for the pages which will hold user code */
-    /* uint64_t len = (uint64_t)(usercode_pages_end - usercode_pages_start); */
-    /* kprotect((uint64_t)usercode_pages_start, len, prot); */
-
     struct xnuspy_usercode_page *cur = first_usercode_page;
     
     while(cur){
-        kprotect((uint64_t)cur->page, 0x4000, prot);
+        kprotect((uint64_t)cur->page, PAGE_SIZE, prot);
         cur = cur->next;
     }
 
@@ -275,90 +287,24 @@ int strcmp(const char *s1, const char *s2){
     return *(const unsigned char *)s1 - *(const unsigned char *)s2;
 }
 
-/* static uint64_t replacement_kva(struct mach_header_64 *umh, */
-/*         uint64_t /1* __user *1/ replacement){ */
-/*     uint64_t dist = replacement - (uintptr_t)umh; */
-/*     kprintf("%s: dist %#llx replacement %#llx umh %#llx\n", __func__, */
-/*             dist, replacement, (uint64_t)umh); */
-/*     return (uint64_t)(usercode_pages_start + dist); */
-/* } */
+static uint64_t find_replacement_kva(struct mach_header_64 *kmh,
+        struct mach_header_64 * /* __user */ umh,
+        uint64_t /* __user */ replacement){
+    uint64_t dist = replacement - (uintptr_t)umh;
+    kprintf("%s: dist %#llx replacement %#llx umh %#llx kmh %#llx\n", __func__,
+            dist, replacement, (uint64_t)umh, (uint64_t)kmh);
+    return (uint64_t)((uintptr_t)kmh + dist);
+}
 
 /* Copy the calling process' __TEXT and __DATA onto a contiguous set
  * of the pages we reserved before booting XNU. Lame, but safe. Swapping
  * translation table base registers and changing PTE OutputAddress'es
  * was hacky.
+ *
+ * On success, returns metadata for hooks installed by this process.
  */
-/* static uint64_t copy_caller_segments(struct mach_header_64 *umh, */
-/*         uint64_t replacement){ */
-/*     uint64_t replacement_kva = 0; */
-/*     uint64_t aslr_slide = (uintptr_t)umh - 0x100000000; */
-
-/*     struct load_command *lc = (struct load_command *)(umh + 1); */
-
-/*     /1* XXX temporary: future implementation will alloc a contiguous */
-/*      * set of n pages *1/ */
-/*     /1* uint8_t *curpage = usercode_pages_start; *1/ */
-/*     uint8_t *curpage = (uint8_t*)0x4142434445464748; */
-
-/*     for(int i=0; i<umh->ncmds; i++){ */
-/*         kprintf("%s: got cmd %d\n", __func__, lc->cmd); */
-
-/*         if(lc->cmd != LC_SEGMENT_64) */
-/*             goto next; */
-
-/*         struct segment_command_64 *sc64 = (struct segment_command_64 *)lc; */
-
-/*         int is_text = strcmp(sc64->segname, "__TEXT") == 0; */
-
-/*         if(is_text || strcmp(sc64->segname, "__DATA") == 0){ */
-/*             /1* These will always be page aligned *1/ */
-/*             uint64_t start = sc64->vmaddr + aslr_slide; */
-/*             uint64_t end = start + sc64->vmsize; */
-
-/*             kprintf("%s: segment '%s' start %#llx end %#llx\n", __func__, */
-/*                     sc64->segname, start, end); */
-
-/*             /1* Copy the segment into kernelspace *1/ */
-/*             while(start < end){ */
-/*                 uint64_t *us = (uint64_t *)start; */
-/*                 uint64_t *ks = (uint64_t *)curpage; */
-/*                 uint64_t *ke = (uint64_t *)(curpage + 0x4000); */
-
-/*                 kprintf("%s: us %#llx ks %#llx ke %#llx\n", __func__, us, ks, ke); */
-
-/*                 while(ks < ke) */
-/*                     *ks++ = *us++; */
-
-/*                 start += 0x4000; */
-/*                 curpage += 0x4000; */
-/*             } */
-
-/*             /1* __TEXT includes the mach header, so we can just add the */
-/*              * distance from the header to the user's replacement function */
-/*              * to the first page we used *1/ */
-/*             if(is_text && !replacement_kva){ */
-/*                 uint64_t dist = replacement - (uintptr_t)umh; */
-/*                 kprintf("%s: dist %#llx replacement %#llx umh %#llx\n", __func__, */
-/*                         dist, replacement, (uint64_t)umh); */
-/*                 /1* XXX temporary *1/ */
-/*                 /1* replacement_kva = (uint64_t)(usercode_pages_start + dist); *1/ */
-/*                 replacement_kva = 0x55565758595a5b5c; */
-/*             } */
-/*         } */
-
-/* next: */
-/*         lc = (struct load_command *)((uintptr_t)lc + lc->cmdsize); */
-/*     } */
-
-/*     return replacement_kva; */
-/* } */
-
-/* Copy the calling process' __TEXT and __DATA onto a contiguous set
- * of the pages we reserved before booting XNU. Lame, but safe. Swapping
- * translation table base registers and changing PTE OutputAddress'es
- * was hacky.
- */
-static struct xnuspy_tramp_metadata *copy_caller_segments(struct mach_header_64 *umh){
+static struct xnuspy_tramp_metadata *
+copy_caller_segments(struct mach_header_64 * /* __user */ umh){
     uint64_t aslr_slide = (uintptr_t)umh - 0x100000000;
     uint64_t copystart = 0, copysz = 0;
     int seen_text = 0, seen_data = 0;
@@ -423,7 +369,7 @@ nextcmd:
         return NULL;
 
     /* Now find a set of free, contiguous usercode pages to copy on to */
-    uint64_t npages = copysz / 0x4000;
+    uint64_t npages = copysz / PAGE_SIZE;
 
     struct xnuspy_usercode_page *found = NULL;
 
@@ -460,14 +406,52 @@ nextpage:
 
     struct xnuspy_usercode_page *freeset = cur;
 
-    kprintf("%s: free pages found:\n");
+    kprintf("%s: free pages found:\n", __func__);
 
     for(int i=0; i<npages; i++){
-        desc_xnuspy_usercode_page(freeset);
-        freeset = freeset->next;
+        desc_xnuspy_usercode_page(cur);
+        cur = cur->next;
     }
 
-    return NULL;
+    struct xnuspy_tramp_metadata *metadata = common_kalloc(sizeof(*metadata));
+
+    if(!metadata)
+        return NULL;
+
+    metadata->owner = current_task();
+    /* Don't take a reference yet, because failures are still possible */
+    metadata->first_usercode_page = freeset;
+    metadata->used_usercode_pages = npages;
+    /* Includes ASLR slide */
+    /* metadata->umh = umh; */
+
+    /* Finally, perform the copy */
+    cur = freeset;
+
+    uint64_t end = copystart + copysz;
+
+    while(copystart < end){
+        if(!cur){
+            kprintf("%s: short copy???\n", __func__);
+            common_kfree(metadata);
+            return NULL;
+        }
+
+        __uint128_t *us = (__uint128_t *)copystart;
+        __uint128_t *ks = (__uint128_t *)cur->page;
+        __uint128_t *ke = (__uint128_t *)(cur->page + PAGE_SIZE);
+
+        kprintf("%s: us %#llx ks %#llx ke %#llx\n", __func__, us, ks, ke);
+
+        /* Safe, PAN is disabled */
+        while(ks < ke)
+            *ks++ = *us++;
+
+        copystart += PAGE_SIZE;
+        cur = cur->next;
+    }
+
+    return metadata;
 }
 
 /* This function finds a free xnuspy_tramp struct. If the calling process
@@ -575,7 +559,9 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
             current_map->hdr.links.end);
 
     /* Mach header of the calling process */
-    struct mach_header_64 *umh;
+    struct mach_header_64 *umh = (struct mach_header_64 *)current_map->hdr.links.start;
+    /* Mach header of the calling process, but the kernel's copy of it */
+    struct mach_header_64 *kmh;
 
     /* If we don't need to copy segments again, figure out the kernel
      * virtual address of the user's replacement and take a reference on each
@@ -583,35 +569,80 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
     if(!copy_segments){
         kprintf("%s: don't need to copy segments\n", __func__);
 
-        umh = already_copied->page;
+        kmh = (struct mach_header_64 *)already_copied->page;
 
-        kprintf("%s: umh @ %#llx\n", __func__, umh);
+        kprintf("%s: umh @ %#llx kmh @ %#llx\n", __func__, umh, kmh);
+
+        /* Metadata objects aren't reference counted, so we need to deep copy */
+        struct xnuspy_tramp_metadata *metadata = common_kalloc(sizeof(*metadata));
+
+        if(!metadata){
+            kprintf("%s: failed to allocate metadata for this hook\n", __func__);
+            return ENOMEM;
+        }
+
+        metadata->owner = current_task();
+        /* Don't take a reference yet, because failures are still possible */
+        metadata->first_usercode_page = already_copied;
+        metadata->used_usercode_pages = num_already_used;
+
+        struct xnuspy_usercode_page *cur = metadata->first_usercode_page;
+
+        for(int i=0; i<metadata->used_usercode_pages; i++){
+            if(!cur)
+                break;
+
+            cur->refcnt++;
+            cur = cur->next;
+        }
+
+        tramp->metadata = metadata;
     }
     else{
         kprintf("%s: need to copy segments\n", __func__);
 
-        umh = (struct mach_header_64 *)current_map->hdr.links.start;
-
         struct xnuspy_tramp_metadata *metadata = copy_caller_segments(umh);
+
+        if(!metadata){
+            kprintf("%s: failed to allocate metadata for this hook\n", __func__);
+            return ENOMEM;
+        }
+
+        /* No failures are possible after this point, take a reference
+         * on the usercode pages and hook the target function */
+        struct xnuspy_usercode_page *cur = metadata->first_usercode_page;
+
+        kmh = (struct mach_header_64 *)cur->page;
+
+        for(int i=0; i<metadata->used_usercode_pages; i++){
+            if(!cur)
+                break;
+
+            cur->refcnt++;
+            cur = cur->next;
+        }
+
+        tramp->metadata = metadata;
     }
 
+    uint64_t replacement_kva = find_replacement_kva(kmh, umh, replacement);
 
-    /* uint64_t replacement_kva = copy_caller_segments(umh, replacement); */
+    kprintf("%s: replacment kva @ %#llx\n", __func__, replacement_kva);
 
-    /* kprintf("%s: replacment kva @ %#llx\n", __func__, replacement_kva); */
-
-    /* /1* At this point, we are guarenteed success, so set owner and replacement *1/ */
-    /* tramp->replacement = replacement_kva; */
-
-
-    /* tramp->owner = current_task(); */
+    tramp->replacement = replacement_kva;
 
     desc_xnuspy_tramp(tramp, orig_tramp_len);
 
     /* IOSleep(10000); */
 
+    uint32_t *cursor = (uint32_t *)replacement_kva;
+    for(int i=0; i<20; i++){
+        kprintf("%s: %#llx:      %#x\n", __func__, (uint64_t)(cursor+i),
+                cursor[i]);
+    }
+
     /* All the trampolines are set up, hook the target */
-    /* kprotect(target, 0x4000, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE); */
+    /* kprotect(target, PAGE_SIZE, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE); */
 
     /* *(uint32_t *)target = assemble_b(target, (uint64_t)tramp->tramp); */
 
