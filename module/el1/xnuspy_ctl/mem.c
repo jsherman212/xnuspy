@@ -70,8 +70,12 @@ static int protect_common(uint64_t vaddr, uint64_t size, vm_prot_t prot,
     if(!(prot & VM_PROT_READ))
         return 1;
 
-    uint64_t target_region_cur = vaddr & ~0x3fffuLL;
-    uint64_t target_region_end = (vaddr + size) & ~0x3fffuLL;
+    /* Round size up to the nearest page if not already a multiple of PAGE_SIZE */
+    if(size & 0xfff)
+        size = (size + PAGE_SIZE) & ~(PAGE_SIZE - 1);
+
+    uint64_t target_region_cur = vaddr & ~(PAGE_SIZE - 1);
+    uint64_t target_region_end = (vaddr + size) & ~(PAGE_SIZE - 1);
 
     /* Determine the equivalent PTE protections of 'prot'. Assume caller only
      * wants read permissions. */
@@ -106,7 +110,7 @@ static int protect_common(uint64_t vaddr, uint64_t size, vm_prot_t prot,
 
         kwrite(pte, &new_pte, sizeof(new_pte));
 
-        target_region_cur += 0x4000;
+        target_region_cur += PAGE_SIZE;
     }
 
     asm volatile("isb");

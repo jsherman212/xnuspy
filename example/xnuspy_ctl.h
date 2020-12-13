@@ -15,5 +15,6 @@
 #define COPYOUT                                                     (1)
 #define KPRINTF                     (2)
 #define IOSLEEP (3)
+#define KERNEL_SLIDE (4)
 
 #endif

@@ -542,6 +542,10 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
             *va = 0xFFFFFFF0079316C0 + kernel_slide;
             return;
         }
+        else if(strcmp(ksym, "_vm_map_wire_kernel") == 0){
+            *va = 0xFFFFFFF007C94BC8 + kernel_slide;
+            return;
+        }
     }
 }
 
@@ -929,7 +933,12 @@ void xnuspy_preboot_hook(void){
 
     /* combat short read */
     /* asm volatile(".align 14"); */
-    
+
+    /* iphone 8 13.6.1: Patch out the VM_PROT_EXECUTE check in vm_map_wire_nested */
+    uint32_t *exec_patch = xnu_va_to_ptr(0xFFFFFFF007C909F8 + kernel_slide);
+    /* NOP */
+    *exec_patch = 0xd503201f;
+
     if(next_preboot_hook)
         next_preboot_hook();
 }

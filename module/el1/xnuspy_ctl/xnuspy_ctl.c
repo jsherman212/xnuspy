@@ -1,5 +1,6 @@
 #include <errno.h>
 #include <mach/mach.h>
+#include <mach/vm_statistics.h>
 #include <mach-o/loader.h>
 #include <stdbool.h>
 #include <stdint.h>
@@ -17,6 +18,8 @@
 
 #define PAGE_SIZE                   (0x4000)
 
+#define VM_KERN_MEMORY_OSFMK        (1)
+
 #define XNUSPY_INSTALL_HOOK         (0)
 #define XNUSPY_UNINSTALL_HOOK       (1)
 #define XNUSPY_CHECK_IF_PATCHED     (2)
@@ -31,7 +34,8 @@
 #define COPYOUT                     (1)
 #define KPRINTF                     (2)
 #define IOSLEEP                     (3)
-#define MAX_FUNCTION                IOSLEEP
+#define KERNEL_SLIDE                (4)
+#define MAX_FUNCTION                KERNEL_SLIDE
 
 #define MARK_AS_KERNEL_OFFSET __attribute__((section("__DATA,__koff")))
 
@@ -79,6 +83,9 @@ MARK_AS_KERNEL_OFFSET void (*_enable_preemption)(void);
 MARK_AS_KERNEL_OFFSET kern_return_t (*kernel_memory_allocate)(void *map, uint64_t *addrp,
         vm_size_t size, vm_offset_t mask, int flags, int tag);
 MARK_AS_KERNEL_OFFSET void *kernel_map;
+
+MARK_AS_KERNEL_OFFSET kern_return_t (*vm_map_wire_kernel)(void *map,
+        uint64_t start, uint64_t end, vm_prot_t prot, int tag, int user_wire);
 
 /* flags for kernel_memory_allocate */
 #define KMA_HERE        0x01
@@ -308,6 +315,9 @@ copy_caller_segments(struct mach_header_64 * /* __user */ umh){
     uint64_t aslr_slide = (uintptr_t)umh - 0x100000000;
     uint64_t copystart = 0, copysz = 0;
     int seen_text = 0, seen_data = 0;
+    vm_prot_t text_prot = 0, data_prot = 0;
+
+    struct segment_command_64 *text = NULL, *data = NULL;
 
     struct load_command *lc = (struct load_command *)(umh + 1);
 
@@ -346,11 +356,17 @@ copy_caller_segments(struct mach_header_64 * /* __user */ umh){
                 copysz = sc64->vmsize;
             }
 
-            if(is_text)
+            if(is_text){
                 seen_text = 1;
+                text_prot = sc64->initprot;
+                text = sc64;
+            }
 
-            if(is_data)
+            if(is_data){
                 seen_data = 1;
+                data_prot = sc64->initprot;
+                data = sc64;
+            }
 
             if(seen_text && seen_data){
                 kprintf("%s: we've seen text and data, breaking\n", __func__);
@@ -430,6 +446,29 @@ nextpage:
 
     uint64_t end = copystart + copysz;
 
+    uint64_t tpidr_el1;
+    asm volatile("mrs %0, tpidr_el1" : "=r" (tpidr_el1));
+    struct _vm_map *current_map = *(struct _vm_map **)(tpidr_el1 + 0x320);
+
+    asm volatile("dsb sy");
+    asm volatile("isb");
+
+    /* kern_return_t kret = vm_map_wire_kernel(current_map, copystart, end, */
+    /*         VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE, 1, 1); */
+
+    uint64_t text_start = text->vmaddr + aslr_slide;
+    uint64_t text_end = text_start + text->vmsize;
+    kern_return_t kret = vm_map_wire_kernel(current_map, text_start, text_end,
+            text->initprot, VM_KERN_MEMORY_OSFMK, 1);
+    kprintf("%s: vm_map_wire_kernel text kret %d\n", __func__, kret);
+
+    uint64_t data_start = data->vmaddr + aslr_slide;
+    uint64_t data_end = data_start + data->vmsize;
+
+    kret = vm_map_wire_kernel(current_map, data_start, data_end, data->initprot,
+            VM_KERN_MEMORY_OSFMK, 1);
+    kprintf("%s: vm_map_wire_kernel data kret %d\n", __func__, kret);
+
     while(copystart < end){
         if(!cur){
             kprintf("%s: short copy???\n", __func__);
@@ -443,9 +482,32 @@ nextpage:
 
         kprintf("%s: us %#llx ks %#llx ke %#llx\n", __func__, us, ks, ke);
 
+        pte_t *us_ptep = el0_ptep(us);
+        pte_t *ks_ptep = el1_ptep(ks);
+
+        uint64_t us_phys = uvtophys(us);
+        uint64_t us_physpage = us_phys & ~0x3fffuLL;
+
+        kprintf("%s: before: us pte %#llx ks pte %#llx us phys %#llx"
+                " us physpage @ %#llx\n",
+                __func__, *us_ptep, *ks_ptep, us_phys, us_physpage);
+
+        pte_t new_ks_pte = (*ks_ptep & ~0xfffffffff000uLL) | us_physpage;
+        new_ks_pte &= ~(ARM_PTE_NX | ARM_PTE_PNX);
+
+        kprintf("%s: new ks pte == %#llx\n", __func__, new_ks_pte);
+
+        kwrite(ks_ptep, &new_ks_pte, sizeof(new_ks_pte));
+
+        asm volatile("isb");
+        asm volatile("dsb sy");
+        asm volatile("tlbi vmalle1");
+        asm volatile("dsb sy");
+        asm volatile("isb");
+
         /* Safe, PAN is disabled */
-        while(ks < ke)
-            *ks++ = *us++;
+        /* while(ks < ke) */
+        /*     *ks++ = *us++; */
 
         copystart += PAGE_SIZE;
         cur = cur->next;
@@ -562,6 +624,7 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
     struct mach_header_64 *umh = (struct mach_header_64 *)current_map->hdr.links.start;
     /* Mach header of the calling process, but the kernel's copy of it */
     struct mach_header_64 *kmh;
+    struct xnuspy_tramp_metadata *metadata;
 
     /* If we don't need to copy segments again, figure out the kernel
      * virtual address of the user's replacement and take a reference on each
@@ -574,7 +637,7 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
         kprintf("%s: umh @ %#llx kmh @ %#llx\n", __func__, umh, kmh);
 
         /* Metadata objects aren't reference counted, so we need to deep copy */
-        struct xnuspy_tramp_metadata *metadata = common_kalloc(sizeof(*metadata));
+        metadata = common_kalloc(sizeof(*metadata));
 
         if(!metadata){
             kprintf("%s: failed to allocate metadata for this hook\n", __func__);
@@ -582,48 +645,35 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
         }
 
         metadata->owner = current_task();
-        /* Don't take a reference yet, because failures are still possible */
         metadata->first_usercode_page = already_copied;
         metadata->used_usercode_pages = num_already_used;
-
-        struct xnuspy_usercode_page *cur = metadata->first_usercode_page;
-
-        for(int i=0; i<metadata->used_usercode_pages; i++){
-            if(!cur)
-                break;
-
-            cur->refcnt++;
-            cur = cur->next;
-        }
-
-        tramp->metadata = metadata;
     }
     else{
         kprintf("%s: need to copy segments\n", __func__);
 
-        struct xnuspy_tramp_metadata *metadata = copy_caller_segments(umh);
+        metadata = copy_caller_segments(umh);
 
         if(!metadata){
             kprintf("%s: failed to allocate metadata for this hook\n", __func__);
             return ENOMEM;
         }
 
-        /* No failures are possible after this point, take a reference
-         * on the usercode pages and hook the target function */
-        struct xnuspy_usercode_page *cur = metadata->first_usercode_page;
-
-        kmh = (struct mach_header_64 *)cur->page;
-
-        for(int i=0; i<metadata->used_usercode_pages; i++){
-            if(!cur)
-                break;
-
-            cur->refcnt++;
-            cur = cur->next;
-        }
-
-        tramp->metadata = metadata;
+        kmh = (struct mach_header_64 *)metadata->first_usercode_page->page;
     }
+
+    /* No failures are possible after this point, take a reference
+     * on the usercode pages and hook the target function */
+    struct xnuspy_usercode_page *cur = metadata->first_usercode_page;
+
+    for(int i=0; i<metadata->used_usercode_pages; i++){
+        if(!cur)
+            break;
+
+        cur->refcnt++;
+        cur = cur->next;
+    }
+
+    tramp->metadata = metadata;
 
     uint64_t replacement_kva = find_replacement_kva(kmh, umh, replacement);
 
@@ -642,15 +692,17 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
     }
 
     /* All the trampolines are set up, hook the target */
-    /* kprotect(target, PAGE_SIZE, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE); */
+    kprotect(target, sizeof(uint32_t), VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE);
 
-    /* *(uint32_t *)target = assemble_b(target, (uint64_t)tramp->tramp); */
+    *(uint32_t *)target = assemble_b(target, (uint64_t)tramp->tramp);
 
-    /* asm volatile("dc cvau, %0" : : "r" (target)); */
-    /* asm volatile("dsb ish"); */
-    /* asm volatile("ic ivau, %0" : : "r" (target)); */
-    /* asm volatile("dsb ish"); */
-    /* asm volatile("isb sy"); */
+    asm volatile("dc cvau, %0" : : "r" (target));
+    asm volatile("dsb ish");
+    asm volatile("ic ivau, %0" : : "r" (target));
+    asm volatile("dsb ish");
+    asm volatile("isb sy");
+
+    kprotect(target, sizeof(uint32_t), VM_PROT_READ | VM_PROT_EXECUTE);
 
     return res;
 }
@@ -679,6 +731,9 @@ static int xnuspy_get_function(uint64_t which, uint64_t /* __user */ outp){
             break;
         case IOSLEEP:
             which = (uint64_t)IOSleep;
+            break;
+        case KERNEL_SLIDE:
+            which = kernel_slide;
             break;
         default:
             break;

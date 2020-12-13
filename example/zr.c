@@ -10,6 +10,8 @@
 
 static long SYS_xnuspy_ctl = 0;
 
+static long i = 0;
+
 static void (*kprintf)(const char *, ...);
 
 static void (*zone_require_orig)(void *addr, void *expected_zone);
@@ -23,8 +25,10 @@ static void zone_require(void *addr, void *expected_zone){
 
     char *zname = *(char **)((uint8_t *)expected_zone + 0x120);
 
-    kprintf("CPU %d, caller %#llx: zone_require called with addr %#llx,"
-            " expected zone", cpuid, caller, addr);
+    kprintf("%d: CPU %d, caller %#llx: zone_require called with addr %#llx,"
+            " expected zone", i, cpuid, caller, addr);
+
+    i++;
 
     if(zname)
         kprintf(" '%s'\n", zname);
@@ -52,11 +56,11 @@ int main(int argc, char **argv){
     syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF007C4B420,
             zone_require, &zone_require_orig);
 
-    printf("zone_require_orig = %#llx\n", zone_require_orig);
-    syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF007C4B420,
-            main, &zone_require_orig);
+    /* printf("zone_require_orig = %#llx\n", zone_require_orig); */
+    /* syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF007C4B420, */
+    /*         main, &zone_require_orig); */
 
-    printf("zone_require_orig = %#llx\n", zone_require_orig);
+    /* printf("zone_require_orig = %#llx\n", zone_require_orig); */
 
     printf("Ctrl C to quit\n");
     getchar();

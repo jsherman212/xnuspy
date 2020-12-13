@@ -459,7 +459,7 @@ next:
     return replacement_kva;
 }
 
-static uint64_t kernel_slide = 0x16330000;
+static uint64_t kernel_slide = 0;
 
 static void *gIOUserClientClassKey = NULL;
 static void *IOService_metaClass = NULL;
@@ -604,6 +604,8 @@ int main(int argc, char **argv){
     /* getchar(); */
     /* return 0; */
 
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_GET_FUNCTION, KERNEL_SLIDE, &kernel_slide, 0);
+    printf("got kernel slide @ %#llx\n", kernel_slide);
     ret = syscall(SYS_xnuspy_ctl, XNUSPY_GET_FUNCTION, KPROTECT, &kprotect, 0);
     printf("got kprotect @ %#llx\n", kprotect);
     ret = syscall(SYS_xnuspy_ctl, XNUSPY_GET_FUNCTION, COPYOUT, &copyout, 0);
