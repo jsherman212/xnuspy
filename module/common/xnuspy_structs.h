@@ -12,29 +12,41 @@ struct xnuspy_reflector_page {
     void *page;
 };
 
-struct xnuspy_tramp_metadata {
+/* This structure represents a shared __TEXT and __DATA mapping. There are
+ * one xnuspy_mapping_metadata struct per-process. */
+struct xnuspy_mapping_metadata {
     struct objhdr hdr;
     /* Reference count for metadata, NOT the xnuspy_tramp */
     _Atomic uint64_t refcnt;
-    /* Process which installed this hook */
-    /* XXX XXX SHOULD USE PID INSTEAD */
-    void *owner;
-    /* Pointer to the first reflector page used for the hook */
+    /* Process which owns this mapping */
+    pid_t owner;
+    /* Pointer to the first reflector page used for this mapping */
     struct xnuspy_reflector_page *first_reflector_page;
-    /* How many reflector pages are used */
+    /* How many reflector pages are used ^ */
     uint64_t used_reflector_pages;
-    /* Memory object representing the shared __TEXT and __DATA mapping */
+    /* Memory object for this shared mapping, ipc_port_t */
     void *memory_object;
-    /* Address of shared __TEXT and __DATA mapping */
+    /* Address of the start of this mapping */
     uint64_t mapping_addr;
-    /* Size of shared __TEXT and __DATA mapping */
+    /* Size of this mapping */
     uint64_t mapping_size;
+};
+
+/* This structure contains information for an xnuspy_tramp that isn't
+ * necessary to keep in the struct itself. I do this to save space. These are
+ * not reference counted because they're per-hook. */
+struct xnuspy_tramp_metadata {
+    struct objhdr hdr;
+    /* Hooked kernel function */
+    uint64_t hooked;
+    /* Overwritten instruction */
+    uint32_t orig_instr;
 };
 
 /* This structure represents a function hook. Every xnuspy_tramp struct resides
  * on writeable, executable memory. */
 struct xnuspy_tramp {
-    /* Kernel virtual address of copied userland replacement */
+    /* Kernel virtual address of reflected userland replacement */
     uint64_t replacement;
     /* The trampoline for a hooked function. When the user installs a hook
      * on a function, the first instruction of that function is replaced
@@ -107,8 +119,8 @@ struct xnuspy_tramp {
      *  orig[6]     <address of second instruction of the hooked function>[63:32]
      */
     uint32_t orig[10];
-    /* Kalloc'ed pointer to metadata about this hook to save space */
-    struct xnuspy_tramp_metadata *metadata;
+    struct xnuspy_tramp_metadata *tramp_metadata;
+    struct xnuspy_mapping_metadata *mapping_metadata;
 };
 
 #endif

@@ -570,6 +570,14 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
             *va = 0xFFFFFFF007CD2360 + kernel_slide;
             return;
         }
+        else if(strcmp(ksym, "_current_proc") == 0){
+            *va = 0xFFFFFFF0080E933C + kernel_slide;
+            return;
+        }
+        else if(strcmp(ksym, "_proc_pid") == 0){
+            *va = 0xFFFFFFF007FF85E0 + kernel_slide;
+            return;
+        }
     }
 }
 

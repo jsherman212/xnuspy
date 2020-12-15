@@ -69,11 +69,19 @@ int main(int argc, char **argv){
 
     /* printf("NOT INSTALLING HOOK\n"); */
 
+    errno = 0;
 
     /* printf("number: %#x\n", __func__); */
-    syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF007C4B420,
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF007C4B420,
+            zone_require, &zone_require_orig);
+    if(ret)
+        printf("%s\n", strerror(errno));
+
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF007C4B420,
             zone_require, &zone_require_orig);
 
+    if(ret)
+        printf("%s\n", strerror(errno));
     extern struct mach_header_64 *_mh_execute_header;
     printf("%#llx: %#x\n", &_mh_execute_header, *(uint32_t *)(&_mh_execute_header));
 

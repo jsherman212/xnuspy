@@ -190,12 +190,12 @@ static void *kalloc_canblock(size_t *sizep, int canblock, void *site){
 
     uint64_t caller = (uint64_t)__builtin_return_address(0);
 
-    kprintf("*****kalloc_canblock hook (CPU %d, caller=%#llx): returned mem @ "
-            " %#llx for size %#llx\n", curcpu, caller, mem, *sizep);
+    if(!canblock){
+        kprintf("*****kalloc_canblock hook (CPU %d, caller=%#llx): returned mem @ "
+                " %#llx for size %#llx\n", curcpu, caller, mem, *sizep);
+    }
 
     return mem;
-
-    /* return kalloc_canblock_orig(sizep, canblock, site); */
 }
 
 static void (*zone_require_orig)(void *addr, void *expected_zone);
@@ -209,13 +209,13 @@ static void zone_require(void *addr, void *expected_zone){
 
     char *zname = *(char **)((uint8_t *)expected_zone + 0x120);
 
-    kprintf("CPU %d, caller %#llx: zone_require called with addr %#llx,"
-            " expected zone", cpuid, caller, addr);
+    /* kprintf("CPU %d, caller %#llx: zone_require called with addr %#llx," */
+    /*         " expected zone", cpuid, caller, addr); */
 
-    if(zname)
-        kprintf(" '%s'\n", zname);
-    else
-        kprintf(" %#llx\n", expected_zone);
+    /* if(zname) */
+    /*     kprintf(" '%s'\n", zname); */
+    /* else */
+    /*     kprintf(" %#llx\n", expected_zone); */
 
     zone_require_orig(addr, expected_zone);
 }
@@ -633,6 +633,9 @@ int main(int argc, char **argv){
     ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF0081994DC,
             is_io_service_open_extended, &is_io_service_open_extended_orig);
 
+    if(ret)
+        printf("%s\n", strerror(errno));
+
     printf("is_io_service_open_extended_orig = %#llx\n",
             is_io_service_open_extended_orig);
 
@@ -643,6 +646,9 @@ int main(int argc, char **argv){
     /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF007C031E4, */
     /*         kalloc_canblock, &kalloc_canblock_orig); */
 
+    /* if(ret) */
+    /*     printf("%s\n", strerror(errno)); */
+
     /* printf("kalloc_canblock_orig = %#llx\n", kalloc_canblock_orig); */
 
     /* uint64_t some_fxn_with_cbz_as_first = 0xFFFFFFF007E5FFCC; */
@@ -651,11 +657,13 @@ int main(int argc, char **argv){
     /*         &dummy); */
 
     /* iphone 8 13.6.1 */
-    /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF007C4B420, */
-    /*         zone_require, &zone_require_orig); */
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF007C4B420,
+            zone_require, &zone_require_orig);
 
-    /* printf("zone_require_orig = %#llx\n", zone_require_orig); */
+    if(ret)
+        printf("%s\n", strerror(errno));
 
+    printf("zone_require_orig = %#llx\n", zone_require_orig);
 
     /* try and hook sysctl_handle_long */
     /* iphone 8 13.6.1 */
