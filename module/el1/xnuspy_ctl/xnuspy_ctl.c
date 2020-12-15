@@ -176,7 +176,7 @@ MARK_AS_KERNEL_OFFSET void (*_disable_preemption)(void);
 MARK_AS_KERNEL_OFFSET void (*_enable_preemption)(void);
 MARK_AS_KERNEL_OFFSET kern_return_t (*kernel_memory_allocate)(void *map,
         uint64_t *addrp, vm_size_t size, vm_offset_t mask, int flags, int tag);
-MARK_AS_KERNEL_OFFSET void *kernel_map;
+MARK_AS_KERNEL_OFFSET void **kernel_mapp;
 
 MARK_AS_KERNEL_OFFSET kern_return_t (*vm_map_wire_kernel)(void *map,
         uint64_t start, uint64_t end, vm_prot_t prot, int tag, int user_wire);
@@ -488,15 +488,15 @@ static struct vm_map_entry *vme_for_ptr(struct _vm_map *map, uint64_t ptr){
     return NULL;
 }
 
-static void _desc_xnuspy_usercode_page(const char *indent,
-        struct xnuspy_usercode_page *p){
-    kprintf("%sThis usercode page is @ %#llx. "
+static void _desc_xnuspy_reflector_page(const char *indent,
+        struct xnuspy_reflector_page *p){
+    kprintf("%sThis reflector page is @ %#llx. "
             "next: %#llx refcnt: %lld page %#llx\n", indent, (uint64_t)p, p->next,
             p->refcnt, p->page);
 }
 
-static void desc_xnuspy_usercode_page(struct xnuspy_usercode_page *p){
-    _desc_xnuspy_usercode_page("", p);
+static void desc_xnuspy_reflector_page(struct xnuspy_reflector_page *p){
+    _desc_xnuspy_reflector_page("", p);
 }
 
 static void desc_xnuspy_tramp(struct xnuspy_tramp *t, uint32_t orig_tramp_len){
@@ -514,19 +514,24 @@ static void desc_xnuspy_tramp(struct xnuspy_tramp *t, uint32_t orig_tramp_len){
     if(!t->metadata)
         kprintf("NULL metadata\n");
     else{
+        kprintf("Refcnt: %lld\n", t->metadata->refcnt);
         kprintf("Owner: %#llx\n", t->metadata->owner);
-        kprintf("# of used usercode pages: %lld\n", t->metadata->used_usercode_pages);
-        kprintf("Usercode pages:\n");
+        kprintf("# of used reflector pages: %lld\n", t->metadata->used_reflector_pages);
+        kprintf("Reflector pages:\n");
 
-        struct xnuspy_usercode_page *cur = t->metadata->first_usercode_page;
+        struct xnuspy_reflector_page *cur = t->metadata->first_reflector_page;
 
-        for(int i=0; i<t->metadata->used_usercode_pages; i++){
+        for(int i=0; i<t->metadata->used_reflector_pages; i++){
             if(!cur)
                 break;
 
-            _desc_xnuspy_usercode_page("    ", cur);
+            _desc_xnuspy_reflector_page("    ", cur);
             cur = cur->next;
         }
+
+        kprintf("Memory object: %#llx\n", t->metadata->memory_object);
+        kprintf("Shared mapping addr/size: %#llx/%#llx\n", t->metadata->mapping_addr,
+                t->metadata->mapping_size);
     }
 }
 
@@ -537,7 +542,7 @@ __attribute__ ((naked)) static uint64_t current_thread(void){
             );
 }
 
-static int xnuspy_usercode_page_free(struct xnuspy_usercode_page *p){
+static int xnuspy_reflector_page_free(struct xnuspy_reflector_page *p){
     return p->refcnt == 0;
 }
 
@@ -545,10 +550,51 @@ static int xnuspy_tramp_free(struct xnuspy_tramp *t){
     return !t->metadata || t->metadata->owner;
 }
 
+static int kern_return_to_errno(kern_return_t kret){
+    switch(kret){
+        case KERN_INVALID_ADDRESS:
+            return EFAULT;
+        case KERN_PROTECTION_FAILURE:
+        case KERN_NO_ACCESS:
+            return EPERM;
+        case KERN_NO_SPACE:
+        case KERN_RESOURCE_SHORTAGE:
+            return ENOSPC;
+        case KERN_FAILURE:
+        case KERN_INVALID_ARGUMENT:
+            return EINVAL;      /* is this the best for KERN_FAILURE? */
+        case KERN_MEMORY_PRESENT:
+            return EEXIST;
+    };
+
+    /* Not a valid errno */
+    return 10000;
+}
+
+static void xnuspy_reflector_page_release(struct xnuspy_reflector_page *p){
+    if(--p->refcnt == 0){
+        /* TODO */
+    }
+}
+
+static void xnuspy_reflector_page_reference(struct xnuspy_reflector_page *p){
+    p->refcnt++;
+}
+
+static void xnuspy_tramp_metadata_release(struct xnuspy_tramp_metadata *m){
+    if(--m->refcnt == 0){
+        /* TODO */
+    }
+}
+
+static void xnuspy_tramp_metadata_reference(struct xnuspy_tramp_metadata *m){
+    m->refcnt++;
+}
+
 MARK_AS_KERNEL_OFFSET struct xnuspy_tramp *xnuspy_tramp_page;
 MARK_AS_KERNEL_OFFSET uint8_t *xnuspy_tramp_page_end;
 
-MARK_AS_KERNEL_OFFSET struct xnuspy_usercode_page *first_usercode_page;
+MARK_AS_KERNEL_OFFSET struct xnuspy_reflector_page *first_reflector_page;
 
 static int xnuspy_init_flag = 0;
 
@@ -558,7 +604,7 @@ static void xnuspy_init(void){
     kprotect((uint64_t)xnuspy_tramp_page, PAGE_SIZE, prot);
 
     /* Do the same for the pages which will hold user code */
-    struct xnuspy_usercode_page *cur = first_usercode_page;
+    struct xnuspy_reflector_page *cur = first_reflector_page;
     
     while(cur){
         kprotect((uint64_t)cur->page, PAGE_SIZE, prot);
@@ -610,15 +656,22 @@ static uint64_t find_replacement_kva(struct mach_header_64 *kmh,
     return (uint64_t)((uintptr_t)kmh + dist);
 }
 
-/* Copy the calling process' __TEXT and __DATA onto a contiguous set
- * of the pages we reserved before booting XNU. This effectively creates a
- * shared mapping of __TEXT and __DATA between the kernel and the calling
- * process.
+/* Create a shared mapping of the calling process' __TEXT and __DATA and
+ * then find a contiguous set of pages we reserved before booting XNU to
+ * to reflect that mapping onto. We share __TEXT so the user can call other
+ * functions they wrote from their kernel hooks. We share __DATA so
+ * modifications to global variables are visible to both EL1 and EL0. 
  *
- * On success, returns metadata for all hooks installed by this process.
+ * On success, returns metadata for every hook this process will install.
+ * We only have to do this once for each process since we're mapping the
+ * entirety of __TEXT and __DATA and not just the one replacement function.
+ *
+ * On failure, returns NULL and sets retval.
+ *
+ * TODO: cleanup everything upon failures
  */
 static struct xnuspy_tramp_metadata *
-copy_caller_segments(struct mach_header_64 * /* __user */ umh){
+map_caller_segments(struct mach_header_64 * /* __user */ umh, int *retval){
     uint64_t aslr_slide = (uintptr_t)umh - 0x100000000;
     uint64_t copystart = 0, copysz = 0;
     int seen_text = 0, seen_data = 0;
@@ -650,7 +703,7 @@ copy_caller_segments(struct mach_header_64 * /* __user */ umh){
          * seen __TEXT or __DATA, we need to make sure we account for
          * that gap. copystart being non-zero implies we've already seen
          * __TEXT or __DATA */
-        if(copystart && (!is_text && !is_data)){
+        if(copystart && !is_text && !is_data){
             kprintf("%s: got segment '%s' in between __TEXT and __DATA\n",
                     __func__, sc64->segname);
             copysz += sc64->vmsize;
@@ -688,29 +741,31 @@ nextcmd:
     kprintf("%s: ended with copystart %#llx copysz %#llx\n", __func__,
             copystart, copysz);
 
-    if(!copystart || !copysz)
+    if(!copystart || !copysz){
+        *retval = ENOENT;
         return NULL;
+    }
 
-    /* Now find a set of free, contiguous usercode pages to copy on to */
+    /* Now find a set of free, contiguous reflector pages to copy on to */
     uint64_t npages = copysz / PAGE_SIZE;
 
-    struct xnuspy_usercode_page *found = NULL;
+    struct xnuspy_reflector_page *found = NULL;
 
     /* TODO: don't start the search at the beginning every time, probably
      * would be better to pick up where we left off for another hook to make
      * this faster. Better than doing a linear search every time and I can
      * just wrap around if I hit the end of the list */
-    struct xnuspy_usercode_page *cur = first_usercode_page;
+    struct xnuspy_reflector_page *cur = first_reflector_page;
 
     while(cur){
-        if(!xnuspy_usercode_page_free(cur))
+        if(!xnuspy_reflector_page_free(cur))
             goto nextpage;
 
         /* Got one free page, check the ones after it */
-        struct xnuspy_usercode_page *leftoff = cur;
+        struct xnuspy_reflector_page *leftoff = cur;
 
         for(int i=1; i<npages; i++){
-            if(!cur || !xnuspy_usercode_page_free(cur)){
+            if(!cur || !xnuspy_reflector_page_free(cur)){
                 cur = leftoff;
                 goto nextpage;
             }
@@ -718,7 +773,7 @@ nextcmd:
             cur = cur->next;
         }
 
-        /* If we're here, we found a set of free usercode pages */
+        /* If we're here, we found a set of free reflector pages */
         cur = leftoff;
 
         break;
@@ -727,17 +782,37 @@ nextpage:
         cur = cur->next;
     }
 
-    struct xnuspy_usercode_page *freeset = cur;
+    if(!cur){
+        kprintf("%s: no free reflector pages\n", __func__);
+        *retval = ENOSPC;
+        return NULL;
+    }
+
+    struct xnuspy_reflector_page *freeset = cur;
 
     kprintf("%s: free pages found:\n", __func__);
 
     for(int i=0; i<npages; i++){
-        desc_xnuspy_usercode_page(cur);
+        desc_xnuspy_reflector_page(cur);
         cur = cur->next;
     }
 
-    /* Wire down __TEXT and __DATA of the calling process so they are not
-     * swapped out */
+    /* Create the metadata now, as making it later would entail a lot of
+     * cleanup if this fails */
+    struct xnuspy_tramp_metadata *metadata = common_kalloc(sizeof(*metadata));
+
+    if(!metadata){
+        kprintf("%s: common_kalloc returned NULL when allocating metadata\n",
+                __func__);
+        *retval = ENOMEM;
+        return NULL;
+    }
+
+    metadata->owner = current_task();
+    /* Don't take a reference yet, because failures are still possible */
+    metadata->first_reflector_page = freeset;
+    metadata->used_reflector_pages = npages;
+
     uint64_t thread = current_thread();
     struct _vm_map *current_map = *(struct _vm_map **)(thread + 0x320);
 
@@ -748,612 +823,129 @@ nextpage:
     uint64_t text_end = text_start + text->vmsize;
     kern_return_t kret;
 
-    /* for(int i=0; i<2; i++){ */
-    kret = vm_map_wire_kernel(current_map, text_start, text_end,
-            text->initprot, VM_KERN_MEMORY_OSFMK, 1);//i);//1);
+    /* Wire down __TEXT and __DATA of the calling process so they are not
+     * swapped out. We only set VM_PROT_READ in case there were some segments
+     * in between __TEXT and __DATA. Also, vm_map_wire_kernel needs to be
+     * patched to not bail when VM_PROT_EXECUTE is given, so that's also one
+     * less patchfinder for me to write :D We also set from_user to one because
+     * we're dealing with a user map.
+     *
+     * TODO: wire [copystart, copystart+copysz) in one call if VM_PROT_READ
+     * wiring ends up working fine
+     *
+     * XXX XXX Only wiring for VM_PROT_READ and not actual VM permissions
+     * may screw things up?
+     */
+
+    kret = vm_map_wire_kernel(current_map, text_start, text_end, VM_PROT_READ,//text->initprot,
+            VM_KERN_MEMORY_OSFMK, 1);
 
     if(kret){
         kprintf("%s: vm_map_wire_kernel failed when wiring down __TEXT: %d\n",
                 __func__, kret);
+        *retval = kern_return_to_errno(kret);
         return NULL;
     }
-    /* } */
 
     uint64_t data_start = data->vmaddr + aslr_slide;
     uint64_t data_end = data_start + data->vmsize;
 
-    /* for(int i=0; i<2; i++){ */
-    kret = vm_map_wire_kernel(current_map, data_start, data_end, data->initprot,
-            VM_KERN_MEMORY_OSFMK, 1);//i);//1);
+    kret = vm_map_wire_kernel(current_map, data_start, data_end, VM_PROT_READ,//data->initprot,
+            VM_KERN_MEMORY_OSFMK, 1);
 
     if(kret){
         kprintf("%s: vm_map_wire_kernel failed when wiring down __DATA: %d\n",
                 __func__, kret);
+        common_kfree(metadata);
+        *retval = kern_return_to_errno(kret);
         return NULL;
     }
-    /* } */
 
-    struct xnuspy_tramp_metadata *metadata = common_kalloc(sizeof(*metadata));
-
-    if(!metadata)
-        return NULL;
-
-    metadata->owner = current_task();
-    /* Don't take a reference yet, because failures are still possible */
-    metadata->first_usercode_page = freeset;
-    metadata->used_usercode_pages = npages;
-
-    uint64_t kmap = *(uint64_t *)kernel_map;
-    /* uint64_t kma_addr = 0; */
-    /* uint32_t *vma_prot0 = (uint32_t *)(0xFFFFFFF007C89854 + kernel_slide); */
-    /* uint32_t *vma_prot1 = (uint32_t *)(0xFFFFFFF007C89920 + kernel_slide); */
-
-    /* kprotect((uint64_t)vma_prot0, PAGE_SIZE, VM_PROT_READ | VM_PROT_WRITE | */
-    /*         VM_PROT_EXECUTE); */
-
-    /* /1* mov w3, 1 *1/ */
-    /* *vma_prot0 = 0x52800023; */
-    /* asm volatile("dc cvau, %0" : : "r" (vma_prot0)); */
-    /* asm volatile("dsb ish"); */
-    /* asm volatile("ic ivau, %0" : : "r" (vma_prot0)); */
-    /* asm volatile("dsb ish"); */
-    /* asm volatile("isb sy"); */
-    /* /1* mov w3, 1 *1/ */
-    /* *vma_prot1 = 0x52800023; */
-    /* asm volatile("dc cvau, %0" : : "r" (vma_prot1)); */
-    /* asm volatile("dsb ish"); */
-    /* asm volatile("ic ivau, %0" : : "r" (vma_prot1)); */
-    /* asm volatile("dsb ish"); */
-    /* asm volatile("isb sy"); */
-
-    /* for(int i=0; i<1; i++){//29; i++){ */
-    /*     /1* KMA_LOMEM gives back the same address as mach_vm_map_external *1/ */
-    /*     kret = kernel_memory_allocate((void *)kmap, &kma_addr, copysz, PAGE_SIZE - 1, */
-    /*             KMA_LOMEM, i);//VM_KERN_MEMORY_OSFMK);//0); */
-
-    /*     const char *tn = tagname(i); */
-
-    /*     if(kret){ */
-    /*         kprintf("%s: kernel_memory_allocate failed for tag '%s': %d\n", */
-    /*                 __func__, tn, kret); */
-    /*         continue; */
-    /*     } */
-    /*     else{ */
-    /*         /1* kprintf("%s: kma_addr %#llx\n", __func__, kma_addr); *1/ */
-    /*         uint64_t alternate_kv = phystokv(kvtophys(kma_addr)); */
-
-    /*         pte_t *kma_addr_ptep = el1_ptep(kma_addr); */
-    /*         /1* pte_t *alternate_ptep = el1_ptep(alternate_kv); *1/ */
-    /*         kprintf("%s: before: tag '%s': kma addr %#llx kma addr pte @ %#llx " */
-    /*                 "pte: %#llx\n", __func__, tn, kma_addr, kma_addr_ptep, */
-    /*                 *kma_addr_ptep); */
-
-    /*         /1* kret = ml_static_protect(kma_addr, copysz, VM_PROT_READ); *1/ */
-
-    /*         /1* pmap_protect_options(*(void **)kernel_pmap, kma_addr, kma_addr + copysz, *1/ */
-    /*         /1*         VM_PROT_NONE, 0, NULL); *1/ */
-
-    /*         /1* kprintf("%s: ml_static_protect %d\n", __func__, kret); *1/ */
-
-    /*         kret = vm_map_protect((void *)kmap, kma_addr, kma_addr + copysz, */
-    /*                 VM_PROT_READ, 1); */
-
-    /*         kprintf("%s: vm_map_protect %d\n", __func__, kret); */
-
-    /*         IOSleep(5000); */
-    /*         *(uint32_t *)kma_addr = 0x41424344; */
-
-    /*         kprintf("%s: %#x\n", __func__, *(uint32_t *)kma_addr); */
-
-    /*         /1* kprintf("%s: tag '%s': kma addr %#llx kma addr pte @ %#llx pte: %#llx" *1/ */
-    /*         /1*         " alternate addr %#llx alternate pte @ %#llx pte: %#llx\n", *1/ */
-    /*         /1*         __func__, tn, kma_addr, kma_addr_ptep, *kma_addr_ptep, *1/ */
-    /*         /1*         alternate_kv, alternate_ptep, *alternate_ptep); *1/ */
-
-    /*         /1* kprotect(kma_addr, copysz, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE); *1/ */
-    /*         /1* kprotect(kma_addr, copysz, VM_PROT_READ); *1/ */
-
-    /*         /1* *kma_addr_ptep &= ~(ARM_PTE_PNX | ARM_PTE_NX); *1/ */
-    /*         /1* *kma_addr_ptep &= ~ARM_PTE_APMASK; *1/ */
-    /*         /1* *kma_addr_ptep |= ARM_PTE_AP(AP_RONA); *1/ */
-
-    /*         /1* asm volatile("dsb sy"); *1/ */
-    /*         /1* asm volatile("isb"); *1/ */
-
-    /*         /1* IOSleep(20000); *1/ */
-    /*         /1* kma_addr_ptep = el1_ptep(kma_addr); *1/ */
-    /*         /1* kprintf("%s: after: tag '%s': kma addr %#llx kma addr pte @ %#llx pte: %#llx\n", *1/ */
-    /*         /1*         __func__, tn, kma_addr, kma_addr_ptep, *kma_addr_ptep); *1/ */
-
-
-
-    /*         /1* *(uint32_t *)kma_addr = 0x41424344; *1/ */
-
-    /*         /1* kprintf("%s: %#x\n", __func__, *(uint32_t *)kma_addr); *1/ */
-
-    /*         /1* void (*fxn)(void) = (void (*)(void))kma_addr; *1/ */
-    /*         /1* fxn(); *1/ */
-    /*     } */
-    /* } */
-
-    /* mov w3, 3 */
-    /* *vma_prot0 = 0x52800063; */
-    /* asm volatile("dc cvau, %0" : : "r" (vma_prot0)); */
-    /* asm volatile("dsb ish"); */
-    /* asm volatile("ic ivau, %0" : : "r" (vma_prot0)); */
-    /* asm volatile("dsb ish"); */
-    /* asm volatile("isb sy"); */
-    /* /1* mov w3, 3 *1/ */
-    /* *vma_prot1 = 0x52800063; */
-    /* asm volatile("dc cvau, %0" : : "r" (vma_prot1)); */
-    /* asm volatile("dsb ish"); */
-    /* asm volatile("ic ivau, %0" : : "r" (vma_prot1)); */
-    /* asm volatile("dsb ish"); */
-    /* asm volatile("isb sy"); */
-
-    /* return metadata; */
-
+    void *kernel_map = *kernel_mapp;
+    
+    /* We create the mapping with only VM_PROT_READ because that is the
+     * minimum permissions for a segment (unless they have none, which won't
+     * happen, unless the user does something weird). Additionally, we map
+     * [copystart, copystart+copysz) in one shot, so the differing VM
+     * permissions between those segments do not matter.
+     *
+     * We are not actually interacting with this mapping directly, so the VM
+     * permissions of this shared mapping do not matter. We interact with it 
+     * through the static memory we reserved before XNU boot (reflector pages)
+     */
+    vm_prot_t shm_prot = VM_PROT_READ;
     /* ipc_port_t */
-    /* vm_prot_t prot = VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE; */
-    vm_prot_t prot = VM_PROT_READ;
-    void *memory_object = NULL;
-    /* MAP_MEM_NAMED_CREATE copies all 0xc000 bytes, so does MAP_MEM_VM_SHARE */
-    /* kret = _mach_make_memory_entry_64(current_map, &copysz, copystart, */
-    /*         MAP_MEM_NAMED_CREATE | prot, &memory_object, NULL); */
+    void *shm_object = NULL;
 
-    /* describe the first entry */
-    /* desc_vm_map_entry((struct vm_map_entry *)(&current_map->hdr.links)); */
+    uint64_t copysz_before = copysz;
 
-    /* struct vm_map_entry *entry = current_map->hdr.links.next; */
-    /* int lim = 400, i=0; */
-
-    /* while(entry && i<lim){ */
-    /*     /1* entry->max_protection = VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE; *1/ */
-    /*     desc_vm_map_entry(entry); */
-
-    /*     entry = entry->vme_next; */
-    /*     i++; */
-    /* } */
-
-    /* kprintf("%s: RETURNING!\n", __func__); */
-    /* return metadata; */
-
-    /* kret = vm_map_protect(current_map, copystart, copystart + copysz, prot, 0); */
-
-    /* kprintf("%s: vm_map_protect %d\n", __func__, kret); */
-
-    /* kret = _mach_make_memory_entry_64(current_map, &copysz, copystart, */
-    /*         MAP_MEM_VM_SHARE | prot, &memory_object, NULL); */
     kret = _mach_make_memory_entry_64(current_map, &copysz, copystart,
-            prot, &memory_object, NULL);
+            MAP_MEM_VM_SHARE | shm_prot, &shm_object, NULL);
 
     if(kret){
-        kprintf("******%s: mach_make_memory_entry_64 failed: %d\n", __func__, kret);
-        return metadata;
-    }
-    else{
-        kprintf("%s: copysz %#llx memory object @ %#llx\n", __func__, copysz,
-                memory_object);
+        kprintf("%s: mach_make_memory_entry_64 failed: %d\n", __func__, kret);
+        common_kfree(metadata);
+        *retval = kern_return_to_errno(kret);
+        return NULL;
     }
 
-    /* kprintf("%s: kernel_map %#llx *(uint64_t*)kernel_map %#llx\n", __func__, */
-    /*         kernel_map, *(uint64_t *)kernel_map); */
+    if(copysz_before != copysz){
+        kprintf("%s: did not map the entirety of copystart? got %#llx "
+                "expected %#llx\n", __func__, copysz, copysz_before);
+        common_kfree(metadata);
+        /* Probably not the best option */
+        *retval = EIO;
+        return NULL;
+    }
 
-    /* return metadata; */
+    /* XXX: should we take a reference on this port? */
+    metadata->memory_object = shm_object;
 
-    /* kprotect((uint64_t)kernel_map, 0x4000, VM_PROT_READ | VM_PROT_WRITE); */
-
-    uint64_t shared_address = 0;
-    kret = mach_vm_map_external((void *)kmap, &shared_address, copysz, 0,
-            VM_FLAGS_ANYWHERE, memory_object, 0, 0, prot, prot, VM_INHERIT_NONE);
-
-    /* uint64_t shared_address = (uint64_t)metadata->first_usercode_page->page; */
-
-    /* struct vm_map_entry *sa_vme = vme_for_ptr(kmap, shared_address); */
-
-    /* if(!sa_vme){ */
-    /*     kprintf("%s: no vm_map_entry for %#llx\n", shared_address); */
-    /*     return metadata; */
-    /* } */
-
-    /* desc_vm_map_entry(sa_vme); */
-
-    /* sa_vme->permanent = 0; */
-
-    /* kprotect(el1_ptep(shared_address), PAGE_SIZE, VM_PROT_READ | VM_PROT_WRITE); */
-
-    /* asm volatile("dsb sy"); */
-    /* asm volatile("isb sy"); */
-
-    /* kret = mach_vm_map_external((void *)kmap, &shared_address, copysz, 0, */
-    /*         VM_FLAGS_FIXED | VM_FLAGS_OVERWRITE, memory_object, 0, 0, */
-    /*         VM_PROT_READ | VM_PROT_EXECUTE, VM_PROT_READ | VM_PROT_EXECUTE, */
-    /*         VM_INHERIT_NONE); */
+    uint64_t shm_addr = 0;
+    kret = mach_vm_map_external(kernel_map, &shm_addr, copysz, 0,
+            VM_FLAGS_ANYWHERE, metadata->memory_object, 0, 0, shm_prot,
+            shm_prot, VM_INHERIT_NONE);
 
     if(kret){
-        kprintf("******%s: mach_vm_map_external failed: %d\n", __func__, kret);
-        return metadata;
-    }
-    else{
-        kprintf("%s: shared address %#llx\n", __func__, shared_address);
-
-        kret = vm_map_wire_kernel((void *)kmap, shared_address,
-                shared_address + copysz, VM_PROT_READ,
-                VM_KERN_MEMORY_OSFMK, 0);
-
-        kprintf("%s: vm_map_wire_kernel shared address %d\n", __func__, kret);
-
-        if(kret)
-            return metadata;
-
-        xnuspy_dump_ttes(shared_address, 1);
-
-        uint64_t fup = metadata->first_usercode_page->page;
-
-        uint64_t shared_address_phys = kvtophys(shared_address);
-        uint64_t shared_address_physpage = shared_address_phys & ~0x3fffuLL;
-
-        pte_t *fup_ptep = el1_ptep(fup);
-        pte_t new_fup_pte = (*fup_ptep & ~0xfffffffff000uLL) |
-            shared_address_physpage;
-        new_fup_pte &= ~(ARM_PTE_NX | ARM_PTE_PNX);
-
-        kwrite(fup_ptep, &new_fup_pte, sizeof(new_fup_pte));
-
-        asm volatile("isb");
-        asm volatile("dsb sy");
-        asm volatile("tlbi vmalle1");
-        asm volatile("dsb sy");
-        asm volatile("isb");
-
-        uint32_t *cursor = (uint32_t *)fup;
-        for(int i=0; i<20; i++){
-            kprintf("%s: %#llx:      %#x\n", __func__, (uint64_t)(cursor+i),
-                    cursor[i]);
-        }
-
-        void (*f4)(void) = (void (*)(void))fup;
-        f4();
-
-        return metadata;
-
-/*         IOSleep(5000); */
-
-        /* uprotect(copystart, copysz, VM_PROT_READ | VM_PROT_WRITE | */
-        /*         VM_PROT_EXECUTE); */
-
-        /* asm volatile("dsb sy"); */
-        /* asm volatile("isb sy"); */
-
-        /* *(uint32_t *)shared_address = 0x41424344; */
-
-        uint64_t sctlr_el1;
-        asm volatile("mrs %0, sctlr_el1" : "=r" (sctlr_el1));
-        kprintf("%s: sctlr_el1 %#llx\n", __func__, sctlr_el1);
-        return metadata;
-
-        uint64_t exec_test_addr = 0;
-        /* kret = mach_vm_map_external((void *)kmap, &exec_test_addr, PAGE_SIZE, */
-        /*         0, VM_FLAGS_ANYWHERE, NULL, 0, 0, VM_PROT_ALL, VM_PROT_ALL, */
-        /*         VM_INHERIT_NONE); */
-
-        vm_map_kernel_flags_t vmk_flags = {0};
-        vmk_flags.vmkf_permanent = 1;
-        vmk_flags.vmkf_map_jit = 1;
-
-        kret = mach_vm_map_kernel((void *)kmap, &exec_test_addr, PAGE_SIZE,
-                0, VM_FLAGS_ANYWHERE, vmk_flags, VM_KERN_MEMORY_OSFMK, NULL,
-                0, 0, VM_PROT_ALL, VM_PROT_ALL, VM_INHERIT_NONE);
-
-        if(kret){
-            kprintf("%s: exec_test_addr vm_map failed: %d\n", __func__, kret);
-            return metadata;
-        }
-
-        uint64_t val = *(uint64_t *)exec_test_addr;
-        /* asm volatile("isb"); */
-        /* asm volatile("dsb sy"); */
-        /* asm volatile("tlbi vmalle1"); */
-        /* asm volatile("ic iallu"); */
-        /* asm volatile("dsb sy"); */
-        /* asm volatile("isb"); */
-
-        /* void (*f3)(void) = (void (*)(void))exec_test_addr; */
-        /* f3(); */
-
-        kprintf("%s: did a read on exec_test_addr\n", __func__);
-
-        /* XXX XXX This page we're wiring is not a submap */
-        kret = vm_map_wire_kernel((void *)kmap, exec_test_addr,
-                exec_test_addr + PAGE_SIZE, VM_PROT_READ | VM_PROT_WRITE,
-                VM_KERN_MEMORY_OSFMK, 0);
-
-        /* kprintf("%s: exec test addr @ %#llx\n", __func__, exec_test_addr); */
-        /* *(uint64_t *)exec_test_addr = 31; */
-
-
-
-        kprintf("%s: vm_map_wire_kernel kret %d\n", __func__, kret);
-
-        asm volatile("isb");
-        asm volatile("dsb sy");
-        asm volatile("tlbi vmalle1");
-        asm volatile("ic iallu");
-        asm volatile("dsb sy");
-        asm volatile("isb");
-
-        kret = vm_map_protect((void *)kmap, exec_test_addr,
-                exec_test_addr + PAGE_SIZE, VM_PROT_READ | VM_PROT_EXECUTE, 0);
-
-        kprintf("%s: vm_map_protect exec_test_addr %d\n", __func__, kret);
-
-        /* asm volatile("isb"); */
-        /* asm volatile("dsb sy"); */
-        /* asm volatile("tlbi vmalle1"); */
-        /* asm volatile("dsb sy"); */
-        /* asm volatile("isb"); */
-
-        /* /1* pmap_protect_options(*(void **)kernel_pmap, exec_test_addr, *1/ */
-        /* /1*         exec_test_addr + PAGE_SIZE, VM_PROT_READ | VM_PROT_EXECUTE, *1/ */
-        /* /1*         0, NULL); *1/ */
-
-        /* asm volatile("isb"); */
-        /* asm volatile("dsb sy"); */
-        /* asm volatile("tlbi vmalle1"); */
-        /* asm volatile("dsb sy"); */
-        /* asm volatile("isb"); */
-
-        kprintf("%s: exec test addr @ %#llx\n", __func__, exec_test_addr);
-
-        struct vm_map_entry *vme = vme_for_ptr(kmap, exec_test_addr);
-
-        if(vme)
-            desc_vm_map_entry(vme);
-        else
-            kprintf("%s: exec test addr has no vme?\n", __func__);
-
-        /* IOSleep(5000); */
-
-        /* xnuspy_dump_ttes(exec_test_addr, 1); */
-
-        /* *(uint64_t *)exec_test_addr = 0x4142434445464748; */
-        /* kprintf("%s: wrote to exec test addr: %#llx\n", __func__, */
-        /*         *(uint64_t *)exec_test_addr); */
-
-        xnuspy_dump_ttes(exec_test_addr, 1);
-        IOSleep(5000);
-
-        void (*f2)(void) = (void (*)(void))exec_test_addr;
-        f2();
-
-        return metadata;
-
-        /* kprotect(exec_test_addr, PAGE_SIZE, VM_PROT_READ | VM_PROT_EXECUTE); */
-
-
-        /* pte_t *exec_test_addr_ptep = el1_ptep(exec_test_addr); */
-        /* *exec_test_addr_ptep = (*exec_test_addr_ptep & ~ARM_PTE_APMASK) | */
-        /*     ARM_PTE_AP(AP_RONA); */
-        /* *exec_test_addr_ptep &= ~(ARM_PTE_PNX | ARM_PTE_NX); */
-        /* asm volatile("isb"); */
-        /* asm volatile("dsb ish"); */
-        /* asm volatile("tlbi vmalle1"); */
-        /* asm volatile("dsb ish"); */
-        /* asm volatile("isb"); */
-        /* *(uint32_t *)exec_test_addr = 0x41424344; */
-
-        xnuspy_dump_ttes(exec_test_addr, 1);
-
-        IOSleep(5000);
-        *(uint32_t *)exec_test_addr = 0x41424344;
-
-        /* void (*f)(void) = (void (*)(void))exec_test_addr; */
-        /* f(); */
-
-        kprintf("%s: copystart (%#llx):\n", __func__, copystart);
-        xnuspy_dump_ttes(copystart, 0);
-        kprintf("%s: shared address (%#llx):\n", __func__, shared_address);
-        xnuspy_dump_ttes(shared_address, 1);
-
-        /* pte_t *shared_address_ptep = el1_ptep(shared_address); */
-        /* kprintf("%s: before: shared address pte @ %#llx pte: %#llx\n", __func__, */
-        /*         shared_address_ptep, *shared_address_ptep); */
-
-        /* struct vm_map_entry *shared_address_vme = vme_for_ptr(kmap, */
-        /*         shared_address); */
-
-        /* if(shared_address_vme) */
-        /*     desc_vm_map_entry(shared_address_vme); */
-
-        /* kret = vm_map_protect((void *)kmap, shared_address, shared_address + copysz, */
-        /*         VM_PROT_READ | VM_PROT_EXECUTE, 0); */
-
-        /* kprintf("%s: vm_map_protect on shared_address = %d\n", __func__, kret); */
-
-        /* if(shared_address_vme) */
-        /*     desc_vm_map_entry(shared_address_vme); */
-
-        /* IOSleep(10000); */
-
-        /* *(uint32_t *)shared_address = 0x41424344; */
-
-        /* shared_address_ptep = el1_ptep(shared_address); */
-        /* kprintf("%s: after: shared address pte @ %#llx pte: %#llx\n", __func__, */
-        /*         shared_address_ptep, *shared_address_ptep); */
-
-        /* kprotect((uint64_t)shared_address, copysz, VM_PROT_READ | VM_PROT_WRITE | */
-        /*         VM_PROT_EXECUTE); */
-
-        /* uint64_t fup = metadata->first_usercode_page->page; */
-
-        /* uint64_t shared_address_phys = kvtophys(shared_address); */
-        /* uint64_t shared_address_physpage = shared_address_phys & ~0x3fffuLL; */
-
-        /* pte_t *fup_ptep = el1_ptep(first_usercode_page); */
-        /* pte_t new_fup_pte = (*fup_ptep & ~0xfffffffff000uLL) | */
-        /*     shared_address_physpage; */
-        /* new_fup_pte &= ~(ARM_PTE_NX | ARM_PTE_PNX); */
-
-        /* kwrite((uint64_t)fup_ptep, &new_fup_pte, sizeof(new_fup_pte)); */
-
-        /* asm volatile("isb"); */
-        /* asm volatile("dsb sy"); */
-        /* asm volatile("tlbi vmalle1"); */
-        /* asm volatile("dsb sy"); */
-        /* asm volatile("isb"); */
-
-
-        /* kret = vm_map_wire_kernel((void *)kmap, shared_address, copysz, */
-        /*         VM_PROT_READ | VM_PROT_EXECUTE, VM_KERN_MEMORY_OSFMK, 0); */
-
-        /* kprintf("%s: vm_map_wire_kernel returned %d\n", __func__, kret); */
-
-        /* kprotect((uint64_t)shared_address, copysz, VM_PROT_READ | VM_PROT_WRITE | */
-        /*         VM_PROT_EXECUTE); */
-
-        /* asm volatile("isb"); */
-        /* asm volatile("dsb sy"); */
-        /* asm volatile("tlbi vmalle1"); */
-        /* asm volatile("dsb sy"); */
-        /* asm volatile("isb"); */
-
-
-        /* uint32_t *cursor = (uint32_t *)shared_address; */
-        /* /1* uint32_t *cursor = (uint32_t *)fup; *1/ */
-        /* for(int i=0; i<20; i++){ */
-        /*     kprintf("%s: %#llx:      %#x\n", __func__, (uint64_t)(cursor+i), */
-        /*             cursor[i]); */
-        /* } */
-
-        /* /1* IOSleep(5000); *1/ */
-
-        /* /1* *(uint32_t *)shared_address = 0x41424344; *1/ */
-        /* /1* *cursor = 0x41424344; *1/ */
-        /* void (*fxn)(void) = (void (*)(void))shared_address; */
-        /* fxn(); */
+        kprintf("%s: mach_vm_map_external failed: %d\n", __func__, kret);
+        common_kfree(metadata);
+        *retval = kern_return_to_errno(kret);
+        return NULL;
     }
 
-    kprintf("%s: ********RETURNING EARLY\n", __func__);
-    return metadata;
+    kprintf("%s: shared mapping starts @ %#llx\n", __func__, shm_addr);
 
-    /* Perform the reflection */
-    cur = freeset;
-
-    uint64_t end = copystart + copysz;
-
-    while(copystart < end){
-        if(!cur){
-            kprintf("%s: short copy???\n", __func__);
-            common_kfree(metadata);
-            return NULL;
-        }
-
-        uint64_t us = copystart;
-        uint64_t ks = cur->page;
-
-        /* __uint128_t *us = (__uint128_t *)copystart; */
-        /* __uint128_t *ks = (__uint128_t *)cur->page; */
-        /* __uint128_t *ke = (__uint128_t *)(cur->page + PAGE_SIZE); */
-
-        /* kprintf("%s: us %#llx ks %#llx ke %#llx\n", __func__, us, ks, ke); */
-        kprintf("%s: us %#llx ks %#llx\n", __func__, us, ks);
-
-        pte_t *us_ptep = el0_ptep(us);
-        pte_t *ks_ptep = el1_ptep(ks);
-
-        uint64_t us_phys = uvtophys(us);
-        uint64_t us_physpage = us_phys & ~0x3fffuLL;
-
-        kprintf("%s: before: us pte %#llx ks pte %#llx us phys %#llx"
-                " us physpage @ %#llx\n",
-                __func__, *us_ptep, *ks_ptep, us_phys, us_physpage);
-
-        /* Replace the output address of the current reflector page with
-         * the physical page of the current user address */
-        pte_t new_ks_pte = (*ks_ptep & ~0xfffffffff000uLL) | us_physpage;
-
-        /* This will mark __DATA as executable as well but I don't care */
-        new_ks_pte &= ~(ARM_PTE_NX | ARM_PTE_PNX);
-
-        kprintf("%s: new ks pte == %#llx\n", __func__, new_ks_pte);
-
-        kwrite(ks_ptep, &new_ks_pte, sizeof(new_ks_pte));
-
-        asm volatile("isb");
-        asm volatile("dsb sy");
-        asm volatile("tlbi vmalle1");
-        asm volatile("dsb sy");
-        asm volatile("isb");
-
-        /* while(ks < ke) */
-        /*     *ks++ = *us++; */
-
-        /* Modify the user PTE for this page to point to the kernel mapping.
-         * This will effectively share data between the two */
-        /* pte_t *us_ptep = el0_ptep(us); */
-        /* pte_t *ks_ptep = el1_ptep(ks); */
-
-        /* uint64_t ks_phys = kvtophys(ks); */
-        /* uint64_t ks_physpage = ks_phys & ~0x3fffuLL; */
-
-        /* kprintf("%s: before: us pte %#llx ks pte %#llx ks phys %#llx" */
-        /*         " ks physpage @ %#llx\n", */
-        /*         __func__, *us_ptep, *ks_ptep, ks_phys, ks_physpage); */
-
-        copystart += PAGE_SIZE;
-        cur = cur->next;
-    }
-
-    /* Take references on the map & pmap */
-    /* XXX offset found in vm_map_create */
-    int current_map_refcnt = *(int *)((uint8_t *)current_map + 0x108);
-    *(int *)((uint8_t *)current_map + 0x108) = current_map_refcnt + 1000;
-    current_map_refcnt = *(int *)((uint8_t *)current_map + 0x108);
-
-    uint8_t *current_pmap = get_task_pmap(current_task());
-    int current_pmap_refcnt = *(int *)(current_pmap + 0xd4);
-    *(int *)(current_pmap + 0xd4) = current_pmap_refcnt + 1000;
-
-    kprintf("%s: current_map refcnt = %d\n", __func__, current_map_refcnt);
-
-
-    /* Modify the PTEs of the user __DATA segment to point to our copy of
-     * __DATA. This way, changes to global variables at either exception
-     * level are reflected in both. We are not sharing __TEXT because it's
-     * almost always unchanged (and if the user is changing their own code
-     * at runtime that's on them). */
-    /* uint64_t dataoff = data_start - (uintptr_t)umh; */
-    /* uint64_t data_kcopy = (uint64_t)metadata->first_usercode_page->page + dataoff; */
-
-    /* while(data_start < data_end){ */
-    /*     pte_t *uv_ptep = el0_ptep(data_start); */
-    /*     /1* pte_t *kv_ptep = el1_ptep(data_kcopy); *1/ */
-
-    /*     uint64_t phys = kvtophys(data_kcopy); */
-    /*     uint64_t physpage = phys & ~0x3fffuLL; */
-
-    /*     pte_t new_uv_pte = (*uv_ptep & ~0xfffffffff000uLL) | phys; */
-
-    /*     kwrite(uv_ptep, &new_uv_pte, sizeof(new_uv_pte)); */
-
-    /*     asm volatile("isb"); */
-    /*     asm volatile("dsb sy"); */
-    /*     asm volatile("tlbi vmalle1"); */
-    /*     asm volatile("dsb sy"); */
-    /*     asm volatile("isb"); */
-
-    /*     data_start += PAGE_SIZE; */
-    /*     data_kcopy += PAGE_SIZE; */
+    /* uint32_t *cursor = (uint32_t *)shm_addr; */
+    /* for(int i=0; i<20; i++){ */
+    /*     kprintf("%s: %#llx:      %#x\n", __func__, (uint64_t)(cursor+i), */
+    /*             cursor[i]); */
     /* } */
+
+    /* Wire down the shared mapping */
+    kret = vm_map_wire_kernel(kernel_map, shm_addr, shm_addr + copysz,
+            shm_prot, VM_KERN_MEMORY_OSFMK, 0);
+
+    if(kret){
+        kprintf("%s: vm_map_wire_kernel failed: %d\n", __func__, kret);
+        common_kfree(metadata);
+        *retval = kern_return_to_errno(kret);
+        return NULL;
+    }
+
+    metadata->mapping_addr = shm_addr;
+    metadata->mapping_size = copysz;
+    metadata->refcnt = 0;
+
+    /* Reflection will be done once we return from this function */
 
     return metadata;
 }
 
 /* This function finds a free xnuspy_tramp struct. If the calling process
  * has already installed more than one hook, then its __TEXT and __DATA
- * segments have already been copied onto the usercode pages. */
+ * segments have already been copied onto the reflector pages. */
 static int find_free_xnuspy_tramp(int *copy_segments,
-        struct xnuspy_usercode_page **already_copied,
+        struct xnuspy_reflector_page **already_copied,
         uint64_t *num_already_used,
         struct xnuspy_tramp **out){
     struct xnuspy_tramp *cursor = xnuspy_tramp_page;
@@ -1365,11 +957,11 @@ static int find_free_xnuspy_tramp(int *copy_segments,
         if(cursor->metadata && cursor->metadata->owner == ct){
             *copy_segments = 0;
 
-            *num_already_used = cursor->metadata->used_usercode_pages;
+            *num_already_used = cursor->metadata->used_reflector_pages;
             
             /* Reference not taken on these pages yet, as failure
              * could still occur later */
-            *already_copied = cursor->metadata->first_usercode_page;
+            *already_copied = cursor->metadata->first_reflector_page;
         }
 
         if(xnuspy_tramp_free(cursor)){
@@ -1392,22 +984,18 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
         uint64_t /* __user */ origp){
     kprintf("%s: called with target %#llx replacement %#llx origp %#llx\n",
             __func__, target, replacement, origp);
+
     int res = 0;
-
-    /* kprintf("%s: *******TEST\n", __func__); */
-
-
-
-
-    /* return 0; */
 
     /* slide target */
     target += kernel_slide;
 
+    /* TODO this function should spit out the address of the metadata of
+     * an existing xnuspy_tramp for this process instead of these variables */
     struct xnuspy_tramp *tramp = NULL;
     /* assume we need to copy __TEXT and __DATA */
     int copy_segments = 1;
-    struct xnuspy_usercode_page *already_copied = NULL;
+    struct xnuspy_reflector_page *already_copied = NULL;
     uint64_t num_already_used = 0;
 
     res = find_free_xnuspy_tramp(&copy_segments, &already_copied,
@@ -1468,56 +1056,92 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
 
     /* If we don't need to copy segments again, figure out the kernel
      * virtual address of the user's replacement and take a reference on each
-     * usercode page */
+     * reflector page */
     if(!copy_segments){
         kprintf("%s: don't need to copy segments\n", __func__);
 
-        kmh = (struct mach_header_64 *)already_copied->page;
 
-        kprintf("%s: umh @ %#llx kmh @ %#llx\n", __func__, umh, kmh);
+        kprintf("%s: RETURNING!!\n", __func__);
+        return res;
 
-        /* Metadata objects aren't reference counted, so we need to deep copy */
-        metadata = common_kalloc(sizeof(*metadata));
+        /* kmh = (struct mach_header_64 *)already_copied->page; */
 
-        if(!metadata){
-            kprintf("%s: failed to allocate metadata for this hook\n", __func__);
-            return ENOMEM;
-        }
+        /* kprintf("%s: umh @ %#llx kmh @ %#llx\n", __func__, umh, kmh); */
 
-        metadata->owner = current_task();
-        metadata->first_usercode_page = already_copied;
-        metadata->used_usercode_pages = num_already_used;
+        /* /1* Metadata objects aren't reference counted, so we need to deep copy *1/ */
+        /* /1* XXX should reference count these objects? *1/ */
+        /* metadata = common_kalloc(sizeof(*metadata)); */
+
+        /* if(!metadata){ */
+        /*     kprintf("%s: failed to allocate metadata for this hook\n", __func__); */
+        /*     return ENOMEM; */
+        /* } */
+
+        /* metadata->owner = current_task(); */
+        /* metadata->first_reflector_page = already_copied; */
+        /* metadata->used_reflector_pages = num_already_used; */
+        /* XXX set memory object */
     }
     else{
         kprintf("%s: need to copy segments\n", __func__);
 
-        metadata = copy_caller_segments(umh);
+        metadata = map_caller_segments(umh, &res);
 
         if(!metadata){
             kprintf("%s: failed to allocate metadata for this hook\n", __func__);
-            return ENOMEM;
+            return res;
         }
 
-        kmh = (struct mach_header_64 *)metadata->first_usercode_page->page;
+        kmh = metadata->first_reflector_page->page;
     }
 
-    /* No failures are possible after this point, take a reference
-     * on the usercode pages and hook the target function */
-    struct xnuspy_usercode_page *cur = metadata->first_usercode_page;
+    /* No failures are possible after this point */
+    struct xnuspy_reflector_page *cur = metadata->first_reflector_page;
+    uint64_t mapping_addr = metadata->mapping_addr;
 
-    for(int i=0; i<metadata->used_usercode_pages; i++){
+    for(int i=0; i<metadata->used_reflector_pages; i++){
         if(!cur)
             break;
 
-        cur->refcnt++;
+        void *rp = cur->page;
+        pte_t *rp_ptep = el1_ptep(rp);
+
+        uint64_t ma_phys = kvtophys(mapping_addr);
+        uint64_t ma_physpage = ma_phys & ~0x3fffuLL;
+
+        /* These PTEs are already marked as rwx, we just need to replace
+         * the OutputAddress */
+        pte_t new_rp_pte = (*rp_ptep & ~0xfffffffff000uLL) | ma_physpage;
+
+        kwrite(rp_ptep, &new_rp_pte, sizeof(new_rp_pte));
+
+        asm volatile("isb");
+        asm volatile("dsb sy");
+        asm volatile("tlbi vmalle1");
+        asm volatile("dsb sy");
+        asm volatile("isb");
+
+        xnuspy_reflector_page_reference(cur);
+
         cur = cur->next;
+        mapping_addr += PAGE_SIZE;
     }
+
+    xnuspy_tramp_metadata_reference(metadata);
 
     tramp->metadata = metadata;
 
     uint64_t replacement_kva = find_replacement_kva(kmh, umh, replacement);
 
     kprintf("%s: replacment kva @ %#llx\n", __func__, replacement_kva);
+
+    /* IOSleep(5000); */
+
+    /* uint32_t *cursor = (uint32_t *)replacement_kva; */
+    /* for(int i=0; i<20; i++){ */
+    /*     kprintf("%s: %#llx:      %#x\n", __func__, (uint64_t)(cursor+i), */
+    /*             cursor[i]); */
+    /* } */
 
     tramp->replacement = replacement_kva;
 
@@ -1532,17 +1156,17 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
     /* } */
 
     /* All the trampolines are set up, hook the target */
-    /* kprotect(target, sizeof(uint32_t), VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE); */
+    kprotect(target, sizeof(uint32_t), VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE);
 
-    /* *(uint32_t *)target = assemble_b(target, (uint64_t)tramp->tramp); */
+    *(uint32_t *)target = assemble_b(target, (uint64_t)tramp->tramp);
 
-    /* asm volatile("dc cvau, %0" : : "r" (target)); */
-    /* asm volatile("dsb ish"); */
-    /* asm volatile("ic ivau, %0" : : "r" (target)); */
-    /* asm volatile("dsb ish"); */
-    /* asm volatile("isb sy"); */
+    asm volatile("dc cvau, %0" : : "r" (target));
+    asm volatile("dsb ish");
+    asm volatile("ic ivau, %0" : : "r" (target));
+    asm volatile("dsb ish");
+    asm volatile("isb sy");
 
-    /* kprotect(target, sizeof(uint32_t), VM_PROT_READ | VM_PROT_EXECUTE); */
+    kprotect(target, sizeof(uint32_t), VM_PROT_READ | VM_PROT_EXECUTE);
 
     return res;
 }

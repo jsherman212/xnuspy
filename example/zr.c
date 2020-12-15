@@ -74,10 +74,11 @@ int main(int argc, char **argv){
     syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF007C4B420,
             zone_require, &zone_require_orig);
 
-    printf("zone_require_orig = %#llx\n", zone_require_orig);
-
     extern struct mach_header_64 *_mh_execute_header;
     printf("%#llx: %#x\n", &_mh_execute_header, *(uint32_t *)(&_mh_execute_header));
+
+    printf("zone_require_orig = %#llx\n", zone_require_orig);
+
 
     /* printf("    program text (etext)      %10p\n", (void*)get_etext()); */
     /* printf("    initialized data (edata)  %10p\n", (void*)get_edata()); */
@@ -92,11 +93,13 @@ int main(int argc, char **argv){
 
     /* printf("zone_require_orig = %#llx\n", zone_require_orig); */
 
-    /* pthread_t pt; */
-    /* pthread_create(&pt, NULL, t, NULL); */
+    pthread_t pt;
+    pthread_create(&pt, NULL, t, NULL);
 
     printf("Ctrl C to quit\n");
     getchar();
+
+    printf("Goodbye\n");
 
     return 0;
 }

@@ -6,23 +6,29 @@ struct objhdr {
     size_t sz;
 };
 
-struct xnuspy_usercode_page {
-    struct xnuspy_usercode_page *next;
+struct xnuspy_reflector_page {
+    struct xnuspy_reflector_page *next;
     _Atomic uint64_t refcnt;
-    uint8_t *page;
+    void *page;
 };
 
 struct xnuspy_tramp_metadata {
     struct objhdr hdr;
+    /* Reference count for metadata, NOT the xnuspy_tramp */
+    _Atomic uint64_t refcnt;
     /* Process which installed this hook */
     /* XXX XXX SHOULD USE PID INSTEAD */
     void *owner;
-    /* Pointer to the first usercode page used for the hook */
-    struct xnuspy_usercode_page *first_usercode_page;
-    /* How many usercode pages were used */
-    uint64_t used_usercode_pages;
-    /* EL0 virtual address of Mach header of calling process which owns this hook */
-    /* struct mach_header_64 *umh; */
+    /* Pointer to the first reflector page used for the hook */
+    struct xnuspy_reflector_page *first_reflector_page;
+    /* How many reflector pages are used */
+    uint64_t used_reflector_pages;
+    /* Memory object representing the shared __TEXT and __DATA mapping */
+    void *memory_object;
+    /* Address of shared __TEXT and __DATA mapping */
+    uint64_t mapping_addr;
+    /* Size of shared __TEXT and __DATA mapping */
+    uint64_t mapping_size;
 };
 
 /* This structure represents a function hook. Every xnuspy_tramp struct resides
