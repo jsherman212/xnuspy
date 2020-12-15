@@ -546,6 +546,30 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
             *va = 0xFFFFFFF007C94BC8 + kernel_slide;
             return;
         }
+        else if(strcmp(ksym, "__mach_make_memory_entry_64") == 0){
+            *va = 0xFFFFFFF007CD3424 + kernel_slide;
+            return;
+        }
+        else if(strcmp(ksym, "_mach_vm_map_external") == 0){
+            *va = 0xFFFFFFF007CD22DC + kernel_slide;
+            return;
+        }
+        else if(strcmp(ksym, "_ml_static_protect") == 0){
+            *va = 0xFFFFFFF007D0F7C8 + kernel_slide;
+            return;
+        }
+        else if(strcmp(ksym, "_pmap_protect_options") == 0){
+            *va = 0xFFFFFFF007CFBB58 + kernel_slide;
+            return;
+        }
+        else if(strcmp(ksym, "_vm_map_protect") == 0){
+            *va = 0xFFFFFFF007C95288 + kernel_slide;
+            return;
+        }
+        else if(strcmp(ksym, "_mach_vm_map_kernel") == 0){
+            *va = 0xFFFFFFF007CD2360 + kernel_slide;
+            return;
+        }
     }
 }
 
@@ -934,10 +958,34 @@ void xnuspy_preboot_hook(void){
     /* combat short read */
     /* asm volatile(".align 14"); */
 
-    /* iphone 8 13.6.1: Patch out the VM_PROT_EXECUTE check in vm_map_wire_nested */
+    /* iphone 8 13.6.1: Patch out the VM_PROT_EXECUTE/perm checks in
+     * vm_map_wire_nested */
     uint32_t *exec_patch = xnu_va_to_ptr(0xFFFFFFF007C909F8 + kernel_slide);
     /* NOP */
     *exec_patch = 0xd503201f;
+    /* NOP */
+    uint32_t *exec_patch1 = xnu_va_to_ptr(0xFFFFFFF007C90C60 + kernel_slide);
+    *exec_patch1 = 0xd503201f;
+    /* /1* iphone 8 13.6.1: modifying vma_prot inside of kernel_memory_allocate *1/ */
+    /* uint32_t *vma_prot0 = xnu_va_to_ptr(0xFFFFFFF007C89854 + kernel_slide); */
+    /* /1* mov w3, 1 *1/ */
+    /* *vma_prot0 = 0x52800023; */
+    /* uint32_t *vma_prot1 = xnu_va_to_ptr(0xFFFFFFF007C89920 + kernel_slide); */
+    /* /1* mov w3, 1 *1/ */
+    /* *vma_prot1 = 0x52800023; */
+
+
+    /* iphone 8 13.6.1: pmap_enter always makes executable memory */
+    /* uint32_t *pe0 = xnu_va_to_ptr(0xFFFFFFF007CF5CD8 + kernel_slide); */
+    /* /1* orr w3, w3, 4 *1/ */
+    /* *pe0 = 0x321E0063; */
+    /* uint32_t *pe1 = xnu_va_to_ptr(0xFFFFFFF007CF5CDC + kernel_slide); */
+    /* /1* nop *1/ */
+    /* *pe1 = 0xd503201f; */
+    /* iphone 8 13.6.1: patch out WX request on kernel pmap panic */
+    uint32_t *pe2 = xnu_va_to_ptr(0xFFFFFFF007CF5CF8 + kernel_slide);
+    /* nop */
+    *pe2 = 0xd503201f;
 
     if(next_preboot_hook)
         next_preboot_hook();
