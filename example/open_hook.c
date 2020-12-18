@@ -90,6 +90,8 @@ struct sysctl_req {
     int             (*newfunc)(struct sysctl_req *, void *, size_t);
 };
 
+static uint64_t kernel_slide = 0;
+
 static int (*sysctl_handle_long_orig)(void *, void *, int, struct sysctl_req *);
 
 static int sysctl_handle_long(void *oidp, void *arg1, int arg2,
@@ -113,11 +115,11 @@ static int sysctl_handle_long(void *oidp, void *arg1, int arg2,
     /* return ENOENT; */
     /* return 0; */
 
-    uint64_t tpidr_el1;
-    asm volatile("mrs %0, tpidr_el1" : "=r" (tpidr_el1));
+    /* uint64_t tpidr_el1; */
+    /* asm volatile("mrs %0, tpidr_el1" : "=r" (tpidr_el1)); */
 
-    void *cpudata = *(void **)(tpidr_el1 + 0x478);
-    uint16_t curcpu = *(uint16_t *)cpudata;
+    /* void *cpudata = *(void **)(tpidr_el1 + 0x478); */
+    /* uint16_t curcpu = *(uint16_t *)cpudata; */
 
     /* asm volatile("mrs x3, ttbr0_el1"); */
     /* asm volatile("mov x4, 0x4141"); */
@@ -136,8 +138,8 @@ static int sysctl_handle_long(void *oidp, void *arg1, int arg2,
 
     /* return ENOENT; */
 
-    kprintf("%s: *****We are on CPU %d, calling orig function...\n", __func__,
-            curcpu);
+    /* kprintf("%s: *****We are on CPU %d, calling orig function...\n", __func__, */
+    /*         curcpu); */
 
     /* int i = 0; */
     /* for(;;){ */
@@ -154,6 +156,159 @@ static int sysctl_handle_long(void *oidp, void *arg1, int arg2,
 
     /* return 0; */
     /* return (int)curcpu; */
+
+    /* uint64_t dbgbcr = 0x1e7; */
+    /* uint64_t dbgbcr; */
+    /* asm volatile("mov %0, sp" : "=r" (dbgbcr)); */
+    /* uint64_t dbgbvr = 0xFFFFFFF0082044A4 + kernel_slide; */
+
+    /* asm volatile("msr dbgbcr0_el1, %0" : : "r" (dbgbcr)); */
+    /* /1* asm volatile("msr dbgbcr0_el1, fp"); *1/ */
+    /* asm volatile("msr dbgbvr0_el1, %0" : : "r" (dbgbvr)); */
+
+    /* asm volatile("mrs x8, mdscr_el1"); */
+    /* asm volatile("orr x8, x8, 0x2000"); */
+    /* asm volatile("orr x8, x8, 0x8000"); */
+    /* asm volatile("msr mdscr_el1, x8"); */
+    /* asm volatile("isb sy"); */
+
+
+    /* asm volatile("" */
+    /*         "mov x0, 0x4141\n" */
+    /*         "msr dbgbvr0_el1, x0\n" */
+    /*         /1* "mov x18, 0x4242\n" *1/ */
+    /*         /1* "msr actlr_el1, x0\n" *1/ */
+    /*         "isb\n" */
+    /*         "dsb sy\n" */
+    /*         "isb\n" */
+    /*         ); */
+
+    /* msr DBGAUTHSTATUS_EL1, fp */
+    /* asm volatile(".long 0xd5107edd"); */
+    /* asm volatile("msr S2_0_c7_c14_6, fp"); */
+
+    /* asm volatile("" */
+    /*         "mrs x8, cpacr_el1\n" */
+    /*         "mov x9, fp\n" */
+    /*         "and x9, x9, 0xffffffff\n" */
+    /*         "lsl x9, x9, 31\n" */
+    /*         "orr x8, x8, x9\n" */
+    /*         "msr cpacr_el1, x8\n" */
+    /*         "isb sy\n" */
+    /*         ); */
+    /* asm volatile("msr DBGAUTHSTATUS_EL1, fp"); */
+    /* asm volatile("isb sy"); */
+
+    uint64_t mpidr_el1;
+    asm volatile("mrs %0, mpidr_el1" : "=r" (mpidr_el1));
+    uint32_t curcpu = (uint32_t)(mpidr_el1 & 0xff);
+
+    /* asm volatile("mov x29, %0" : : "r" (curcpu)); */
+
+    /* asm volatile("" */
+    /*         "mov x0, 0x4141\n" */
+    /*         "mov x1, 0x4242\n" */
+    /*         "mov x2, 0x4343\n" */
+    /*         "msr afsr0_el1, x0\n" */
+    /*         "msr afsr1_el1, x1\n" */
+    /*         "msr amair_el1, x2\n" */
+    /*         "msr esr_el1, x2\n" */
+    /*         /1* "msr aidr_el1, x2\n" *1/ */
+    /*         /1* : : : "memory" *1/ */
+    /*         "dsb sy\n" */
+    /*         /1* "tlbi vmalle1\n" *1/ */
+    /*         "isb sy\n" */
+    /*         ); */
+    /* uint64_t afsr0_el1, afsr1_el1, amair_el1, aidr_el1, esr_el1; */
+    /* asm volatile("mrs %0, afsr0_el1" : "=r" (afsr0_el1) : : "memory"); */
+    /* asm volatile("mrs %0, afsr1_el1" : "=r" (afsr1_el1) : : "memory"); */
+    /* asm volatile("mrs %0, amair_el1" : "=r" (amair_el1) : : "memory"); */
+    /* asm volatile("mrs %0, aidr_el1" : "=r" (aidr_el1) : : "memory"); */
+    /* asm volatile("mrs %0, esr_el1" : "=r" (esr_el1) : : "memory"); */
+    /* asm volatile("dsb sy"); */
+    /* asm volatile("isb sy"); */
+    /* kprintf("%s(CPU %d): afsr0_el1 = %#llx, afsr1_el1 = %#llx" */
+    /*         " amair_el1 = %#llx, aidr_el1 = %#llx, esr_el1 = %#llx\n", __func__, */
+    /*         curcpu, afsr0_el1, afsr1_el1, amair_el1, aidr_el1, esr_el1); */
+
+    /* void *ct; */
+    /* asm volatile("mrs %0, tpidr_el1" : "=r" (ct)); */
+    /* *(uint64_t *)((uint8_t *)ct + 0x3f8) = __builtin_frame_address(0); */
+
+    /* int i = 0; */
+    /* for(int i=0; i<10000; i++){ */
+    /* for(;;){ */
+        /* uint64_t dbgbcr0_el1, dbgbvr0_el1, dbgauthstatus_el1; */
+        /* asm volatile("mrs %0, dbgbcr0_el1" : "=r" (dbgbcr0_el1)); */
+        /* asm volatile("mrs %0, dbgbvr0_el1" : "=r" (dbgbvr0_el1)); */
+        /* asm volatile("mrs %0, S2_0_c7_c14_6" : "=r" (dbgauthstatus_el1)); */
+        /* uint64_t cpacr_el1; */
+        /* asm volatile("mrs %0, cpacr_el1" : "=r" (cpacr_el1)); */
+        /* asm volatile("isb sy"); */
+        /* kprintf("%s(%d, CPU %d): dbgbcr0_el1 = %#llx, dbgbvr0_el1 = %#llx" */
+        /*         " dbgauthstatus_el1 = %#llx\n", __func__, i, curcpu, dbgbcr0_el1, */
+        /*         dbgbvr0_el1, dbgauthstatus_el1); */
+        /* kprintf("%s(%d, CPU %d): cpacr_el1 = %#llx\n", __func__, i, curcpu, cpacr_el1); */
+
+
+        /* uint64_t fp; */
+        /* asm volatile("mov %0, x29" : "=r" (fp)); */
+
+        /* kprintf("%s(%d, CPU %d): fp = %#llx\n", __func__, i, curcpu, fp); */
+
+        /* volatile uint64_t dbgbvr0_el1; */
+        /* volatile uint64_t actlr_el1; */
+        /* volatile uint64_t x18; */
+        /* asm volatile("" */
+        /*         "mrs %0, dbgbvr0_el1\n" */
+        /*         "mrs %0, actlr_el1\n" */
+        /*         "isb sy\n" */
+        /*         : "=r" (dbgbvr0_el1), */
+        /*         "=r" (actlr_el1), */
+
+        /*         ); */
+
+        /* if(dbgbvr0_el1 == 0) */
+        /*     break; */
+        /* kprintf("%s(%d): dbgbvr0_el1 = %#llx actlr_el1 = %#llx\n", __func__, i, */
+        /*         dbgbvr0_el1, actlr_el1); */
+
+        /* uint64_t x18; */
+        /* asm volatile("mov %0, x18" : "=r" (x18)); */
+        /* kprintf("%s(%d, CPU %d): x18: %#llx\n", __func__, i, curcpu, x18); */
+
+        /* uint64_t afsr0_el1, afsr1_el1, amair_el1, aidr_el1, esr_el1; */
+        /* asm volatile("mrs %0, afsr0_el1" : "=r" (afsr0_el1) : : "memory"); */
+        /* asm volatile("mrs %0, afsr1_el1" : "=r" (afsr1_el1) : : "memory"); */
+        /* asm volatile("mrs %0, amair_el1" : "=r" (amair_el1) : : "memory"); */
+        /* asm volatile("mrs %0, aidr_el1" : "=r" (aidr_el1) : : "memory"); */
+        /* asm volatile("mrs %0, esr_el1" : "=r" (esr_el1) : : "memory"); */
+        /* asm volatile("dsb sy"); */
+        /* asm volatile("isb sy"); */
+        /* kprintf("%s(%d, CPU %d): afsr0_el1 = %#llx, afsr1_el1 = %#llx" */
+        /*         " amair_el1 = %#llx, aidr_el1 = %#llx, esr_el1 = %#llx\n", __func__, */
+        /*         i, curcpu, afsr0_el1, afsr1_el1, amair_el1, aidr_el1, esr_el1); */
+
+        /* void *ct; */
+        /* asm volatile("mrs %0, tpidr_el1" : "=r" (ct)); */
+        /* void *cpuDatap = *(void **)((uint8_t *)ct + 0x478); */
+
+        /* if(!cpuDatap){ */
+        /*     kprintf("%s(%d, CPU %d): NULL cpu data???\n", __func__, i, curcpu); */
+        /* } */
+        /* else{ */
+        /*     uint64_t saved_fp = *(uint64_t *)((uint8_t *)cpuDatap + 0x1a8); */
+        /*     kprintf("%s(%d, CPU %d): saved_fp = %#llx\n", __func__, i, curcpu, */
+        /*             saved_fp); */
+        /* } */
+
+        /* IOSleep(1000); */
+        /* i++; */
+    /* } */
+
+    /* kprintf("%s: took %d spins for DBGBVR0_EL1 to get zeroed\n", __func__, i); */
+
+    kprintf("%s: on CPU %d\n", __func__, curcpu);
 
     return sysctl_handle_long_orig(oidp, arg1, arg2, req);
 }
@@ -185,7 +340,6 @@ static void *kalloc_canblock(size_t *sizep, int canblock, void *site){
 
     uint64_t mpidr_el1;
     asm volatile("mrs %0, mpidr_el1" : "=r" (mpidr_el1));
-
     uint8_t curcpu = mpidr_el1 & 0xff;
 
     uint64_t caller = (uint64_t)__builtin_return_address(0);
@@ -459,7 +613,6 @@ next:
     return replacement_kva;
 }
 
-static uint64_t kernel_slide = 0;
 
 static void *gIOUserClientClassKey = NULL;
 static void *IOService_metaClass = NULL;
@@ -676,11 +829,12 @@ int main(int argc, char **argv){
     /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xfffffff00800d508, */
     /*         sysctl_handle_long, &sysctl_handle_long_orig); */
 
-    /* printf("sysctl_handle_long_orig = %#llx\n", sysctl_handle_long_orig); */
-
     /* if(ret){ */
     /*     printf("%s\n", strerror(errno)); */
     /* } */
+
+    /* printf("sysctl_handle_long_orig = %#llx\n", sysctl_handle_long_orig); */
+
 
 
     /* address_space_tests(); */

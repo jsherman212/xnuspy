@@ -4,12 +4,13 @@
 #include <mach-o/loader.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <sys/queue.h>
 #include <unistd.h>
 
 #include "asm.h"
 #include "mem.h"
 #include "pte.h"
-#include "queue.h"
+/* #include "queue.h" */
 #include "tramp.h"
 
 #include "../../common/xnuspy_structs.h"
@@ -392,16 +393,14 @@ struct _vm_map {
 MARK_AS_KERNEL_OFFSET struct pmap *(*get_task_pmap)(void *task);
 MARK_AS_KERNEL_OFFSET queue_head_t *map_pmap_list;
 
-/* #define tt1_index(pmap, addr)								\ */
-/* 	(((addr) & ARM_TT_L1_INDEX_MASK) >> ARM_TT_L1_SHIFT) */
-/* #define tt2_index(pmap, addr)								\ */
-/* 	(((addr) & ARM_TT_L2_INDEX_MASK) >> ARM_TT_L2_SHIFT) */
-/* #define tt3_index(pmap, addr)								\ */
-/* 	(((addr) & ARM_TT_L3_INDEX_MASK) >> ARM_TT_L3_SHIFT) */
-
 /* shorter macros so I can stay under 80 column lines */
-/* #define DIST_FROM_REFCNT_TO(x) __builtin_offsetof(struct xnuspy_tramp, x) - \ */
-/*     __builtin_offsetof(struct xnuspy_tramp, refcnt) */
+#define DIST_FROM_REFCNT_TO(x) __builtin_offsetof(struct xnuspy_tramp, x) - \
+    __builtin_offsetof(struct xnuspy_tramp, refcnt)
+
+#define DIST_TO_REFCNT(x) __builtin_offsetof(struct xnuspy_tramp, x) - \
+    __builtin_offsetof(struct xnuspy_tramp, refcnt)
+
+#define OFFSETOF(x) __builtin_offsetof(struct xnuspy_tramp, x)
 
 static int xnuspy_dump_ttes(uint64_t addr, uint64_t el){
     uint64_t ttbr;
@@ -433,7 +432,6 @@ static int xnuspy_dump_ttes(uint64_t addr, uint64_t el){
 
     return 0;
 }
-
 
 static void desc_vm_map_entry(struct vm_map_entry *vme){
     kprintf("This map entry represents [%#llx-%#llx]\n", vme->vme_start,
@@ -528,7 +526,7 @@ static void desc_xnuspy_tramp(struct xnuspy_tramp *t, uint32_t orig_tramp_len){
     if(!t->mapping_metadata)
         kprintf("NULL mapping metadata\n");
     else{
-        kprintf("Mapping metadata refcnt: %lld\n", t->mapping_metadata->refcnt);
+        /* kprintf("Mapping metadata refcnt: %lld\n", t->mapping_metadata->refcnt); */
         kprintf("Owner: %d\n", t->mapping_metadata->owner);
         kprintf("# of used reflector pages: %lld\n",
                 t->mapping_metadata->used_reflector_pages);
@@ -562,9 +560,9 @@ static int xnuspy_reflector_page_free(struct xnuspy_reflector_page *p){
     return p->refcnt == 0;
 }
 
-static int xnuspy_tramp_free(struct xnuspy_tramp *t){
-    return !t->mapping_metadata;
-}
+/* static int xnuspy_tramp_free(struct xnuspy_tramp *t){ */
+/*     return !t->tramp_metadata; */
+/* } */
 
 static int kern_return_to_errno(kern_return_t kret){
     switch(kret){
@@ -588,38 +586,178 @@ static int kern_return_to_errno(kern_return_t kret){
 }
 
 static void xnuspy_reflector_page_release(struct xnuspy_reflector_page *p){
-    if(--p->refcnt == 0){
+    /* if(--p->refcnt == 0){ */
         /* TODO */
-    }
+    /* } */
+    p->refcnt--;
 }
 
 static void xnuspy_reflector_page_reference(struct xnuspy_reflector_page *p){
     p->refcnt++;
 }
 
-static void xnuspy_mapping_metadata_release(struct xnuspy_mapping_metadata *m){
-    if(--m->refcnt == 0){
-        /* TODO */
-    }
-}
+/* static void xnuspy_mapping_metadata_release(struct xnuspy_mapping_metadata *m){ */
+/*     if(--m->refcnt == 0){ */
+/*         /1* TODO *1/ */
+/*     } */
+/* } */
 
-static void xnuspy_mapping_metadata_reference(struct xnuspy_mapping_metadata *m){
-    m->refcnt++;
-}
+/* static void xnuspy_mapping_metadata_reference(struct xnuspy_mapping_metadata *m){ */
+/*     m->refcnt++; */
+/* } */
+
+/* void disable_preemption(void){ */
+/*     _disable_preemption(); */
+/* } */
+
+/* void enable_preemption(void){ */
+/*     _enable_preemption(); */
+/* } */
 
 MARK_AS_KERNEL_OFFSET struct xnuspy_tramp *xnuspy_tramp_page;
 MARK_AS_KERNEL_OFFSET uint8_t *xnuspy_tramp_page_end;
 
 MARK_AS_KERNEL_OFFSET struct xnuspy_reflector_page *first_reflector_page;
 
+struct stailq_entry {
+    struct objhdr hdr;
+    void *elem;
+    STAILQ_ENTRY(stailq_entry) link;
+};
+
+/* I cannot reference count the xnuspy_tramp structs because I am unable
+ * to use the stack to push a frame so the replacement function returns to
+ * a routine to release a taken reference. Reference counting these structs
+ * would prevent me from unmapping something that some thread is currently
+ * executing on.
+ *
+ * Instead, I'm maximizing the time between the previous free and the next
+ * allocation of an xnuspy_tramp struct. When a hook is uninstalled, the
+ * shared mapping won't be unmapped until another process takes ownership
+ * of that struct. Freed structs will be pushed to the end of the freelist,
+ * and we allocate from the front of the freelist.
+ *
+ * The usedlist is used as a normal linked list, but has to be an STAILQ
+ * so I can insert objects from the freelist and into the usedlist and vice
+ * versa.
+ */
+static STAILQ_HEAD(, stailq_entry) freelist = STAILQ_HEAD_INITIALIZER(freelist);
+static STAILQ_HEAD(, stailq_entry) usedlist = STAILQ_HEAD_INITIALIZER(usedlist);
+
+static void xnuspy_tramp_free(struct xnuspy_tramp *t){
+    struct stailq_entry *entry;
+    struct stailq_entry *tmp;
+
+    STAILQ_FOREACH_SAFE(entry, &usedlist, link, tmp){
+        if(entry->elem == t){
+            struct xnuspy_mapping_metadata *mapping_metadata = t->mapping_metadata;
+            struct xnuspy_reflector_page *cur = mapping_metadata->first_reflector_page;
+
+            for(int i=0; i<mapping_metadata->used_reflector_pages; i++){
+                if(!cur)
+                    break;
+
+                xnuspy_reflector_page_release(cur);
+
+                cur = cur->next;
+            }
+
+            /* xnuspy_mapping_metadata_release(mapping_metadata); */
+
+            /* We do not NULL the mapping metadata so we can unmap this
+             * mapping when another process takes ownership of this struct */
+
+            common_kfree(t->tramp_metadata);
+            t->tramp_metadata = NULL;
+
+            STAILQ_REMOVE(&usedlist, entry, stailq_entry, link);
+            STAILQ_INSERT_TAIL(&freelist, entry, link);
+
+            return;
+        }
+    }
+}
+
+static struct xnuspy_tramp *xnuspy_tramp_alloc(void){
+    if(STAILQ_EMPTY(&freelist)){
+        kprintf("%s: no free xnuspy_tramp structs\n", __func__);
+        return NULL;
+    }
+
+    struct stailq_entry *allocated = STAILQ_FIRST(&freelist);
+    STAILQ_REMOVE_HEAD(&freelist, link);
+    STAILQ_INSERT_TAIL(&usedlist, allocated, link);
+    return allocated->elem;
+}
+
+static void desc_freelist(void){
+    kprintf("[Freelist] ");
+
+    if(STAILQ_EMPTY(&freelist)){
+        kprintf("Empty\n");
+        return;
+    }
+
+    kprintf("FIRST: ");
+
+    struct stailq_entry *entry;
+    STAILQ_FOREACH(entry, &freelist, link){
+        kprintf("%#llx <- ", entry->elem);
+    }
+    kprintf("\n");
+}
+
+static void desc_usedlist(void){
+    kprintf("[Usedlist] ");
+
+    if(STAILQ_EMPTY(&usedlist)){
+        kprintf("Empty\n");
+        return;
+    }
+
+    struct stailq_entry *entry;
+    STAILQ_FOREACH(entry, &usedlist, link){
+        kprintf("%#llx -> ", entry->elem);
+    }
+    kprintf("\n");
+}
+
+static void desc_lists(void){
+    desc_usedlist();
+    desc_freelist();
+}
+
 static int xnuspy_init_flag = 0;
 
-static void xnuspy_init(void){
+static int xnuspy_init(void){
+    /* Build the initial freelist/usedlist for xnuspy_tramp structs */
+    STAILQ_INIT(&freelist);
+    STAILQ_INIT(&usedlist);
+
+    struct xnuspy_tramp *cursor = (struct xnuspy_tramp *)xnuspy_tramp_page;
+    
+    while((uint8_t *)cursor < xnuspy_tramp_page_end){
+        struct stailq_entry *entry = common_kalloc(sizeof(*entry));
+
+        if(!entry){
+            kprintf("%s: no mem\n", __func__);
+            /* TODO: free what was allocated before this */
+            return ENOMEM;
+        }
+
+        entry->elem = cursor;
+        STAILQ_INSERT_TAIL(&freelist, entry, link);
+
+        cursor++;
+    }
+
+    desc_lists();
+
     /* Mark the xnuspy_tramp page as writeable/executable */
     vm_prot_t prot = VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE;
     kprotect((uint64_t)xnuspy_tramp_page, PAGE_SIZE, prot);
 
-    /* Do the same for the pages which will hold user code */
+    /* Do the same for the pages which will reflect shared mappings */
     struct xnuspy_reflector_page *cur = first_reflector_page;
     
     while(cur){
@@ -644,15 +782,9 @@ static void xnuspy_init(void){
     xnuspy_init_flag = 1;
 
     kprintf("%s: xnuspy inited\n", __func__);
+
+    return 0;
 }
-
-/* void disable_preemption(void){ */
-/*     _disable_preemption(); */
-/* } */
-
-/* void enable_preemption(void){ */
-/*     _enable_preemption(); */
-/* } */
 
 int strcmp(const char *s1, const char *s2){
     while(*s1 && (*s1 == *s2)){
@@ -806,12 +938,12 @@ nextpage:
 
     struct xnuspy_reflector_page *freeset = cur;
 
-    kprintf("%s: free pages found:\n", __func__);
+    /* kprintf("%s: free pages found:\n", __func__); */
 
-    for(int i=0; i<npages; i++){
-        desc_xnuspy_reflector_page(cur);
-        cur = cur->next;
-    }
+    /* for(int i=0; i<npages; i++){ */
+    /*     desc_xnuspy_reflector_page(cur); */
+    /*     cur = cur->next; */
+    /* } */
 
     /* Create the metadata now, as making it later would entail a lot of
      * cleanup if this fails */
@@ -824,7 +956,7 @@ nextpage:
         return NULL;
     }
 
-    metadata->refcnt = 0;
+    /* metadata->refcnt = 0; */
     metadata->owner = proc_pid(current_proc());
     /* Don't take a reference yet, because failures are still possible */
     metadata->first_reflector_page = freeset;
@@ -883,8 +1015,8 @@ nextpage:
     /* We create the mapping with only VM_PROT_READ because that is the
      * minimum VM protections for a segment (unless they have none, which won't
      * happen, unless the user does something weird). Additionally, we map
-     * [copystart, copystart+copysz) in one shot, so the differing VM
-     * permissions between those segments do not matter.
+     * [copystart, copystart+copysz) in one shot, so it's easier to map
+     * everything with the minimum permissions.
      *
      * We are not actually interacting with this mapping directly, so the VM
      * permissions of this shared mapping do not matter. We interact with it 
@@ -957,86 +1089,25 @@ nextpage:
     return metadata;
 }
 
-/* This function finds a free xnuspy_tramp struct. If the calling process
- * has already installed more than one hook, then its __TEXT and __DATA
- * segments have already been copied onto the reflector pages. */
-/* static int find_free_xnuspy_tramp(int *copy_segments, */
-/*         struct xnuspy_reflector_page **already_copied, */
-/*         uint64_t *num_already_used, */
-/*         struct xnuspy_tramp **out){ */
-/*     struct xnuspy_tramp *cursor = xnuspy_tramp_page; */
-/*     void *ct = current_task(); */
-
-/*     while((uint8_t *)cursor < xnuspy_tramp_page_end){ */
-/*         /1* Won't matter if this condition evaluates to true more than once */
-/*          * because the calling process only has one __TEXT and _DATA segment *1/ */
-/*         if(cursor->metadata && cursor->metadata->owner == ct){ */
-/*             *copy_segments = 0; */
-
-/*             *num_already_used = cursor->metadata->used_reflector_pages; */
-            
-/*             /1* Reference not taken on these pages yet, as failure */
-/*              * could still occur later *1/ */
-/*             *already_copied = cursor->metadata->first_reflector_page; */
-/*         } */
-
-/*         if(xnuspy_tramp_free(cursor)){ */
-/*             *out = cursor; */
-/*             return 0; */
-/*         } */
-
-/*         cursor++; */
-/*     } */
-
-/*     *copy_segments = 0; */
-/*     *num_already_used = 0; */
-/*     *already_copied = NULL; */
-/*     *out = NULL; */
-
-/*     return ENOSPC; */
-/* } */
-
-static int find_free_xnuspy_tramp(uint64_t target,
-        struct xnuspy_mapping_metadata **existing, struct xnuspy_tramp **out){
-    int res = 0;
-
-    struct xnuspy_tramp *cursor = xnuspy_tramp_page;
-    struct xnuspy_tramp *free_tramp = NULL;
-    struct xnuspy_mapping_metadata *existing_mapping_metadata = NULL;
-
+static struct xnuspy_mapping_metadata *find_metadata(void){
     pid_t cpid = proc_pid(current_proc());
 
-    while((uint8_t *)cursor < xnuspy_tramp_page_end){
-        if(cursor->tramp_metadata){
-            if(cursor->tramp_metadata->hooked == target)
-                return EEXIST;
-        }
+    struct stailq_entry *entry;
+    struct stailq_entry *tmp;
 
-        if(cursor->mapping_metadata){
-            /* Won't matter if this condition evaluates to true more than once
-             * because the calling process' __TEXT and __DATA are mapped only once */
-            if(cursor->mapping_metadata->owner == cpid)
-                existing_mapping_metadata = cursor->mapping_metadata;
-        }
+    STAILQ_FOREACH_SAFE(entry, &usedlist, link, tmp){
+        struct xnuspy_tramp *tramp = entry->elem;
 
-        if(!free_tramp && xnuspy_tramp_free(cursor))
-            free_tramp = cursor;
-
-        cursor++;
+        if(tramp->mapping_metadata && tramp->mapping_metadata->owner == cpid)
+            return tramp->mapping_metadata;
     }
 
-    if(!free_tramp)
-        return ENOENT;
-
-    *existing = existing_mapping_metadata;
-    *out = free_tramp;
-
-    return 0;
+    return NULL;
 }
 
 static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
         uint64_t /* __user */ origp){
-    kprintf("%s: called with target %#llx replacement %#llx origp %#llx\n",
+    kprintf("%s: called with unslid target %#llx replacement %#llx origp %#llx\n",
             __func__, target, replacement, origp);
 
     int res = 0;
@@ -1044,14 +1115,11 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
     /* slide target */
     target += kernel_slide;
 
-    struct xnuspy_tramp *tramp = NULL;
-    struct xnuspy_mapping_metadata *mapping_metadata = NULL;
+    struct xnuspy_tramp *tramp = xnuspy_tramp_alloc();
 
-    res = find_free_xnuspy_tramp(target, &mapping_metadata, &tramp);
-
-    if(res){
-        kprintf("%s: find_free_xnuspy_tramp returned %d\n", __func__, res);
-        return res;
+    if(!tramp){
+        kprintf("%s: no free xnuspy tramp structs\n", __func__);
+        return ENOMEM;
     }
 
     kprintf("%s: got free xnuspy_ctl struct @ %#llx\n", __func__, tramp);
@@ -1109,6 +1177,9 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
     /* Mach header of the calling process */
     struct mach_header_64 *umh = (struct mach_header_64 *)current_map->hdr.vme_start;
 
+    /* Check if there's mapping metadata for this process */
+    struct xnuspy_mapping_metadata *mapping_metadata = find_metadata();
+
     if(!mapping_metadata){
         kprintf("%s: need to map __TEXT and __DATA\n", __func__);
 
@@ -1154,7 +1225,7 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
         mapping_addr += PAGE_SIZE;
     }
 
-    xnuspy_mapping_metadata_reference(mapping_metadata);
+    /* xnuspy_mapping_metadata_reference(mapping_metadata); */
 
     tramp->tramp_metadata = tramp_metadata;
     tramp->mapping_metadata = mapping_metadata;
@@ -1181,6 +1252,19 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
         kprintf("%s: %#llx:      %#x\n", __func__, (uint64_t)(cursor+i),
                 cursor[i]);
     }
+
+    /* void *ct = current_thread(); */
+    /* /1* offset found in machine_switch_context *1/ */
+    /* void *cpuDatap = *(void **)((uint8_t *)ct + 0x478); */
+
+    /* if(!cpuDatap){ */
+    /*     kprintf("%s: NULL cpu data???\n", __func__); */
+    /* } */
+    /* else{ */
+    /*     /1* CpuDatap->cpu_debug_interface, found in pe_arm_init_debug *1/ */
+    /*     *(uint64_t *)((uint8_t *)cpuDatap + 0x1a8) = __builtin_frame_address(0); */
+
+    /* } */
 
     /* All the trampolines are set up, hook the target */
     kprotect(target, sizeof(uint32_t), VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE);
@@ -1257,13 +1341,20 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
     /*         (uint64_t)xnuspy_tramp_page - kernel_slide, */
     /*         (uint64_t)xnuspy_tramp_page_end - kernel_slide); */
 
-    if(!xnuspy_init_flag)
-        xnuspy_init();
+    int res;
+
+    if(!xnuspy_init_flag){
+        res = xnuspy_init();
+
+        if(res){
+            *retval = -1;
+            return res;
+        }
+    }
 
     /* kprintf("%s: ********RETURNING\n", __func__); */
     /* return 0; */
 
-    int res;
 
     switch(flavor){
         case XNUSPY_CHECK_IF_PATCHED:

@@ -995,6 +995,15 @@ void xnuspy_preboot_hook(void){
     /* nop */
     *pe2 = 0xd503201f;
 
+    /* iphone 8 13.6.1: do not allow XNU to write to syscall counters inside
+     * sleh_synchronous */
+    /* uint32_t *sleh_p0 = xnu_va_to_ptr(0xFFFFFFF007D0C0B4 + kernel_slide); */
+    /* nop */
+    /* *sleh_p0 = 0xd503201f; */
+    /* uint32_t *sleh_p1 = xnu_va_to_ptr(0xFFFFFFF007D0C274 + kernel_slide); */
+    /* nop */
+    /* *sleh_p1 = 0xd503201f; */
+
     if(next_preboot_hook)
         next_preboot_hook();
 }
