@@ -182,6 +182,11 @@ MARK_AS_KERNEL_OFFSET int (*copyout)(const void *kaddr, uint64_t uaddr,
 
 MARK_AS_KERNEL_OFFSET void *(*current_proc)(void);
 MARK_AS_KERNEL_OFFSET pid_t (*proc_pid)(void *proc);
+MARK_AS_KERNEL_OFFSET void (*proc_list_lock)(void);
+MARK_AS_KERNEL_OFFSET void (*proc_list_unlock)(void);
+MARK_AS_KERNEL_OFFSET uint64_t (*proc_uniqueid)(void *proc);
+MARK_AS_KERNEL_OFFSET void (*proc_ref_locked)(void *proc);
+MARK_AS_KERNEL_OFFSET void (*proc_rele_locked)(void *proc);
 
 MARK_AS_KERNEL_OFFSET uint32_t *ncpusp;
 MARK_AS_KERNEL_OFFSET struct cpu_data_entry *CpuDataEntriesp;
@@ -1372,17 +1377,27 @@ static void death_listener_thread(void *param, int wait_result){
 
     kprintf("%s: hello from death listener!\n", __func__);
     
-    /* XXX NEED TO TAKE PROC LIST LOCK */
-    struct proclist *allproc = *allprocp;
+    /* struct proclist *allproc = *allprocp; */
 
     for(;;){
         struct proc *entry;
 
-        LIST_FOREACH(entry, allproc, p_list){
-            pid_t pid = proc_pid(entry);
+        proc_list_lock();
 
-            kprintf("%s: current proc %#llx, pid: %d\n", __func__, entry, pid);
+        /* XXX we don't seem to hit the last proc in the list? */
+        LIST_FOREACH(entry, *allprocp, p_list){
+            proc_ref_locked(entry);
+
+            pid_t pid = proc_pid(entry);
+            uint64_t uniqueid = proc_uniqueid(entry);
+
+            proc_rele_locked(entry);
+
+            kprintf("%s: current proc %#llx, unique id: %lld, pid: %d\n",
+                    __func__, entry, uniqueid, pid);
         }
+
+        proc_list_unlock();
 
         IOSleep(5000);
     }

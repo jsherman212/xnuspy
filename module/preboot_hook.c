@@ -602,6 +602,26 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
             *va = 0xFFFFFFF009257AB0 + kernel_slide;
             return;
         }
+        else if(strcmp(ksym, "_proc_list_lock") == 0){
+            *va = 0xFFFFFFF007FF2C78 + kernel_slide;
+            return;
+        }
+        else if(strcmp(ksym, "_proc_list_unlock") == 0){
+            *va = 0xFFFFFFF007FF2CD8 + kernel_slide;
+            return;
+        }
+        else if(strcmp(ksym, "_proc_uniqueid") == 0){
+            *va = 0xFFFFFFF007FF952C + kernel_slide;
+            return;
+        }
+        else if(strcmp(ksym, "_proc_ref_locked") == 0){
+            *va = 0xFFFFFFF007FF8144 + kernel_slide;
+            return;
+        }
+        else if(strcmp(ksym, "_proc_rele_locked") == 0){
+            *va = 0xFFFFFFF007FF852C + kernel_slide;
+            return;
+        }
     }
 }
 
