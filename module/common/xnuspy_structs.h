@@ -15,16 +15,12 @@ struct xnuspy_reflector_page {
 /* This structure represents a shared __TEXT and __DATA mapping. There is
  * one xnuspy_mapping_metadata struct per-process. When an xnuspy_tramp
  * struct is freed, this structure is kept intact so the next process who
- * takes ownership of that struct can free the previous shared mapping.
- *
- * XXX: why is this being reference counted if I'm not even gonna free
- * these structs anymore? I need these to stay intact so I can unmap a
- * previously-used mapping, and at that point, why kfree/kalloc again?
- */
+ * takes ownership of that struct can free the previous shared mapping
+ * when there are no more references. */
 struct xnuspy_mapping_metadata {
     struct objhdr hdr;
     /* Reference count for metadata, NOT the xnuspy_tramp */
-    /* _Atomic uint64_t refcnt; */
+    _Atomic uint64_t refcnt;
     /* Process which owns this mapping */
     pid_t owner;
     /* Pointer to the first reflector page used for this mapping */

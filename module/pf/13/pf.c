@@ -408,12 +408,14 @@ bool lck_grp_alloc_init_finder_13(xnu_pf_patch_t *patch,
     xnu_pf_disable_patch(patch);
 
     /* the BL we matched is guarenteed to be branching to lck_grp_alloc_init */
-    uint32_t *blp = (cacheable_stream) + 2;
+    uint32_t *blp = ((uint32_t *)cacheable_stream) + 2;
 
     uint32_t *lck_grp_alloc_init = get_branch_dst_ptr(*blp, blp);
 
     g_lck_grp_alloc_init_addr = xnu_ptr_to_va(lck_grp_alloc_init);
 
+    printf("%s: lck_grp_alloc_init @ %#llx [unslid %#llx]\n", __func__,
+            g_lck_grp_alloc_init_addr, g_lck_grp_alloc_init_addr - kernel_slide);
     puts("xnuspy: found lck_grp_alloc_init");
 
     return true;

@@ -133,6 +133,17 @@ static const char *tagname(int tag){
 #define KERNEL_SLIDE                (4)
 #define MAX_FUNCTION                KERNEL_SLIDE
 
+typedef struct {
+    uint64_t word;
+    void *owner;
+} lck_rw_t;
+
+typedef unsigned int lck_rw_type_t;
+/* read */
+#define	LCK_RW_TYPE_SHARED          0x01
+/* write */
+#define	LCK_RW_TYPE_EXCLUSIVE       0x02
+
 #define MARK_AS_KERNEL_OFFSET __attribute__((section("__DATA,__koff")))
 
 /* XXX For debugging only */
@@ -146,10 +157,21 @@ MARK_AS_KERNEL_OFFSET void *(*kalloc_external)(vm_size_t sz);
 MARK_AS_KERNEL_OFFSET void (*kfree_addr)(void *addr);
 MARK_AS_KERNEL_OFFSET void (*kfree_ext)(void *addr, vm_size_t sz);
 MARK_AS_KERNEL_OFFSET void (*lck_rw_lock_shared)(void *lock);
-MARK_AS_KERNEL_OFFSET uint32_t (*lck_rw_done)(void *lock);
+
+/* XXX XXX these two have not had their offsets found yet!! */
+MARK_AS_KERNEL_OFFSET int (*lck_rw_lock_shared_to_exclusive)(lck_rw_t *lck);
+MARK_AS_KERNEL_OFFSET int (*lck_rw_lock_exclusive_to_shared)(lck_rw_t *lck);
+
+MARK_AS_KERNEL_OFFSET void (*lck_rw_lock)(lck_rw_t *lock, lck_rw_type_t lck_rw_type);
+MARK_AS_KERNEL_OFFSET void (*lck_rw_unlock)(lck_rw_t *lock, lck_rw_type_t lck_rw_type);
+
+/* this will figure out how it was locked and unlock accordingly, probably
+ * better to use this instead of lck_rw_unlock */
+MARK_AS_KERNEL_OFFSET uint32_t (*lck_rw_done)(lck_rw_t *lock);
+
 MARK_AS_KERNEL_OFFSET void *(*lck_grp_alloc_init)(const char *grp_name,
         void *attr);
-MARK_AS_KERNEL_OFFSET void *(*lck_rw_alloc_init)(void *grp, void *attr);
+MARK_AS_KERNEL_OFFSET lck_rw_t *(*lck_rw_alloc_init)(void *grp, void *attr);
 MARK_AS_KERNEL_OFFSET void (*bcopy_phys)(uint64_t src, uint64_t dst,
         vm_size_t bytes);
 MARK_AS_KERNEL_OFFSET uint64_t (*phystokv)(uint64_t pa);
@@ -191,7 +213,6 @@ MARK_AS_KERNEL_OFFSET kern_return_t (*vm_map_wire_kernel)(void *map,
 MARK_AS_KERNEL_OFFSET kern_return_t (*_mach_make_memory_entry_64)(void *target_map,
         uint64_t *size, uint64_t offset, vm_prot_t prot, void **object_handle,
         void *parent_handle);
-
 
 typedef struct {
     unsigned int
@@ -394,13 +415,13 @@ MARK_AS_KERNEL_OFFSET struct pmap *(*get_task_pmap)(void *task);
 MARK_AS_KERNEL_OFFSET queue_head_t *map_pmap_list;
 
 /* shorter macros so I can stay under 80 column lines */
-#define DIST_FROM_REFCNT_TO(x) __builtin_offsetof(struct xnuspy_tramp, x) - \
-    __builtin_offsetof(struct xnuspy_tramp, refcnt)
+/* #define DIST_FROM_REFCNT_TO(x) __builtin_offsetof(struct xnuspy_tramp, x) - \ */
+/*     __builtin_offsetof(struct xnuspy_tramp, refcnt) */
 
-#define DIST_TO_REFCNT(x) __builtin_offsetof(struct xnuspy_tramp, x) - \
-    __builtin_offsetof(struct xnuspy_tramp, refcnt)
+/* #define DIST_TO_REFCNT(x) __builtin_offsetof(struct xnuspy_tramp, x) - \ */
+/*     __builtin_offsetof(struct xnuspy_tramp, refcnt) */
 
-#define OFFSETOF(x) __builtin_offsetof(struct xnuspy_tramp, x)
+/* #define OFFSETOF(x) __builtin_offsetof(struct xnuspy_tramp, x) */
 
 static int xnuspy_dump_ttes(uint64_t addr, uint64_t el){
     uint64_t ttbr;
@@ -596,15 +617,13 @@ static void xnuspy_reflector_page_reference(struct xnuspy_reflector_page *p){
     p->refcnt++;
 }
 
-/* static void xnuspy_mapping_metadata_release(struct xnuspy_mapping_metadata *m){ */
-/*     if(--m->refcnt == 0){ */
-/*         /1* TODO *1/ */
-/*     } */
-/* } */
+static void xnuspy_mapping_metadata_release(struct xnuspy_mapping_metadata *m){
+    m->refcnt--;
+}
 
-/* static void xnuspy_mapping_metadata_reference(struct xnuspy_mapping_metadata *m){ */
-/*     m->refcnt++; */
-/* } */
+static void xnuspy_mapping_metadata_reference(struct xnuspy_mapping_metadata *m){
+    m->refcnt++;
+}
 
 /* void disable_preemption(void){ */
 /*     _disable_preemption(); */
@@ -619,6 +638,8 @@ MARK_AS_KERNEL_OFFSET uint8_t *xnuspy_tramp_page_end;
 
 MARK_AS_KERNEL_OFFSET struct xnuspy_reflector_page *first_reflector_page;
 
+static lck_rw_t *xnuspy_rw_lck = NULL;
+
 struct stailq_entry {
     struct objhdr hdr;
     void *elem;
@@ -632,7 +653,7 @@ struct stailq_entry {
  * executing on.
  *
  * Instead, I'm maximizing the time between the previous free and the next
- * allocation of an xnuspy_tramp struct. When a hook is uninstalled, the
+ * allocation of a given xnuspy_tramp struct. When a hook is uninstalled, the
  * shared mapping won't be unmapped until another process takes ownership
  * of that struct. Freed structs will be pushed to the end of the freelist,
  * and we allocate from the front of the freelist.
@@ -648,48 +669,115 @@ static void xnuspy_tramp_free(struct xnuspy_tramp *t){
     struct stailq_entry *entry;
     struct stailq_entry *tmp;
 
+    lck_rw_lock(xnuspy_rw_lck, LCK_RW_TYPE_EXCLUSIVE);
+
     STAILQ_FOREACH_SAFE(entry, &usedlist, link, tmp){
         if(entry->elem == t){
-            struct xnuspy_mapping_metadata *mapping_metadata = t->mapping_metadata;
-            struct xnuspy_reflector_page *cur = mapping_metadata->first_reflector_page;
+            struct xnuspy_mapping_metadata *mm = t->mapping_metadata;
 
-            for(int i=0; i<mapping_metadata->used_reflector_pages; i++){
-                if(!cur)
-                    break;
+            if(mm){
+                struct xnuspy_reflector_page *cur = mm->first_reflector_page;
 
-                xnuspy_reflector_page_release(cur);
+                for(int i=0; i<mm->used_reflector_pages; i++){
+                    if(!cur)
+                        break;
 
-                cur = cur->next;
+                    xnuspy_reflector_page_release(cur);
+
+                    cur = cur->next;
+                }
+
+                /* We do not NULL out this pointer so another process can
+                 * unmap this shared mapping when it takes ownership of this
+                 * xnuspy_tramp struct */
+                xnuspy_mapping_metadata_release(mm);
             }
 
-            /* xnuspy_mapping_metadata_release(mapping_metadata); */
-
-            /* We do not NULL the mapping metadata so we can unmap this
-             * mapping when another process takes ownership of this struct */
-
-            common_kfree(t->tramp_metadata);
-            t->tramp_metadata = NULL;
+            if(t->tramp_metadata){
+                common_kfree(t->tramp_metadata);
+                t->tramp_metadata = NULL;
+            }
 
             STAILQ_REMOVE(&usedlist, entry, stailq_entry, link);
             STAILQ_INSERT_TAIL(&freelist, entry, link);
 
+            lck_rw_done(xnuspy_rw_lck);
+
             return;
         }
     }
+
+    lck_rw_done(xnuspy_rw_lck);
 }
 
-static struct xnuspy_tramp *xnuspy_tramp_alloc(void){
+/* Pull an xnuspy_tramp struct off of the freelist, we may or may not commit
+ * it to use */
+static struct stailq_entry *xnuspy_tramp_alloc(void){
+    lck_rw_lock(xnuspy_rw_lck, LCK_RW_TYPE_EXCLUSIVE);
+
     if(STAILQ_EMPTY(&freelist)){
-        kprintf("%s: no free xnuspy_tramp structs\n", __func__);
+        lck_rw_done(xnuspy_rw_lck);
+        /* kprintf("%s: no free xnuspy_tramp structs\n", __func__); */
         return NULL;
     }
 
     struct stailq_entry *allocated = STAILQ_FIRST(&freelist);
     STAILQ_REMOVE_HEAD(&freelist, link);
-    STAILQ_INSERT_TAIL(&usedlist, allocated, link);
-    return allocated->elem;
+
+    lck_rw_done(xnuspy_rw_lck);
+
+    return allocated;
 }
 
+/* Commit an xnuspy_tramp struct to use by putting it on the usedlist. There
+ * is no locking done here because the one place this function is called
+ * already holds the xnuspy lock */
+static void xnuspy_tramp_commit(struct stailq_entry *stqe){
+    STAILQ_INSERT_TAIL(&usedlist, stqe, link);
+}
+
+static struct xnuspy_mapping_metadata *find_mapping_metadata(void){
+    pid_t cpid = proc_pid(current_proc());
+    struct stailq_entry *entry;
+
+    lck_rw_lock(xnuspy_rw_lck, LCK_RW_TYPE_SHARED);
+
+    STAILQ_FOREACH(entry, &usedlist, link){
+        struct xnuspy_tramp *tramp = entry->elem;
+
+        /* XXX mapping metadata will never be NULL for the usedlist */
+        if(tramp->mapping_metadata && tramp->mapping_metadata->owner == cpid){
+            lck_rw_done(xnuspy_rw_lck);
+            return tramp->mapping_metadata;
+        }
+    }
+
+    lck_rw_done(xnuspy_rw_lck);
+
+    return NULL;
+}
+
+static int hook_already_exists(uint64_t target){
+    struct stailq_entry *entry;
+
+    lck_rw_lock(xnuspy_rw_lck, LCK_RW_TYPE_SHARED);
+
+    STAILQ_FOREACH(entry, &usedlist, link){
+        struct xnuspy_tramp *tramp = entry->elem;
+
+        /* XXX tramp metadata will never be NULL for the usedlist */
+        if(tramp->tramp_metadata && tramp->tramp_metadata->hooked == target){
+            lck_rw_done(xnuspy_rw_lck);
+            return 1;
+        }
+    }
+
+    lck_rw_done(xnuspy_rw_lck);
+
+    return 0;
+}
+
+/* XXX Not sure if I can kprintf while holding a rw lock in xnu so I won't */
 static void desc_freelist(void){
     kprintf("[Freelist] ");
 
@@ -716,6 +804,7 @@ static void desc_usedlist(void){
     }
 
     struct stailq_entry *entry;
+
     STAILQ_FOREACH(entry, &usedlist, link){
         kprintf("%#llx -> ", entry->elem);
     }
@@ -730,6 +819,23 @@ static void desc_lists(void){
 static int xnuspy_init_flag = 0;
 
 static int xnuspy_init(void){
+    /* Kinda sucks I can't statically initialize the xnuspy lock, so I'll have
+     * to deal with racing inside xnuspy_init. Why would anyone try to race
+     * this function anyway */
+    void *grp = lck_grp_alloc_init("xnuspy", NULL);
+    
+    if(!grp){
+        kprintf("%s: no mem for lck grp\n", __func__);
+        return ENOMEM;
+    }
+
+    xnuspy_rw_lck = lck_rw_alloc_init(grp, NULL);
+
+    if(!xnuspy_rw_lck){
+        kprintf("%s: no mem for xnuspy rw lck\n", __func__);
+        return ENOMEM;
+    }
+
     /* Build the initial freelist/usedlist for xnuspy_tramp structs */
     STAILQ_INIT(&freelist);
     STAILQ_INIT(&usedlist);
@@ -740,18 +846,17 @@ static int xnuspy_init(void){
         struct stailq_entry *entry = common_kalloc(sizeof(*entry));
 
         if(!entry){
-            kprintf("%s: no mem\n", __func__);
+            kprintf("%s: no mem for stailq_entry\n", __func__);
             /* TODO: free what was allocated before this */
             return ENOMEM;
         }
 
         entry->elem = cursor;
         STAILQ_INSERT_TAIL(&freelist, entry, link);
-
         cursor++;
     }
 
-    desc_lists();
+    /* desc_lists(); */
 
     /* Mark the xnuspy_tramp page as writeable/executable */
     vm_prot_t prot = VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE;
@@ -810,16 +915,19 @@ static uint64_t find_replacement_kva(struct mach_header_64 *kmh,
  * functions they wrote from their kernel hooks. We share __DATA so
  * modifications to global variables are visible to both EL1 and EL0. 
  *
- * On success, returns metadata for every hook this process will install.
- * We only have to do this once for each process since we're mapping the
- * entirety of __TEXT and __DATA and not just the one replacement function.
+ * On success, it returns metadata for every hook this process will install.
+ * We also return with the xnuspy lock will be held. We only have to do this
+ * once for each process since we're mapping the entirety of __TEXT and __DATA
+ * and not just the one replacement function.
  *
- * On failure, returns NULL and sets retval.
+ * On failure, returns NULL and sets retval. We do not return with the xnuspy
+ * lock held.
  *
  * TODO: cleanup everything upon failures
  */
 static struct xnuspy_mapping_metadata *
-map_caller_segments(struct mach_header_64 * /* __user */ umh, int *retval){
+map_caller_segments(struct mach_header_64 * /* __user */ umh,
+        struct xnuspy_tramp *alloced_tramp, void *current_map, int *retval){
     uint64_t aslr_slide = (uintptr_t)umh - 0x100000000;
     uint64_t copystart = 0, copysz = 0;
     int seen_text = 0, seen_data = 0;
@@ -889,21 +997,182 @@ nextcmd:
     kprintf("%s: ended with copystart %#llx copysz %#llx\n", __func__,
             copystart, copysz);
 
+    struct xnuspy_mapping_metadata *metadata = NULL;
+
     if(!copystart || !copysz){
         *retval = ENOENT;
-        return NULL;
+        goto failed;
     }
 
-    /* Now find a set of free, contiguous reflector pages to copy on to */
-    uint64_t npages = copysz / PAGE_SIZE;
+    /* kprintf("%s: free pages found:\n", __func__); */
+
+    /* for(int i=0; i<npages; i++){ */
+    /*     desc_xnuspy_reflector_page(cur); */
+    /*     cur = cur->next; */
+    /* } */
+
+    /* If some other process previously owned this hook, we may need to unmap
+     * its shared mapping. However, if there's other hooks referencing this
+     * mapping metadata, we don't unmap and instead create metadata from
+     * scratch.
+     *
+     * This is not a race; alloced_tramp has been pulled from the freelist
+     * but has not yet been committed to the usedlist, and once allocated,
+     * mapping metadata pointers won't be freed once attached to xnuspy_tramp
+     * structs.
+     */
+    metadata = alloced_tramp->mapping_metadata;
+    int need_free_on_error = 0;
+
+    if(!metadata || metadata->refcnt > 0){
+        metadata = common_kalloc(sizeof(*metadata));
+
+        if(!metadata){
+            kprintf("%s: common_kalloc returned NULL when allocating metadata\n",
+                    __func__);
+            *retval = ENOMEM;
+            goto failed;
+        }
+
+        need_free_on_error = 1;
+    }
+    else{
+        /* Only unmap if the shared mapping is no longer being used */
+        if(metadata->refcnt == 0){
+            kprintf("%s: some other process previously owned this hook!! Need to"
+                    " unmap the previous shared mapping and the memory object\n",
+                    __func__); 
+
+            /* TODO: unmap shared mapping and destroy the memory object */
+        }
+
+        /* No need to kfree this, we can just reuse the memory */
+    }
+
+    /* A reference for this will be taken if we end up hooking the target */
+    metadata->refcnt = 0;
+    metadata->owner = proc_pid(current_proc());
+
+    uint64_t text_start = text->vmaddr + aslr_slide;
+    uint64_t text_end = text_start + text->vmsize;
+    kern_return_t kret;
+
+    /* Wire down __TEXT and __DATA of the calling process so they are not
+     * swapped out. We only set VM_PROT_READ in case there were some segments
+     * in between __TEXT and __DATA. Also, vm_map_wire_kernel needs to be
+     * patched to not bail when VM_PROT_EXECUTE is given, so that's also one
+     * less patchfinder for me to write :D We also set from_user to one because
+     * we're dealing with a user map.
+     *
+     * TODO: wire [copystart, copystart+copysz) in one call if VM_PROT_READ
+     * wiring ends up working fine
+     *
+     * XXX XXX Only wiring for VM_PROT_READ and not actual VM permissions
+     * may screw things up?
+     */
+
+    kret = vm_map_wire_kernel(current_map, text_start, text_end, VM_PROT_READ,//text->initprot,
+            VM_KERN_MEMORY_OSFMK, 1);
+
+    if(kret){
+        kprintf("%s: vm_map_wire_kernel failed when wiring down __TEXT: %d\n",
+                __func__, kret);
+        *retval = kern_return_to_errno(kret);
+        goto failed;
+    }
+
+    uint64_t data_start = data->vmaddr + aslr_slide;
+    uint64_t data_end = data_start + data->vmsize;
+
+    kret = vm_map_wire_kernel(current_map, data_start, data_end, VM_PROT_READ,//data->initprot,
+            VM_KERN_MEMORY_OSFMK, 1);
+
+    if(kret){
+        kprintf("%s: vm_map_wire_kernel failed when wiring down __DATA: %d\n",
+                __func__, kret);
+        *retval = kern_return_to_errno(kret);
+        goto failed;
+    }
+
+    void *kernel_map = *kernel_mapp;
+    
+    /* We create the mapping with only VM_PROT_READ because that is the
+     * minimum VM protections for a segment (unless they have none, which won't
+     * happen, unless the user does something weird). Additionally, we map
+     * [copystart, copystart+copysz) in one shot, so it's easier to map
+     * everything with the minimum permissions.
+     *
+     * We are not actually interacting with this mapping directly, so the VM
+     * permissions of this shared mapping do not matter. We interact with it 
+     * through the static memory we reserved before XNU boot (reflector pages)
+     */
+    vm_prot_t shm_prot = VM_PROT_READ;
+
+    /* ipc_port_t */
+    void *shm_object = NULL;
+
+    uint64_t copysz_before = copysz;
+
+    kret = _mach_make_memory_entry_64(current_map, &copysz, copystart,
+            MAP_MEM_VM_SHARE | shm_prot, &shm_object, NULL);
+
+    if(kret){
+        kprintf("%s: mach_make_memory_entry_64 failed: %d\n", __func__, kret);
+        *retval = kern_return_to_errno(kret);
+        goto failed;
+    }
+
+    if(copysz_before != copysz){
+        kprintf("%s: did not map the entirety of copystart? got %#llx "
+                "expected %#llx\n", __func__, copysz, copysz_before);
+        /* Probably not the best option */
+        *retval = EIO;
+        goto failed;
+    }
+
+    /* XXX: should we take a reference on this port? */
+    metadata->memory_object = shm_object;
+
+    uint64_t shm_addr = 0;
+    kret = mach_vm_map_external(kernel_map, &shm_addr, copysz, 0,
+            VM_FLAGS_ANYWHERE, metadata->memory_object, 0, 0, shm_prot,
+            shm_prot, VM_INHERIT_NONE);
+
+    if(kret){
+        kprintf("%s: mach_vm_map_external failed: %d\n", __func__, kret);
+        *retval = kern_return_to_errno(kret);
+        goto failed;
+    }
+
+    kprintf("%s: shared mapping starts @ %#llx\n", __func__, shm_addr);
+
+    /* uint32_t *cursor = (uint32_t *)shm_addr; */
+    /* for(int i=0; i<20; i++){ */
+    /*     kprintf("%s: %#llx:      %#x\n", __func__, (uint64_t)(cursor+i), */
+    /*             cursor[i]); */
+    /* } */
+
+    /* Wire down the shared mapping */
+    kret = vm_map_wire_kernel(kernel_map, shm_addr, shm_addr + copysz,
+            shm_prot, VM_KERN_MEMORY_OSFMK, 0);
+
+    if(kret){
+        kprintf("%s: vm_map_wire_kernel failed: %d\n", __func__, kret);
+        *retval = kern_return_to_errno(kret);
+        goto failed;
+    }
+
+    metadata->mapping_addr = shm_addr;
+    metadata->mapping_size = copysz;
+
+    uint64_t npages = metadata->mapping_size / PAGE_SIZE;
 
     struct xnuspy_reflector_page *found = NULL;
-
-    /* TODO: don't start the search at the beginning every time, probably
-     * would be better to pick up where we left off for another hook to make
-     * this faster. Better than doing a linear search every time and I can
-     * just wrap around if I hit the end of the list */
     struct xnuspy_reflector_page *cur = first_reflector_page;
+
+    /* This needs to be locked because we check the reference count of more
+     * than one reflector page */
+    lck_rw_lock(xnuspy_rw_lck, LCK_RW_TYPE_EXCLUSIVE);
 
     while(cur){
         if(!xnuspy_reflector_page_free(cur))
@@ -931,176 +1200,25 @@ nextpage:
     }
 
     if(!cur){
+        lck_rw_done(xnuspy_rw_lck);
         kprintf("%s: no free reflector pages\n", __func__);
         *retval = ENOSPC;
-        return NULL;
+        goto failed;
     }
 
-    struct xnuspy_reflector_page *freeset = cur;
-
-    /* kprintf("%s: free pages found:\n", __func__); */
-
-    /* for(int i=0; i<npages; i++){ */
-    /*     desc_xnuspy_reflector_page(cur); */
-    /*     cur = cur->next; */
-    /* } */
-
-    /* Create the metadata now, as making it later would entail a lot of
-     * cleanup if this fails */
-    struct xnuspy_mapping_metadata *metadata = common_kalloc(sizeof(*metadata));
-
-    if(!metadata){
-        kprintf("%s: common_kalloc returned NULL when allocating metadata\n",
-                __func__);
-        *retval = ENOMEM;
-        return NULL;
-    }
-
-    /* metadata->refcnt = 0; */
-    metadata->owner = proc_pid(current_proc());
-    /* Don't take a reference yet, because failures are still possible */
-    metadata->first_reflector_page = freeset;
+    metadata->first_reflector_page = cur;
     metadata->used_reflector_pages = npages;
 
-    uint64_t thread = current_thread();
-    struct _vm_map *current_map = *(struct _vm_map **)(thread + 0x320);
+    *retval = 0;
 
-    asm volatile("dsb sy");
-    asm volatile("isb");
-
-    uint64_t text_start = text->vmaddr + aslr_slide;
-    uint64_t text_end = text_start + text->vmsize;
-    kern_return_t kret;
-
-    /* Wire down __TEXT and __DATA of the calling process so they are not
-     * swapped out. We only set VM_PROT_READ in case there were some segments
-     * in between __TEXT and __DATA. Also, vm_map_wire_kernel needs to be
-     * patched to not bail when VM_PROT_EXECUTE is given, so that's also one
-     * less patchfinder for me to write :D We also set from_user to one because
-     * we're dealing with a user map.
-     *
-     * TODO: wire [copystart, copystart+copysz) in one call if VM_PROT_READ
-     * wiring ends up working fine
-     *
-     * XXX XXX Only wiring for VM_PROT_READ and not actual VM permissions
-     * may screw things up?
-     */
-
-    kret = vm_map_wire_kernel(current_map, text_start, text_end, VM_PROT_READ,//text->initprot,
-            VM_KERN_MEMORY_OSFMK, 1);
-
-    if(kret){
-        kprintf("%s: vm_map_wire_kernel failed when wiring down __TEXT: %d\n",
-                __func__, kret);
-        *retval = kern_return_to_errno(kret);
-        return NULL;
-    }
-
-    uint64_t data_start = data->vmaddr + aslr_slide;
-    uint64_t data_end = data_start + data->vmsize;
-
-    kret = vm_map_wire_kernel(current_map, data_start, data_end, VM_PROT_READ,//data->initprot,
-            VM_KERN_MEMORY_OSFMK, 1);
-
-    if(kret){
-        kprintf("%s: vm_map_wire_kernel failed when wiring down __DATA: %d\n",
-                __func__, kret);
-        common_kfree(metadata);
-        *retval = kern_return_to_errno(kret);
-        return NULL;
-    }
-
-    void *kernel_map = *kernel_mapp;
-    
-    /* We create the mapping with only VM_PROT_READ because that is the
-     * minimum VM protections for a segment (unless they have none, which won't
-     * happen, unless the user does something weird). Additionally, we map
-     * [copystart, copystart+copysz) in one shot, so it's easier to map
-     * everything with the minimum permissions.
-     *
-     * We are not actually interacting with this mapping directly, so the VM
-     * permissions of this shared mapping do not matter. We interact with it 
-     * through the static memory we reserved before XNU boot (reflector pages)
-     */
-    vm_prot_t shm_prot = VM_PROT_READ;
-    /* ipc_port_t */
-    void *shm_object = NULL;
-
-    uint64_t copysz_before = copysz;
-
-    kret = _mach_make_memory_entry_64(current_map, &copysz, copystart,
-            MAP_MEM_VM_SHARE | shm_prot, &shm_object, NULL);
-
-    if(kret){
-        kprintf("%s: mach_make_memory_entry_64 failed: %d\n", __func__, kret);
-        common_kfree(metadata);
-        *retval = kern_return_to_errno(kret);
-        return NULL;
-    }
-
-    if(copysz_before != copysz){
-        kprintf("%s: did not map the entirety of copystart? got %#llx "
-                "expected %#llx\n", __func__, copysz, copysz_before);
-        common_kfree(metadata);
-        /* Probably not the best option */
-        *retval = EIO;
-        return NULL;
-    }
-
-    /* XXX: should we take a reference on this port? */
-    metadata->memory_object = shm_object;
-
-    uint64_t shm_addr = 0;
-    kret = mach_vm_map_external(kernel_map, &shm_addr, copysz, 0,
-            VM_FLAGS_ANYWHERE, metadata->memory_object, 0, 0, shm_prot,
-            shm_prot, VM_INHERIT_NONE);
-
-    if(kret){
-        kprintf("%s: mach_vm_map_external failed: %d\n", __func__, kret);
-        common_kfree(metadata);
-        *retval = kern_return_to_errno(kret);
-        return NULL;
-    }
-
-    kprintf("%s: shared mapping starts @ %#llx\n", __func__, shm_addr);
-
-    /* uint32_t *cursor = (uint32_t *)shm_addr; */
-    /* for(int i=0; i<20; i++){ */
-    /*     kprintf("%s: %#llx:      %#x\n", __func__, (uint64_t)(cursor+i), */
-    /*             cursor[i]); */
-    /* } */
-
-    /* Wire down the shared mapping */
-    kret = vm_map_wire_kernel(kernel_map, shm_addr, shm_addr + copysz,
-            shm_prot, VM_KERN_MEMORY_OSFMK, 0);
-
-    if(kret){
-        kprintf("%s: vm_map_wire_kernel failed: %d\n", __func__, kret);
-        common_kfree(metadata);
-        *retval = kern_return_to_errno(kret);
-        return NULL;
-    }
-
-    metadata->mapping_addr = shm_addr;
-    metadata->mapping_size = copysz;
-
-    /* Reflection will be done once we return from this function */
+    /* We return with the lock held because we will take a reference on
+     * more than one reflector page when we return */
 
     return metadata;
-}
 
-static struct xnuspy_mapping_metadata *find_metadata(void){
-    pid_t cpid = proc_pid(current_proc());
-
-    struct stailq_entry *entry;
-    struct stailq_entry *tmp;
-
-    STAILQ_FOREACH_SAFE(entry, &usedlist, link, tmp){
-        struct xnuspy_tramp *tramp = entry->elem;
-
-        if(tramp->mapping_metadata && tramp->mapping_metadata->owner == cpid)
-            return tramp->mapping_metadata;
-    }
+failed:;
+    if(need_free_on_error)
+        common_kfree(metadata);
 
     return NULL;
 }
@@ -1115,27 +1233,38 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
     /* slide target */
     target += kernel_slide;
 
-    struct xnuspy_tramp *tramp = xnuspy_tramp_alloc();
-
-    if(!tramp){
-        kprintf("%s: no free xnuspy tramp structs\n", __func__);
-        return ENOMEM;
+    if(hook_already_exists(target)){
+        kprintf("%s: hook for %#llx already exists\n", __func__, target);
+        res = EEXIST;
+        goto out;
     }
 
-    kprintf("%s: got free xnuspy_ctl struct @ %#llx\n", __func__, tramp);
-
-    /* Now is a good time to make the xnuspy_tramp_metadata struct before
-     * things start to get overwritten */
     struct xnuspy_tramp_metadata *tramp_metadata =
         common_kalloc(sizeof(*tramp_metadata));
 
     if(!tramp_metadata){
         kprintf("%s: failed allocating mem for tramp metadata\n", __func__);
-        return ENOMEM;
+        res = ENOMEM;
+        goto out;
     }
 
     tramp_metadata->hooked = target;
     tramp_metadata->orig_instr = *(uint32_t *)target;
+
+    struct stailq_entry *tramp_entry = xnuspy_tramp_alloc();
+
+    /* We don't need to keep this locked because we have not committed
+     * this entry to the usedlist and it no longer exists in the freelist */
+
+    if(!tramp_entry){
+        kprintf("%s: no free xnuspy_tramp structs\n", __func__);
+        res = ENOMEM;
+        goto out_free;
+    }
+
+    struct xnuspy_tramp *tramp = tramp_entry->elem;
+
+    tramp->tramp_metadata = tramp_metadata;
 
     /* Build the trampoline to the replacement as well as the trampoline
      * that represents the original function */
@@ -1149,55 +1278,54 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
     uint32_t *orig_tramp = tramp->orig;
     res = copyout(&orig_tramp, origp, sizeof(origp));
 
-    /* A failure here is fine, as this xnuspy_tramp struct hasn't had its
-     * mapping metadata attached to it yet */
     if(res){
-        kprintf("%s: copyout failed, returned %d\n", __func__, res);
-        common_kfree(tramp_metadata);
-        return res;
+        kprintf("%s: copyout failed\n", __func__);
+        goto out_free;
     }
 
-    uint64_t tpidr_el1;
-    asm volatile("mrs %0, tpidr_el1" : "=r" (tpidr_el1));
-    /* Offset found in mmap */
-    struct _vm_map *current_map = *(struct _vm_map **)(tpidr_el1 + 0x320);
+    /* offset found in mmap */
+    struct _vm_map *current_map = *(struct _vm_map **)(current_thread() + 0x320);
 
-    kprintf("%s: current map %#llx\n", __func__, current_map);
-
-    /* ... probably not possble */
-    if(!current_map){
-        kprintf("%s: current map is NULL??\n", __func__);
-        common_kfree(tramp_metadata);
-        return EFAULT;
-    }
-
-    kprintf("%s: start %#llx end %#llx\n", __func__, current_map->hdr.vme_start,
-            current_map->hdr.vme_end);
-
-    /* Mach header of the calling process */
+    /* User pointer to Mach header of the calling process */
     struct mach_header_64 *umh = (struct mach_header_64 *)current_map->hdr.vme_start;
 
-    /* Check if there's mapping metadata for this process */
-    struct xnuspy_mapping_metadata *mapping_metadata = find_metadata();
+    /* Check if we've got mapping metadata for the calling process already.
+     * If we don't, we need to create a shared mapping out of __TEXT and
+     * __DATA. */
+    struct xnuspy_mapping_metadata *mm = find_mapping_metadata();
 
-    if(!mapping_metadata){
+    /* If we've already got mapping metadata for the calling process, move
+     * onto performing the reflection. Otherwise, we need to create new
+     * metadata */
+    if(mm)
+        lck_rw_lock(xnuspy_rw_lck, LCK_RW_TYPE_EXCLUSIVE);
+    else{
         kprintf("%s: need to map __TEXT and __DATA\n", __func__);
 
-        mapping_metadata = map_caller_segments(umh, &res);
+        mm = map_caller_segments(umh, tramp, current_map, &res);
 
-        if(!mapping_metadata){
-            kprintf("%s: failed to allocate metadata for this hook\n", __func__);
-            common_kfree(tramp_metadata);
-            return res;
+        if(!mm){
+            kprintf("%s: failed to create mapping metadata for this hook\n",
+                    __func__);
+            goto out_free;
         }
+
+        /* map_caller_segments succeeded, and we returned from it with the
+         * xnuspy lock held */
     }
 
-    /* No failures are possible after this point */
-    struct xnuspy_reflector_page *cur = mapping_metadata->first_reflector_page;
+    /* There is nothing past this point that can cause a failure */
 
-    uint64_t mapping_addr = mapping_metadata->mapping_addr;
+    /* Mach header of the calling process, but the kernel's mapping of it */
+    struct mach_header_64 *kmh = mm->first_reflector_page->page;
 
-    for(int i=0; i<mapping_metadata->used_reflector_pages; i++){
+    tramp->replacement = find_replacement_kva(kmh, umh, replacement);
+
+    struct xnuspy_reflector_page *cur = mm->first_reflector_page;
+
+    uint64_t mapping_addr = mm->mapping_addr;
+
+    for(int i=0; i<mm->used_reflector_pages; i++){
         if(!cur)
             break;
 
@@ -1225,48 +1353,14 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
         mapping_addr += PAGE_SIZE;
     }
 
-    /* xnuspy_mapping_metadata_reference(mapping_metadata); */
+    tramp->mapping_metadata = mm;
 
-    tramp->tramp_metadata = tramp_metadata;
-    tramp->mapping_metadata = mapping_metadata;
+    xnuspy_mapping_metadata_reference(tramp->mapping_metadata);
+    xnuspy_tramp_commit(tramp_entry);
 
-    /* Mach header of the calling process, but the kernel's mapping of it */
-    struct mach_header_64 *kmh = tramp->mapping_metadata->first_reflector_page->page;
+    lck_rw_done(xnuspy_rw_lck);
 
-    tramp->replacement = find_replacement_kva(kmh, umh, replacement);
-
-    /* IOSleep(5000); */
-
-    /* uint32_t *cursor = (uint32_t *)replacement_kva; */
-    /* for(int i=0; i<20; i++){ */
-    /*     kprintf("%s: %#llx:      %#x\n", __func__, (uint64_t)(cursor+i), */
-    /*             cursor[i]); */
-    /* } */
-
-    desc_xnuspy_tramp(tramp, orig_tramp_len);
-
-    /* IOSleep(10000); */
-
-    uint32_t *cursor = (uint32_t *)tramp->replacement;
-    for(int i=0; i<20; i++){
-        kprintf("%s: %#llx:      %#x\n", __func__, (uint64_t)(cursor+i),
-                cursor[i]);
-    }
-
-    /* void *ct = current_thread(); */
-    /* /1* offset found in machine_switch_context *1/ */
-    /* void *cpuDatap = *(void **)((uint8_t *)ct + 0x478); */
-
-    /* if(!cpuDatap){ */
-    /*     kprintf("%s: NULL cpu data???\n", __func__); */
-    /* } */
-    /* else{ */
-    /*     /1* CpuDatap->cpu_debug_interface, found in pe_arm_init_debug *1/ */
-    /*     *(uint64_t *)((uint8_t *)cpuDatap + 0x1a8) = __builtin_frame_address(0); */
-
-    /* } */
-
-    /* All the trampolines are set up, hook the target */
+    /* This trampoline has been committed to the usedlist, hook the target */
     kprotect(target, sizeof(uint32_t), VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE);
 
     *(uint32_t *)target = assemble_b(target, (uint64_t)tramp->tramp);
@@ -1279,6 +1373,14 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
 
     kprotect(target, sizeof(uint32_t), VM_PROT_READ | VM_PROT_EXECUTE);
 
+    return 0;
+
+out_free:;
+    if(tramp)
+        xnuspy_tramp_free(tramp);
+
+    common_kfree(tramp_metadata);
+out:
     return res;
 }
 
@@ -1287,6 +1389,7 @@ static int xnuspy_uninstall_hook(uint64_t target){
     return ENOSYS;
 }
 
+/* TODO: figure out a better way to do this */
 static int xnuspy_get_function(uint64_t which, uint64_t /* __user */ outp){
     kprintf("%s: XNUSPY_GET_FUNCTION called with which %lld origp %#llx\n",
             __func__, which, outp);

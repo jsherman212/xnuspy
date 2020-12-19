@@ -331,6 +331,12 @@ static void *(*kalloc_canblock_orig)(size_t *sizep, int canblock, void *site);
 
 static void *kalloc_canblock(size_t *sizep, int canblock, void *site){
     void *mem = kalloc_canblock_orig(sizep, canblock, site);
+    uint8_t *memp = mem;
+    size_t size = *sizep;
+
+    for(size_t i=0; i<size; i++){
+        memp[i] = 0x41;
+    }
 
     /* uint64_t tpidr_el1; */
     /* asm volatile("mrs %0, tpidr_el1" : "=r" (tpidr_el1)); */
@@ -338,16 +344,17 @@ static void *kalloc_canblock(size_t *sizep, int canblock, void *site){
     /* void *cpudata = *(void **)(tpidr_el1 + 0x478); */
     /* uint16_t curcpu = *(uint16_t *)cpudata; */
 
-    uint64_t mpidr_el1;
-    asm volatile("mrs %0, mpidr_el1" : "=r" (mpidr_el1));
-    uint8_t curcpu = mpidr_el1 & 0xff;
+    /* uint64_t mpidr_el1; */
+    /* asm volatile("mrs %0, mpidr_el1" : "=r" (mpidr_el1)); */
+    /* uint8_t curcpu = mpidr_el1 & 0xff; */
 
-    uint64_t caller = (uint64_t)__builtin_return_address(0);
+    /* uint64_t caller = (uint64_t)__builtin_return_address(0); */
 
-    if(!canblock){
-        kprintf("*****kalloc_canblock hook (CPU %d, caller=%#llx): returned mem @ "
-                " %#llx for size %#llx\n", curcpu, caller, mem, *sizep);
-    }
+
+    /* if(!canblock){ */
+    /*     kprintf("*****kalloc_canblock hook (CPU %d, caller=%#llx): returned mem @ " */
+    /*             " %#llx for size %#llx\n", curcpu, caller, mem, *sizep); */
+    /* } */
 
     return mem;
 }
@@ -796,13 +803,13 @@ int main(int argc, char **argv){
     /* iphone 8 13.6.1 */
     /* uint64_t kalloc_canblock = 0xFFFFFFF007C031E4; */
     /* void *(*kalloc_canblock_orig)(size_t *, void *, bool) = NULL; */
-    /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF007C031E4, */
-    /*         kalloc_canblock, &kalloc_canblock_orig); */
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF007C031E4,
+            kalloc_canblock, &kalloc_canblock_orig);
 
-    /* if(ret) */
-    /*     printf("%s\n", strerror(errno)); */
+    if(ret)
+        printf("%s\n", strerror(errno));
 
-    /* printf("kalloc_canblock_orig = %#llx\n", kalloc_canblock_orig); */
+    printf("kalloc_canblock_orig = %#llx\n", kalloc_canblock_orig);
 
     /* uint64_t some_fxn_with_cbz_as_first = 0xFFFFFFF007E5FFCC; */
     /* void (*dummy)(void) = NULL; */
