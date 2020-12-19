@@ -204,7 +204,9 @@ MARK_AS_KERNEL_OFFSET void (*_disable_preemption)(void);
 MARK_AS_KERNEL_OFFSET void (*_enable_preemption)(void);
 MARK_AS_KERNEL_OFFSET kern_return_t (*kernel_memory_allocate)(void *map,
         uint64_t *addrp, vm_size_t size, vm_offset_t mask, int flags, int tag);
+
 MARK_AS_KERNEL_OFFSET void **kernel_mapp;
+MARK_AS_KERNEL_OFFSET void **kernprocp;
 
 MARK_AS_KERNEL_OFFSET kern_return_t (*vm_map_wire_kernel)(void *map,
         uint64_t start, uint64_t end, vm_prot_t prot, int tag, int user_wire);
@@ -228,6 +230,12 @@ typedef	struct {
     mach_port_name_t    msgh_voucher_port;
     mach_msg_id_t       msgh_id;
 } k_mach_msg_header_t;
+
+struct proc {
+    LIST_ENTRY(proc) p_list;
+};
+
+MARK_AS_KERNEL_OFFSET LIST_HEAD(proclist, proc) **allprocp;
 
 typedef struct {
     unsigned int
@@ -857,17 +865,6 @@ static void desc_lists(void){
     desc_freelist();
 }
 
-/* Every five seconds, this thread loops through the proc list, and checks
- * if the owner of a given xnuspy_mapping_metadata struct is no longer present.
- * If so, all the hooks associated with that metadata struct are uninstalled
- * and sent back to the freelist. */
-static void death_listener_thread(void *param, int wait_result){
-    struct xnuspy_mapping_metadata *mm = param;
-
-    kprintf("%s: hello from death listener! mm @ %#llx\n", __func__, mm);
-    /* desc_xnuspy_mapping_metadata(mm); */
-}
-
 static uint64_t find_replacement_kva(struct mach_header_64 *kmh,
         struct mach_header_64 * /* __user */ umh,
         uint64_t /* __user */ replacement){
@@ -1255,14 +1252,9 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
      * If we don't, we need to create a shared mapping out of __TEXT and
      * __DATA. */
     struct xnuspy_mapping_metadata *mm = find_mapping_metadata();
-    int create_death_listener = 1;
 
-    if(mm){
-        /* If there's an existing metadata mapping for this process,
-         * then the death listener thread has already been created for it */
-        create_death_listener = 0;
+    if(mm)
         lck_rw_lock(xnuspy_rw_lck, LCK_RW_TYPE_EXCLUSIVE);
-    }
     else{
         kprintf("%s: need to map __TEXT and __DATA\n", __func__);
 
@@ -1318,24 +1310,6 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
     tramp->mapping_metadata = mm;
 
     xnuspy_mapping_metadata_reference(tramp->mapping_metadata);
-
-    /* Before we commit this hook, make the death listener thread for
-     * this process */
-    if(create_death_listener){
-        void *dlt = NULL;
-        kern_return_t kret = kernel_thread_start(death_listener_thread,
-                tramp->mapping_metadata, &dlt);
-
-        if(kret){
-            lck_rw_done(xnuspy_rw_lck);
-            kprintf("%s: kernel_thread_start failed: %d\n", __func__, kret);
-            res = kern_return_to_errno(kret);
-            goto out_free;
-        }
-
-        thread_deallocate(dlt);
-    }
-
     xnuspy_tramp_commit(tramp_entry);
 
     uint32_t branch = assemble_b(target, (uint64_t)tramp->tramp);
@@ -1387,6 +1361,33 @@ static int xnuspy_uninstall_hook(uint64_t target){
     return 0;
 }
 
+/* Every five seconds, this thread loops through the proc list, and checks
+ * if the owner of a given xnuspy_mapping_metadata struct is no longer present.
+ * If so, all the hooks associated with that metadata struct are uninstalled
+ * and sent back to the freelist. */
+static void death_listener_thread(void *param, int wait_result){
+    /* struct xnuspy_mapping_metadata *mm = param; */
+    /* kprintf("%s: hello from death listener! mm @ %#llx\n", __func__, mm); */
+    /* desc_xnuspy_mapping_metadata(mm); */
+
+    kprintf("%s: hello from death listener!\n", __func__);
+    
+    /* XXX NEED TO TAKE PROC LIST LOCK */
+    struct proclist *allproc = *allprocp;
+
+    for(;;){
+        struct proc *entry;
+
+        LIST_FOREACH(entry, allproc, p_list){
+            pid_t pid = proc_pid(entry);
+
+            kprintf("%s: current proc %#llx, pid: %d\n", __func__, entry, pid);
+        }
+
+        IOSleep(5000);
+    }
+}
+
 static int xnuspy_init_flag = 0;
 
 static int xnuspy_init(void){
@@ -1426,6 +1427,16 @@ static int xnuspy_init(void){
         STAILQ_INSERT_TAIL(&freelist, entry, link);
         cursor++;
     }
+
+    void *dlt = NULL;
+    kern_return_t kret = kernel_thread_start(death_listener_thread, NULL, &dlt);
+
+    if(kret){
+        kprintf("%s: kernel_thread_start failed: %d\n", __func__, kret);
+        return kern_return_to_errno(kret);
+    }
+
+    thread_deallocate(dlt);
 
     /* desc_lists(); */
 
