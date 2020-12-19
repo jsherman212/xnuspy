@@ -586,6 +586,14 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
             *va = 0xFFFFFFF007D0A650 + kernel_slide;
             return;
         }
+        else if(strcmp(ksym, "_kernel_thread_start") == 0){
+            *va = 0xFFFFFFF007C3375C + kernel_slide;
+            return;
+        }
+        else if(strcmp(ksym, "_thread_deallocate") == 0){
+            *va = 0xFFFFFFF007C31E78 + kernel_slide;
+            return;
+        }
     }
 }
 

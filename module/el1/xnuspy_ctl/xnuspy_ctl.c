@@ -214,6 +214,21 @@ MARK_AS_KERNEL_OFFSET kern_return_t (*_mach_make_memory_entry_64)(void *target_m
         uint64_t *size, uint64_t offset, vm_prot_t prot, void **object_handle,
         void *parent_handle);
 
+typedef	void (*thread_continue_t)(void *param, int wait_result);
+
+MARK_AS_KERNEL_OFFSET kern_return_t (*kernel_thread_start)(thread_continue_t continuation,
+        void *parameter, void **new_thread);
+MARK_AS_KERNEL_OFFSET void (*thread_deallocate)(void *thread);
+
+typedef	struct {
+    mach_msg_bits_t     msgh_bits;
+    mach_msg_size_t     msgh_size;
+    mach_port_t         msgh_remote_port;
+    mach_port_t         msgh_local_port;
+    mach_port_name_t    msgh_voucher_port;
+    mach_msg_id_t       msgh_id;
+} k_mach_msg_header_t;
+
 typedef struct {
     unsigned int
         vmkf_atomic_entry:1,
@@ -423,6 +438,15 @@ MARK_AS_KERNEL_OFFSET queue_head_t *map_pmap_list;
 
 /* #define OFFSETOF(x) __builtin_offsetof(struct xnuspy_tramp, x) */
 
+int strcmp(const char *s1, const char *s2){
+    while(*s1 && (*s1 == *s2)){
+        s1++;
+        s2++;
+    }
+
+    return *(const unsigned char *)s1 - *(const unsigned char *)s2;
+}
+
 static int xnuspy_dump_ttes(uint64_t addr, uint64_t el){
     uint64_t ttbr;
 
@@ -523,6 +547,27 @@ static void desc_xnuspy_reflector_page(struct xnuspy_reflector_page *p){
     _desc_xnuspy_reflector_page("", p);
 }
 
+static void desc_xnuspy_mapping_metadata(struct xnuspy_mapping_metadata *mm){
+    kprintf("Mapping metadata refcnt: %lld\n", mm->refcnt);
+    kprintf("Owner: %d\n", mm->owner);
+    kprintf("# of used reflector pages: %lld\n", mm->used_reflector_pages);
+    kprintf("Reflector pages:\n");
+
+    struct xnuspy_reflector_page *cur = mm->first_reflector_page;
+
+    for(int i=0; i<mm->used_reflector_pages; i++){
+        if(!cur)
+            break;
+
+        _desc_xnuspy_reflector_page("    ", cur);
+        cur = cur->next;
+    }
+
+    kprintf("Memory object: %#llx\n", mm->memory_object);
+    kprintf("Shared mapping addr/size: %#llx/%#llx\n", mm->mapping_addr,
+            mm->mapping_size);
+}
+
 static void desc_xnuspy_tramp(struct xnuspy_tramp *t, uint32_t orig_tramp_len){
     kprintf("This xnuspy_tramp is @ %#llx\n", (uint64_t)t);
     kprintf("Replacement: %#llx\n", t->replacement);
@@ -546,28 +591,8 @@ static void desc_xnuspy_tramp(struct xnuspy_tramp *t, uint32_t orig_tramp_len){
 
     if(!t->mapping_metadata)
         kprintf("NULL mapping metadata\n");
-    else{
-        /* kprintf("Mapping metadata refcnt: %lld\n", t->mapping_metadata->refcnt); */
-        kprintf("Owner: %d\n", t->mapping_metadata->owner);
-        kprintf("# of used reflector pages: %lld\n",
-                t->mapping_metadata->used_reflector_pages);
-        kprintf("Reflector pages:\n");
-
-        struct xnuspy_reflector_page *cur = t->mapping_metadata->first_reflector_page;
-
-        for(int i=0; i<t->mapping_metadata->used_reflector_pages; i++){
-            if(!cur)
-                break;
-
-            _desc_xnuspy_reflector_page("    ", cur);
-            cur = cur->next;
-        }
-
-        kprintf("Memory object: %#llx\n", t->mapping_metadata->memory_object);
-        kprintf("Shared mapping addr/size: %#llx/%#llx\n",
-                t->mapping_metadata->mapping_addr,
-                t->mapping_metadata->mapping_size);
-    }
+    else
+        desc_xnuspy_mapping_metadata(t->mapping_metadata);
 }
 
 __attribute__ ((naked)) static uint64_t current_thread(void){
@@ -612,7 +637,7 @@ static void xnuspy_reflector_page_reference(struct xnuspy_reflector_page *p){
 
 static void xnuspy_mapping_metadata_release(struct xnuspy_mapping_metadata *m){
     if(--m->refcnt == 0){
-        m->owner = 0;
+        /* m->owner = 0; */
         m->first_reflector_page = NULL;
         m->used_reflector_pages = 0;
     }
@@ -832,88 +857,15 @@ static void desc_lists(void){
     desc_freelist();
 }
 
-static int xnuspy_init_flag = 0;
+/* Every five seconds, this thread loops through the proc list, and checks
+ * if the owner of a given xnuspy_mapping_metadata struct is no longer present.
+ * If so, all the hooks associated with that metadata struct are uninstalled
+ * and sent back to the freelist. */
+static void death_listener_thread(void *param, int wait_result){
+    struct xnuspy_mapping_metadata *mm = param;
 
-static int xnuspy_init(void){
-    /* Kinda sucks I can't statically initialize the xnuspy lock, so I'll have
-     * to deal with racing inside xnuspy_init. Why would anyone try to race
-     * this function anyway */
-    void *grp = lck_grp_alloc_init("xnuspy", NULL);
-    
-    if(!grp){
-        kprintf("%s: no mem for lck grp\n", __func__);
-        return ENOMEM;
-    }
-
-    xnuspy_rw_lck = lck_rw_alloc_init(grp, NULL);
-
-    if(!xnuspy_rw_lck){
-        kprintf("%s: no mem for xnuspy rw lck\n", __func__);
-        return ENOMEM;
-    }
-
-    /* Build the initial freelist/usedlist for xnuspy_tramp structs */
-    STAILQ_INIT(&freelist);
-    STAILQ_INIT(&usedlist);
-
-    struct xnuspy_tramp *cursor = (struct xnuspy_tramp *)xnuspy_tramp_page;
-    
-    while((uint8_t *)cursor < xnuspy_tramp_page_end){
-        struct stailq_entry *entry = common_kalloc(sizeof(*entry));
-
-        if(!entry){
-            kprintf("%s: no mem for stailq_entry\n", __func__);
-            /* TODO: free what was allocated before this */
-            return ENOMEM;
-        }
-
-        entry->elem = cursor;
-        STAILQ_INSERT_TAIL(&freelist, entry, link);
-        cursor++;
-    }
-
-    /* desc_lists(); */
-
-    /* Mark the xnuspy_tramp page as writeable/executable */
-    vm_prot_t prot = VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE;
-    kprotect((uint64_t)xnuspy_tramp_page, PAGE_SIZE, prot);
-
-    /* Do the same for the pages which will reflect shared mappings */
-    struct xnuspy_reflector_page *cur = first_reflector_page;
-    
-    while(cur){
-        kprotect((uint64_t)cur->page, PAGE_SIZE, prot);
-        cur = cur->next;
-    }
-
-    /* Zero out PAN in case no instruction did it before us. After our kernel
-     * patches, the PAN bit cannot be set to 1 again.
-     *
-     * msr pan, #0
-     *
-     * XXX XXX NEED TO CHECK IF THE HARDWARE SUPPORTS THIS BIT
-     */
-    asm volatile(".long 0xd500409f");
-    asm volatile("isb sy");
-
-    /* combat short read of this image */
-    /* asm volatile(".align 14"); */
-    /* asm volatile(".align 14"); */
-
-    xnuspy_init_flag = 1;
-
-    kprintf("%s: xnuspy inited\n", __func__);
-
-    return 0;
-}
-
-int strcmp(const char *s1, const char *s2){
-    while(*s1 && (*s1 == *s2)){
-        s1++;
-        s2++;
-    }
-
-    return *(const unsigned char *)s1 - *(const unsigned char *)s2;
+    kprintf("%s: hello from death listener! mm @ %#llx\n", __func__, mm);
+    /* desc_xnuspy_mapping_metadata(mm); */
 }
 
 static uint64_t find_replacement_kva(struct mach_header_64 *kmh,
@@ -954,7 +906,7 @@ map_caller_segments(struct mach_header_64 * /* __user */ umh,
     struct load_command *lc = (struct load_command *)(umh + 1);
 
     for(int i=0; i<umh->ncmds; i++){
-        kprintf("%s: got cmd %d\n", __func__, lc->cmd);
+        /* kprintf("%s: got cmd %d\n", __func__, lc->cmd); */
 
         if(lc->cmd != LC_SEGMENT_64)
             goto nextcmd;
@@ -968,16 +920,16 @@ map_caller_segments(struct mach_header_64 * /* __user */ umh,
         uint64_t start = sc64->vmaddr + aslr_slide;
         uint64_t end = start + sc64->vmsize;
 
-        kprintf("%s: segment '%s' start %#llx end %#llx\n", __func__,
-                sc64->segname, start, end);
+        /* kprintf("%s: segment '%s' start %#llx end %#llx\n", __func__, */
+        /*         sc64->segname, start, end); */
 
         /* If this segment is neither __TEXT nor __DATA, but we've already
          * seen __TEXT or __DATA, we need to make sure we account for
          * that gap. copystart being non-zero implies we've already seen
          * __TEXT or __DATA */
         if(copystart && !is_text && !is_data){
-            kprintf("%s: got segment '%s' in between __TEXT and __DATA\n",
-                    __func__, sc64->segname);
+            /* kprintf("%s: got segment '%s' in between __TEXT and __DATA\n", */
+            /*         __func__, sc64->segname); */
             copysz += sc64->vmsize;
         }
         else if(is_text || is_data){
@@ -1221,8 +1173,8 @@ nextpage:
 
     *retval = 0;
 
-    /* We return with the lock held because we will take a reference on
-     * more than one reflector page when we return */
+    /* We return with the lock held because we may end up committing
+     * alloced_tramp to the usedlist */
 
     return metadata;
 
@@ -1303,9 +1255,14 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
      * If we don't, we need to create a shared mapping out of __TEXT and
      * __DATA. */
     struct xnuspy_mapping_metadata *mm = find_mapping_metadata();
+    int create_death_listener = 1;
 
-    if(mm)
+    if(mm){
+        /* If there's an existing metadata mapping for this process,
+         * then the death listener thread has already been created for it */
+        create_death_listener = 0;
         lck_rw_lock(xnuspy_rw_lck, LCK_RW_TYPE_EXCLUSIVE);
+    }
     else{
         kprintf("%s: need to map __TEXT and __DATA\n", __func__);
 
@@ -1320,8 +1277,6 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
         /* map_caller_segments succeeded, and we returned from it with the
          * xnuspy lock held */
     }
-
-    /* There is nothing past this point that can cause a failure */
 
     /* Mach header of the calling process, but the kernel's mapping of it */
     struct mach_header_64 *kmh = mm->first_reflector_page->page;
@@ -1363,6 +1318,24 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
     tramp->mapping_metadata = mm;
 
     xnuspy_mapping_metadata_reference(tramp->mapping_metadata);
+
+    /* Before we commit this hook, make the death listener thread for
+     * this process */
+    if(create_death_listener){
+        void *dlt = NULL;
+        kern_return_t kret = kernel_thread_start(death_listener_thread,
+                tramp->mapping_metadata, &dlt);
+
+        if(kret){
+            lck_rw_done(xnuspy_rw_lck);
+            kprintf("%s: kernel_thread_start failed: %d\n", __func__, kret);
+            res = kern_return_to_errno(kret);
+            goto out_free;
+        }
+
+        thread_deallocate(dlt);
+    }
+
     xnuspy_tramp_commit(tramp_entry);
 
     uint32_t branch = assemble_b(target, (uint64_t)tramp->tramp);
@@ -1384,11 +1357,18 @@ out:
     return res;
 }
 
+/* XXX why even have this if hooks will be automatically uninstalled
+ * upon process death?? */
 static int xnuspy_uninstall_hook(uint64_t target){
     kprintf("%s: called with unslid target %#llx\n", __func__, target);
     
     target += kernel_slide;
 
+    /* We have a potential race here. If the user manually is uninstalling
+     * hooks (for example, in a signal handler) and we receive a no-senders
+     * notification before this trampoline has been disconnected from the
+     * usedlist, th
+     */
     struct stailq_entry *tramp_entry = xnuspy_tramp_disconnect(target);
 
     if(!tramp_entry){
@@ -1403,6 +1383,81 @@ static int xnuspy_uninstall_hook(uint64_t target){
 
     xnuspy_tramp_teardown(tramp);
     xnuspy_tramp_free(tramp_entry);
+
+    return 0;
+}
+
+static int xnuspy_init_flag = 0;
+
+static int xnuspy_init(void){
+    /* Kinda sucks I can't statically initialize the xnuspy lock, so I'll have
+     * to deal with racing inside xnuspy_init. Why would anyone try to race
+     * this function anyway */
+    void *grp = lck_grp_alloc_init("xnuspy", NULL);
+    
+    if(!grp){
+        kprintf("%s: no mem for lck grp\n", __func__);
+        return ENOMEM;
+    }
+
+    xnuspy_rw_lck = lck_rw_alloc_init(grp, NULL);
+
+    if(!xnuspy_rw_lck){
+        kprintf("%s: no mem for xnuspy rw lck\n", __func__);
+        return ENOMEM;
+    }
+
+    /* Build the initial freelist/usedlist for xnuspy_tramp structs */
+    STAILQ_INIT(&freelist);
+    STAILQ_INIT(&usedlist);
+
+    struct xnuspy_tramp *cursor = (struct xnuspy_tramp *)xnuspy_tramp_page;
+    
+    while((uint8_t *)cursor < xnuspy_tramp_page_end){
+        struct stailq_entry *entry = common_kalloc(sizeof(*entry));
+
+        if(!entry){
+            kprintf("%s: no mem for stailq_entry\n", __func__);
+            /* TODO: free what was allocated before this */
+            return ENOMEM;
+        }
+
+        entry->elem = cursor;
+        STAILQ_INSERT_TAIL(&freelist, entry, link);
+        cursor++;
+    }
+
+    /* desc_lists(); */
+
+    /* Mark the xnuspy_tramp page as writeable/executable */
+    vm_prot_t prot = VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE;
+    kprotect((uint64_t)xnuspy_tramp_page, PAGE_SIZE, prot);
+
+    /* Do the same for the pages which will reflect shared mappings */
+    struct xnuspy_reflector_page *cur = first_reflector_page;
+    
+    while(cur){
+        kprotect((uint64_t)cur->page, PAGE_SIZE, prot);
+        cur = cur->next;
+    }
+
+    /* Zero out PAN in case no instruction did it before us. After our kernel
+     * patches, the PAN bit cannot be set to 1 again.
+     *
+     * msr pan, #0
+     *
+     * XXX XXX NEED TO CHECK IF THE HARDWARE SUPPORTS THIS BIT
+     */
+    asm volatile(".long 0xd500409f");
+    asm volatile("isb sy");
+
+    /* combat short read of this image */
+    /* asm volatile(".align 14"); */
+    /* asm volatile(".align 14"); */
+
+    xnuspy_init_flag = 1;
+
+    kprintf("%s: xnuspy inited\n", __func__);
 
     return 0;
 }

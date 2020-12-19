@@ -758,16 +758,16 @@ kern_return_t mach_msg_trap_hook(struct mach_msg_overwrite_trap_args *args){
     uint8_t cpuid = mpidr_el1 & 0xff;
     uint64_t caller = (uint64_t)__builtin_return_address(0);
 
-    kprintf("(CPU %d, unslid caller %#llx): msg %#llx option %#x send size %#x"
-            " recv size %#x recv name %#x timeout %#x override %d recv msg %#llx\n",
-            cpuid, caller - kernel_slide, args->msg, args->option, args->send_size,
-            args->rcv_size, args->rcv_name, args->timeout, args->override,
-            args->rcv_msg);
+    /* kprintf("(CPU %d, unslid caller %#llx): msg %#llx option %#x send size %#x" */
+    /*         " recv size %#x recv name %#x timeout %#x override %d recv msg %#llx\n", */
+    /*         cpuid, caller - kernel_slide, args->msg, args->option, args->send_size, */
+    /*         args->rcv_size, args->rcv_name, args->timeout, args->override, */
+    /*         args->rcv_msg); */
 
     kern_return_t kret = mach_msg_trap_orig(args);
 
-    kprintf("(CPU %d, unslid caller %#llx): mach_msg returned %d\n", cpuid,
-            caller - kernel_slide, kret);
+    /* kprintf("(CPU %d, unslid caller %#llx): mach_msg returned %d\n", cpuid, */
+    /*         caller - kernel_slide, kret); */
 
     return kret;
 }
