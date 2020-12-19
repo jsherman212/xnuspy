@@ -331,12 +331,12 @@ static void *(*kalloc_canblock_orig)(size_t *sizep, int canblock, void *site);
 
 static void *kalloc_canblock(size_t *sizep, int canblock, void *site){
     void *mem = kalloc_canblock_orig(sizep, canblock, site);
-    uint8_t *memp = mem;
-    size_t size = *sizep;
+    /* uint8_t *memp = mem; */
+    /* size_t size = *sizep; */
 
-    for(size_t i=0; i<size; i++){
-        memp[i] = 0x41;
-    }
+    /* for(size_t i=0; i<size; i++){ */
+    /*     memp[i] = 0x41; */
+    /* } */
 
     /* uint64_t tpidr_el1; */
     /* asm volatile("mrs %0, tpidr_el1" : "=r" (tpidr_el1)); */
@@ -732,7 +732,81 @@ static kern_return_t is_io_service_open_extended(void *_service,
     return kret;
 }
 
+#define	PAD_(t)	(sizeof(uint64_t) <= sizeof(t) \
+        ? 0 : sizeof(uint64_t) - sizeof(t))
+#define	PADL_(t)	0
+#define	PADR_(t)	PAD_(t)
+#define PAD_ARG_(arg_type, arg_name) \
+    char arg_name##_l_[PADL_(arg_type)]; arg_type arg_name; char arg_name##_r_[PADR_(arg_type)];
+
+struct mach_msg_overwrite_trap_args {
+    PAD_ARG_(user_addr_t, msg);
+    PAD_ARG_(mach_msg_option_t, option);
+    PAD_ARG_(mach_msg_size_t, send_size);
+    PAD_ARG_(mach_msg_size_t, rcv_size);
+    PAD_ARG_(mach_port_name_t, rcv_name);
+    PAD_ARG_(mach_msg_timeout_t, timeout);
+    PAD_ARG_(mach_msg_priority_t, override);
+    PAD_ARG_(user_addr_t, rcv_msg);  /* Unused on mach_msg_trap */
+};
+
+kern_return_t (*mach_msg_trap_orig)(struct mach_msg_overwrite_trap_args *args);
+
+kern_return_t mach_msg_trap_hook(struct mach_msg_overwrite_trap_args *args){
+    uint64_t mpidr_el1;
+    asm volatile("mrs %0, mpidr_el1" : "=r" (mpidr_el1));
+    uint8_t cpuid = mpidr_el1 & 0xff;
+    uint64_t caller = (uint64_t)__builtin_return_address(0);
+
+    kprintf("(CPU %d, unslid caller %#llx): msg %#llx option %#x send size %#x"
+            " recv size %#x recv name %#x timeout %#x override %d recv msg %#llx\n",
+            cpuid, caller - kernel_slide, args->msg, args->option, args->send_size,
+            args->rcv_size, args->rcv_name, args->timeout, args->override,
+            args->rcv_msg);
+
+    kern_return_t kret = mach_msg_trap_orig(args);
+
+    kprintf("(CPU %d, unslid caller %#llx): mach_msg returned %d\n", cpuid,
+            caller - kernel_slide, kret);
+
+    return kret;
+}
+
+static struct hook {
+    uint64_t kva;
+    void *replacement;
+    void *original;
+} g_hooks[] = {
+    /* iphone 8 13.6.1 */
+    { 0xFFFFFFF0081994DC, is_io_service_open_extended,
+        &is_io_service_open_extended_orig },
+    { 0xFFFFFFF007C031E4, kalloc_canblock, &kalloc_canblock_orig },
+    { 0xFFFFFFF007C4B420, zone_require, &zone_require_orig },
+    { 0xFFFFFFF007BEAFD0, mach_msg_trap_hook, &mach_msg_trap_orig },
+};
+
+const size_t g_nhooks = sizeof(g_hooks) / sizeof(*g_hooks);
+
+static void sig(int signum){
+    int ret;
+
+    for(int i=0; i<g_nhooks; i++){
+        struct hook *h = &g_hooks[i];
+
+        ret = syscall(SYS_xnuspy_ctl, XNUSPY_UNINSTALL_HOOK, h->kva);
+
+        if(ret){
+            printf("%s: could not uninstall hook for %#llx: %s\n", __func__,
+                    h->kva, strerror(errno));
+        }
+    }
+
+    exit(0);
+}
+
 int main(int argc, char **argv){
+    signal(SIGINT, sig);
+
     /* before we begin, figure out what system call was patched */
     size_t oldlen = sizeof(long);
     int ret = sysctlbyname("kern.xnuspy_ctl_callnum", &SYS_xnuspy_ctl,
@@ -789,27 +863,41 @@ int main(int argc, char **argv){
 
     getClassName = (const char *(*)(const void *))(0xFFFFFFF0080EC9A8 + kernel_slide);
 
+    for(int i=0; i<g_nhooks; i++){
+        struct hook *h = &g_hooks[i];
+
+        ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, h->kva,
+                h->replacement, h->original);
+
+        if(ret){
+            printf("%s: could not uninstall hook for %#llx: %s\n", __func__,
+                    h->kva, strerror(errno));
+        }
+
+        printf("orig for %#llx: %#llx\n", h->kva, *(uint64_t *)h->original);
+    }
+
     /* iphone 8 13.6.1 */
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF0081994DC,
-            is_io_service_open_extended, &is_io_service_open_extended_orig);
+    /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF0081994DC, */
+    /*         is_io_service_open_extended, &is_io_service_open_extended_orig); */
 
-    if(ret)
-        printf("%s\n", strerror(errno));
+    /* if(ret) */
+    /*     printf("%s\n", strerror(errno)); */
 
-    printf("is_io_service_open_extended_orig = %#llx\n",
-            is_io_service_open_extended_orig);
+    /* printf("is_io_service_open_extended_orig = %#llx\n", */
+    /*         is_io_service_open_extended_orig); */
 
     /* try and hook kalloc_canblock */
     /* iphone 8 13.6.1 */
     /* uint64_t kalloc_canblock = 0xFFFFFFF007C031E4; */
     /* void *(*kalloc_canblock_orig)(size_t *, void *, bool) = NULL; */
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF007C031E4,
-            kalloc_canblock, &kalloc_canblock_orig);
+    /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF007C031E4, */
+    /*         kalloc_canblock, &kalloc_canblock_orig); */
 
-    if(ret)
-        printf("%s\n", strerror(errno));
+    /* if(ret) */
+    /*     printf("%s\n", strerror(errno)); */
 
-    printf("kalloc_canblock_orig = %#llx\n", kalloc_canblock_orig);
+    /* printf("kalloc_canblock_orig = %#llx\n", kalloc_canblock_orig); */
 
     /* uint64_t some_fxn_with_cbz_as_first = 0xFFFFFFF007E5FFCC; */
     /* void (*dummy)(void) = NULL; */
@@ -817,13 +905,13 @@ int main(int argc, char **argv){
     /*         &dummy); */
 
     /* iphone 8 13.6.1 */
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF007C4B420,
-            zone_require, &zone_require_orig);
+    /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF007C4B420, */
+    /*         zone_require, &zone_require_orig); */
 
-    if(ret)
-        printf("%s\n", strerror(errno));
+    /* if(ret) */
+    /*     printf("%s\n", strerror(errno)); */
 
-    printf("zone_require_orig = %#llx\n", zone_require_orig);
+    /* printf("zone_require_orig = %#llx\n", zone_require_orig); */
 
     /* try and hook sysctl_handle_long */
     /* iphone 8 13.6.1 */
@@ -870,6 +958,17 @@ int main(int argc, char **argv){
 
     printf("Hit enter to quit\n");
     getchar();
+
+    for(int i=0; i<g_nhooks; i++){
+        struct hook *h = &g_hooks[i];
+
+        ret = syscall(SYS_xnuspy_ctl, XNUSPY_UNINSTALL_HOOK, h->kva);
+
+        if(ret){
+            printf("%s: could not uninstall hook for %#llx: %s\n", __func__,
+                    h->kva, strerror(errno));
+        }
+    }
 
     return 0;
 }

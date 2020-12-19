@@ -156,6 +156,20 @@ int uprotect(uint64_t uaddr, uint64_t size, vm_prot_t prot){
     return protect_common(uaddr, size, prot, 0);
 }
 
+void kwrite_instr(uint64_t dst, uint32_t instr){
+    kprotect(dst, sizeof(uint32_t), VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE);
+
+    *(uint32_t *)dst = instr;
+
+    asm volatile("dc cvau, %0" : : "r" (dst));
+    asm volatile("dsb ish");
+    asm volatile("ic ivau, %0" : : "r" (dst));
+    asm volatile("dsb ish");
+    asm volatile("isb sy");
+
+    kprotect(dst, sizeof(uint32_t), VM_PROT_READ | VM_PROT_EXECUTE);
+}
+
 struct objhdr {
     size_t sz;
 };

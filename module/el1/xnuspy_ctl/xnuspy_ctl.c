@@ -577,14 +577,6 @@ __attribute__ ((naked)) static uint64_t current_thread(void){
             );
 }
 
-static int xnuspy_reflector_page_free(struct xnuspy_reflector_page *p){
-    return p->refcnt == 0;
-}
-
-/* static int xnuspy_tramp_free(struct xnuspy_tramp *t){ */
-/*     return !t->tramp_metadata; */
-/* } */
-
 static int kern_return_to_errno(kern_return_t kret){
     switch(kret){
         case KERN_INVALID_ADDRESS:
@@ -606,10 +598,11 @@ static int kern_return_to_errno(kern_return_t kret){
     return 10000;
 }
 
+static int xnuspy_reflector_page_free(struct xnuspy_reflector_page *p){
+    return p->refcnt == 0;
+}
+
 static void xnuspy_reflector_page_release(struct xnuspy_reflector_page *p){
-    /* if(--p->refcnt == 0){ */
-        /* TODO */
-    /* } */
     p->refcnt--;
 }
 
@@ -618,7 +611,11 @@ static void xnuspy_reflector_page_reference(struct xnuspy_reflector_page *p){
 }
 
 static void xnuspy_mapping_metadata_release(struct xnuspy_mapping_metadata *m){
-    m->refcnt--;
+    if(--m->refcnt == 0){
+        m->owner = 0;
+        m->first_reflector_page = NULL;
+        m->used_reflector_pages = 0;
+    }
 }
 
 static void xnuspy_mapping_metadata_reference(struct xnuspy_mapping_metadata *m){
@@ -665,48 +662,42 @@ struct stailq_entry {
 static STAILQ_HEAD(, stailq_entry) freelist = STAILQ_HEAD_INITIALIZER(freelist);
 static STAILQ_HEAD(, stailq_entry) usedlist = STAILQ_HEAD_INITIALIZER(usedlist);
 
-static void xnuspy_tramp_free(struct xnuspy_tramp *t){
-    struct stailq_entry *entry;
-    struct stailq_entry *tmp;
+/* This function is expected to be called with an xnuspy_tramp that has
+ * already been pulled off the usedlist, but not yet added to the freelist
+ * (hence lack of locking here) */
+static void xnuspy_tramp_teardown(struct xnuspy_tramp *t){
+    struct xnuspy_mapping_metadata *mm = t->mapping_metadata;
 
-    lck_rw_lock(xnuspy_rw_lck, LCK_RW_TYPE_EXCLUSIVE);
+    if(mm){
+        struct xnuspy_reflector_page *cur = mm->first_reflector_page;
 
-    STAILQ_FOREACH_SAFE(entry, &usedlist, link, tmp){
-        if(entry->elem == t){
-            struct xnuspy_mapping_metadata *mm = t->mapping_metadata;
+        for(int i=0; i<mm->used_reflector_pages; i++){
+            if(!cur)
+                break;
 
-            if(mm){
-                struct xnuspy_reflector_page *cur = mm->first_reflector_page;
+            xnuspy_reflector_page_release(cur);
 
-                for(int i=0; i<mm->used_reflector_pages; i++){
-                    if(!cur)
-                        break;
-
-                    xnuspy_reflector_page_release(cur);
-
-                    cur = cur->next;
-                }
-
-                /* We do not NULL out this pointer so another process can
-                 * unmap this shared mapping when it takes ownership of this
-                 * xnuspy_tramp struct */
-                xnuspy_mapping_metadata_release(mm);
-            }
-
-            if(t->tramp_metadata){
-                common_kfree(t->tramp_metadata);
-                t->tramp_metadata = NULL;
-            }
-
-            STAILQ_REMOVE(&usedlist, entry, stailq_entry, link);
-            STAILQ_INSERT_TAIL(&freelist, entry, link);
-
-            lck_rw_done(xnuspy_rw_lck);
-
-            return;
+            cur = cur->next;
         }
+
+        if(mm->refcnt > 0)
+            xnuspy_mapping_metadata_release(mm);
+
+        /* We do not NULL out the mapping metadata pointer so another process
+         * can unmap this shared mapping when it takes ownership of this
+         * xnuspy_tramp struct */
     }
 
+    if(t->tramp_metadata){
+        common_kfree(t->tramp_metadata);
+        t->tramp_metadata = NULL;
+    }
+}
+
+/* Free an xnuspy_tramp struct by putting it at the end of the freelist */
+static void xnuspy_tramp_free(struct stailq_entry *stqe){
+    lck_rw_lock(xnuspy_rw_lck, LCK_RW_TYPE_EXCLUSIVE);
+    STAILQ_INSERT_TAIL(&freelist, stqe, link);
     lck_rw_done(xnuspy_rw_lck);
 }
 
@@ -736,6 +727,33 @@ static void xnuspy_tramp_commit(struct stailq_entry *stqe){
     STAILQ_INSERT_TAIL(&usedlist, stqe, link);
 }
 
+/* Pull an xnuspy_tramp off of the usedlist, according to its target */
+static struct stailq_entry *xnuspy_tramp_disconnect(uint64_t target){
+    lck_rw_lock(xnuspy_rw_lck, LCK_RW_TYPE_EXCLUSIVE);
+
+    if(STAILQ_EMPTY(&usedlist)){
+        lck_rw_done(xnuspy_rw_lck);
+        /* kprintf("%s: nothing on usedlist\n", __func__); */
+        return NULL;
+    }
+
+    struct stailq_entry *entry, *tmp;
+
+    STAILQ_FOREACH_SAFE(entry, &usedlist, link, tmp){
+        struct xnuspy_tramp *tramp = entry->elem;
+
+        if(tramp->tramp_metadata->hooked == target){
+            STAILQ_REMOVE(&usedlist, entry, stailq_entry, link);
+            lck_rw_done(xnuspy_rw_lck);
+            return entry;
+        }
+    }
+
+    lck_rw_done(xnuspy_rw_lck);
+
+    return NULL;
+}
+
 static struct xnuspy_mapping_metadata *find_mapping_metadata(void){
     pid_t cpid = proc_pid(current_proc());
     struct stailq_entry *entry;
@@ -745,8 +763,7 @@ static struct xnuspy_mapping_metadata *find_mapping_metadata(void){
     STAILQ_FOREACH(entry, &usedlist, link){
         struct xnuspy_tramp *tramp = entry->elem;
 
-        /* XXX mapping metadata will never be NULL for the usedlist */
-        if(tramp->mapping_metadata && tramp->mapping_metadata->owner == cpid){
+        if(tramp->mapping_metadata->owner == cpid){
             lck_rw_done(xnuspy_rw_lck);
             return tramp->mapping_metadata;
         }
@@ -765,8 +782,7 @@ static int hook_already_exists(uint64_t target){
     STAILQ_FOREACH(entry, &usedlist, link){
         struct xnuspy_tramp *tramp = entry->elem;
 
-        /* XXX tramp metadata will never be NULL for the usedlist */
-        if(tramp->tramp_metadata && tramp->tramp_metadata->hooked == target){
+        if(tramp->tramp_metadata->hooked == target){
             lck_rw_done(xnuspy_rw_lck);
             return 1;
         }
@@ -997,19 +1013,13 @@ nextcmd:
     kprintf("%s: ended with copystart %#llx copysz %#llx\n", __func__,
             copystart, copysz);
 
+    int need_free_on_error = 0;
     struct xnuspy_mapping_metadata *metadata = NULL;
 
     if(!copystart || !copysz){
         *retval = ENOENT;
         goto failed;
     }
-
-    /* kprintf("%s: free pages found:\n", __func__); */
-
-    /* for(int i=0; i<npages; i++){ */
-    /*     desc_xnuspy_reflector_page(cur); */
-    /*     cur = cur->next; */
-    /* } */
 
     /* If some other process previously owned this hook, we may need to unmap
      * its shared mapping. However, if there's other hooks referencing this
@@ -1022,7 +1032,6 @@ nextcmd:
      * structs.
      */
     metadata = alloced_tramp->mapping_metadata;
-    int need_free_on_error = 0;
 
     if(!metadata || metadata->refcnt > 0){
         metadata = common_kalloc(sizeof(*metadata));
@@ -1043,7 +1052,8 @@ nextcmd:
                     " unmap the previous shared mapping and the memory object\n",
                     __func__); 
 
-            /* TODO: unmap shared mapping and destroy the memory object */
+            /* TODO: unmap shared mapping and destroy the memory object.
+             * XXX will the memory object still be alive here? */
         }
 
         /* No need to kfree this, we can just reuse the memory */
@@ -1294,9 +1304,6 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
      * __DATA. */
     struct xnuspy_mapping_metadata *mm = find_mapping_metadata();
 
-    /* If we've already got mapping metadata for the calling process, move
-     * onto performing the reflection. Otherwise, we need to create new
-     * metadata */
     if(mm)
         lck_rw_lock(xnuspy_rw_lck, LCK_RW_TYPE_EXCLUSIVE);
     else{
@@ -1358,26 +1365,19 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
     xnuspy_mapping_metadata_reference(tramp->mapping_metadata);
     xnuspy_tramp_commit(tramp_entry);
 
+    uint32_t branch = assemble_b(target, (uint64_t)tramp->tramp);
+
     lck_rw_done(xnuspy_rw_lck);
 
-    /* This trampoline has been committed to the usedlist, hook the target */
-    kprotect(target, sizeof(uint32_t), VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE);
-
-    *(uint32_t *)target = assemble_b(target, (uint64_t)tramp->tramp);
-
-    asm volatile("dc cvau, %0" : : "r" (target));
-    asm volatile("dsb ish");
-    asm volatile("ic ivau, %0" : : "r" (target));
-    asm volatile("dsb ish");
-    asm volatile("isb sy");
-
-    kprotect(target, sizeof(uint32_t), VM_PROT_READ | VM_PROT_EXECUTE);
+    kwrite_instr(target, branch);
 
     return 0;
 
 out_free:;
-    if(tramp)
-        xnuspy_tramp_free(tramp);
+    if(tramp){
+        xnuspy_tramp_teardown(tramp);
+        xnuspy_tramp_free(tramp_entry);
+    }
 
     common_kfree(tramp_metadata);
 out:
@@ -1385,8 +1385,26 @@ out:
 }
 
 static int xnuspy_uninstall_hook(uint64_t target){
-    kprintf("%s: XNUSPY_UNINSTALL_HOOK is not implemented yet\n", __func__);
-    return ENOSYS;
+    kprintf("%s: called with unslid target %#llx\n", __func__, target);
+    
+    target += kernel_slide;
+
+    struct stailq_entry *tramp_entry = xnuspy_tramp_disconnect(target);
+
+    if(!tramp_entry){
+        kprintf("%s: hook for %#llx does not exist\n", __func__, target);
+        return ENOENT;
+    }
+
+    struct xnuspy_tramp *tramp = tramp_entry->elem;
+
+    /* Restore the original instruction, unhooking the target */
+    kwrite_instr(target, tramp->tramp_metadata->orig_instr);
+
+    xnuspy_tramp_teardown(tramp);
+    xnuspy_tramp_free(tramp_entry);
+
+    return 0;
 }
 
 /* TODO: figure out a better way to do this */
@@ -1436,6 +1454,11 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
         return EINVAL;
     }
 
+    if(flavor == XNUSPY_CHECK_IF_PATCHED){
+        *retval = 999;
+        return 0;
+    }
+
     /* kprintf("%s: got flavor %d\n", __func__, flavor); */
     /* kprintf("%s: kslide %#llx\n", __func__, kernel_slide); */
     /* kprintf("%s: xnuspy_ctl @ %#llx (unslid)\n", __func__, */
@@ -1460,16 +1483,12 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
 
 
     switch(flavor){
-        case XNUSPY_CHECK_IF_PATCHED:
-            *retval = 999;
-            return 0;
         case XNUSPY_INSTALL_HOOK:
             res = xnuspy_install_hook(uap->arg1, uap->arg2, uap->arg3);
             break;
         case XNUSPY_UNINSTALL_HOOK:
             res = xnuspy_uninstall_hook(uap->arg1);
             break;
-            /* XXX below will be replaced with XNUSPY_MAKE_CALLABLE */
         case XNUSPY_GET_FUNCTION:
             res = xnuspy_get_function(uap->arg1, uap->arg2);
             break;
