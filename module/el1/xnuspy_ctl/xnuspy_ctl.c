@@ -117,12 +117,11 @@ static const char *tagname(int tag){
 }
 
 #define XNUSPY_INSTALL_HOOK         (0)
-#define XNUSPY_UNINSTALL_HOOK       (1)
-#define XNUSPY_CHECK_IF_PATCHED     (2)
-#define XNUSPY_GET_FUNCTION         (3)
-#define XNUSPY_DUMP_TTES            (4)
-#define XNUSPY_KREAD                (5)
-#define XNUSPY_GET_CURRENT_TASK     (6)
+#define XNUSPY_CHECK_IF_PATCHED     (1)
+#define XNUSPY_GET_FUNCTION         (2)
+#define XNUSPY_DUMP_TTES            (3)
+#define XNUSPY_KREAD                (4)
+#define XNUSPY_GET_CURRENT_TASK     (5)
 #define XNUSPY_MAX_FLAVOR           XNUSPY_GET_CURRENT_TASK
 
 /* values for XNUSPY_GET_FUNCTION */
@@ -158,8 +157,9 @@ MARK_AS_KERNEL_OFFSET void (*kfree_addr)(void *addr);
 MARK_AS_KERNEL_OFFSET void (*kfree_ext)(void *addr, vm_size_t sz);
 MARK_AS_KERNEL_OFFSET void (*lck_rw_lock_shared)(void *lock);
 
-/* XXX XXX these two have not had their offsets found yet!! */
 MARK_AS_KERNEL_OFFSET int (*lck_rw_lock_shared_to_exclusive)(lck_rw_t *lck);
+
+/* XXX XXX these one has not had its offset found yet!! */
 MARK_AS_KERNEL_OFFSET int (*lck_rw_lock_exclusive_to_shared)(lck_rw_t *lck);
 
 MARK_AS_KERNEL_OFFSET void (*lck_rw_lock)(lck_rw_t *lock, lck_rw_type_t lck_rw_type);
@@ -235,12 +235,13 @@ typedef	struct {
     mach_msg_id_t       msgh_id;
 } k_mach_msg_header_t;
 
-struct proc {
-    LIST_ENTRY(proc) p_list;
-};
+/* struct proc { */
+/*     LIST_ENTRY(proc) p_list; */
+/* }; */
 
 MARK_AS_KERNEL_OFFSET void **kernprocp;
-MARK_AS_KERNEL_OFFSET LIST_HEAD(, proc) **allprocp;
+/* MARK_AS_KERNEL_OFFSET LIST_HEAD(, proc) **allprocp; */
+MARK_AS_KERNEL_OFFSET void **allprocp;
 
 typedef struct {
     unsigned int
@@ -650,7 +651,6 @@ static void xnuspy_reflector_page_reference(struct xnuspy_reflector_page *p){
 
 static void xnuspy_mapping_metadata_release(struct xnuspy_mapping_metadata *m){
     if(--m->refcnt == 0){
-        /* m->owner = 0; */
         m->first_reflector_page = NULL;
         m->used_reflector_pages = 0;
     }
@@ -746,7 +746,6 @@ static struct stailq_entry *xnuspy_tramp_alloc(void){
 
     if(STAILQ_EMPTY(&freelist)){
         lck_rw_done(xnuspy_rw_lck);
-        /* kprintf("%s: no free xnuspy_tramp structs\n", __func__); */
         return NULL;
     }
 
@@ -771,7 +770,6 @@ static struct stailq_entry *xnuspy_tramp_disconnect(uint64_t target){
 
     if(STAILQ_EMPTY(&usedlist)){
         lck_rw_done(xnuspy_rw_lck);
-        /* kprintf("%s: nothing on usedlist\n", __func__); */
         return NULL;
     }
 
@@ -829,6 +827,22 @@ static int hook_already_exists(uint64_t target){
     lck_rw_done(xnuspy_rw_lck);
 
     return 0;
+}
+
+static int freelist_empty(void){
+    int res;
+    lck_rw_lock(xnuspy_rw_lck, LCK_RW_TYPE_SHARED);
+    res = STAILQ_EMPTY(&freelist);
+    lck_rw_done(xnuspy_rw_lck);
+    return res;
+}
+
+static int usedlist_empty(void){
+    int res;
+    lck_rw_lock(xnuspy_rw_lck, LCK_RW_TYPE_SHARED);
+    res = STAILQ_EMPTY(&usedlist);
+    lck_rw_done(xnuspy_rw_lck);
+    return res;
 }
 
 /* XXX Not sure if I can kprintf while holding a rw lock in xnu so I won't */
@@ -1015,7 +1029,7 @@ nextcmd:
 
     /* A reference for this will be taken if we end up hooking the target */
     metadata->refcnt = 0;
-    metadata->owner = proc_pid(current_proc());
+    metadata->owner = proc_uniqueid(current_proc());
 
     uint64_t text_start = text->vmaddr + aslr_slide;
     uint64_t text_end = text_start + text->vmsize;
@@ -1336,73 +1350,79 @@ out:
     return res;
 }
 
-/* XXX why even have this if hooks will be automatically uninstalled
- * upon process death?? */
-static int xnuspy_uninstall_hook(uint64_t target){
-    kprintf("%s: called with unslid target %#llx\n", __func__, target);
-    
-    target += kernel_slide;
-
-    /* We have a potential race here. If the user manually is uninstalling
-     * hooks (for example, in a signal handler) and we receive a no-senders
-     * notification before this trampoline has been disconnected from the
-     * usedlist, th
-     */
-    struct stailq_entry *tramp_entry = xnuspy_tramp_disconnect(target);
-
-    if(!tramp_entry){
-        kprintf("%s: hook for %#llx does not exist\n", __func__, target);
-        return ENOENT;
-    }
-
-    struct xnuspy_tramp *tramp = tramp_entry->elem;
-
-    /* Restore the original instruction, unhooking the target */
-    kwrite_instr(target, tramp->tramp_metadata->orig_instr);
-
-    xnuspy_tramp_teardown(tramp);
-    xnuspy_tramp_free(tramp_entry);
-
-    return 0;
-}
-
-/* Every five seconds, this thread loops through the proc list, and checks
+/* Every second, this thread loops through the proc list, and checks
  * if the owner of a given xnuspy_mapping_metadata struct is no longer present.
  * If so, all the hooks associated with that metadata struct are uninstalled
  * and sent back to the freelist. */
 static void xnuspy_gc_thread(void *param, int wait_result){
-    kprintf("%s: hello from xnuspy gc thread!\n", __func__);
-    
     for(;;){
-        struct proc *entry;
+        lck_rw_lock(xnuspy_rw_lck, LCK_RW_TYPE_SHARED);
 
-        proc_list_lock();
+        if(STAILQ_EMPTY(&usedlist))
+            goto unlock_and_sleep;
 
-        entry = *(struct proc **)allprocp;
+        if(!lck_rw_lock_shared_to_exclusive(xnuspy_rw_lck))
+            lck_rw_lock(xnuspy_rw_lck, LCK_RW_TYPE_EXCLUSIVE);
+        
+        struct stailq_entry *entry, *tmp;
 
-        /* XXX we don't seem to hit the last proc in the list? */
-        /* LIST_FOREACH(entry, *allprocp, p_list){ */
-        /* LIST_FOREACH(entry, *kernprocp, p_list){ */
-        for(;;){
-            proc_ref_locked(entry);
+        STAILQ_FOREACH_SAFE(entry, &usedlist, link, tmp){
+            struct xnuspy_tramp *tramp = entry->elem;
+            struct xnuspy_mapping_metadata *mm = tramp->mapping_metadata;
+            struct xnuspy_tramp_metadata *tm = tramp->tramp_metadata;
 
-            pid_t pid = proc_pid(entry);
-            uint64_t uniqueid = proc_uniqueid(entry);
+            proc_list_lock();
 
-            proc_rele_locked(entry);
+            /* Looping through allproc with LIST_FOREACH doesn't pick up the last
+             * proc structure in the list for some reason */
+            void *curproc = *allprocp;
+            pid_t pid;
+            /* For simplicity, assume owner is dead before we start the
+             * search */
+            int owner_dead = 1;
 
-            kprintf("%s: current proc %#llx, unique id: %lld, pid: %d\n",
-                    __func__, entry, uniqueid, pid);
+            do {
+                proc_ref_locked(curproc);
 
-            if(pid == 0)
-                break;
+                pid = proc_pid(curproc);
+                uint64_t uniqueid = proc_uniqueid(curproc);
 
-            entry = *(struct proc **)entry;
+                /* kprintf("%s: looking at %#llx with unique id %lld pid %d\n", */
+                /*         __func__, curproc, uniqueid, pid); */
+
+                void *nextproc = *(void **)curproc;
+
+                proc_rele_locked(curproc);
+
+                if(mm->owner == uniqueid){
+                    owner_dead = 0;
+                    break;
+                }
+
+                curproc = nextproc;
+            } while(pid != 0);
+
+            proc_list_unlock();
+
+            if(owner_dead){
+                kprintf("%s: Tramp %#llx's owner (%lld) is dead, freeing it\n",
+                        __func__, tramp, mm->owner);
+
+                /* desc_xnuspy_tramp(tramp, 5); */
+
+                STAILQ_REMOVE(&usedlist, entry, stailq_entry, link);
+
+                kwrite_instr(tm->hooked, tm->orig_instr);
+
+                xnuspy_tramp_teardown(tramp);
+
+                STAILQ_INSERT_TAIL(&freelist, entry, link);
+            }
         }
 
-        proc_list_unlock();
-
-        IOSleep(5000);
+unlock_and_sleep:;
+        lck_rw_done(xnuspy_rw_lck);
+        IOSleep(1000);
     }
 }
 
@@ -1543,14 +1563,6 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
         return 0;
     }
 
-    /* kprintf("%s: got flavor %d\n", __func__, flavor); */
-    /* kprintf("%s: kslide %#llx\n", __func__, kernel_slide); */
-    /* kprintf("%s: xnuspy_ctl @ %#llx (unslid)\n", __func__, */
-    /*         (uint64_t)xnuspy_ctl - kernel_slide); */
-    /* kprintf("%s: xnuspy_ctl tramp page @ [%#llx,%#llx] (unslid)\n", __func__, */
-    /*         (uint64_t)xnuspy_tramp_page - kernel_slide, */
-    /*         (uint64_t)xnuspy_tramp_page_end - kernel_slide); */
-
     int res;
 
     if(!xnuspy_init_flag){
@@ -1562,16 +1574,9 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
         }
     }
 
-    /* kprintf("%s: ********RETURNING\n", __func__); */
-    /* return 0; */
-
-
     switch(flavor){
         case XNUSPY_INSTALL_HOOK:
             res = xnuspy_install_hook(uap->arg1, uap->arg2, uap->arg3);
-            break;
-        case XNUSPY_UNINSTALL_HOOK:
-            res = xnuspy_uninstall_hook(uap->arg1);
             break;
         case XNUSPY_GET_FUNCTION:
             res = xnuspy_get_function(uap->arg1, uap->arg2);

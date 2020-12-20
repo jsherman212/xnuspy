@@ -772,6 +772,49 @@ kern_return_t mach_msg_trap_hook(struct mach_msg_overwrite_trap_args *args){
     return kret;
 }
 
+struct IOExternalMethod {
+    void *object;
+    uint64_t func;
+    uint32_t flags;
+    uint64_t count0;
+    uint64_t count1;
+};
+
+struct IOExternalMethod *(*FairPlayIOKitUserClient_getTargetAndMethodForIndex)(void *this, void **x1, uint32_t idx);
+
+struct IOExternalMethod *_FairPlayIOKitUserClient_getTargetAndMethodForIndex(void *this, void **x1, uint32_t idx){
+    struct IOExternalMethod *res =
+        FairPlayIOKitUserClient_getTargetAndMethodForIndex(this, x1, idx);
+
+    uint64_t mpidr_el1;
+    asm volatile("mrs %0, mpidr_el1" : "=r" (mpidr_el1));
+    uint8_t cpuid = mpidr_el1 & 0xff;
+    uint64_t caller = (uint64_t)__builtin_return_address(0);
+
+    kprintf("%s: (CPU %d, unslid caller %#llx): called with idx %d (was corrected"
+            " to %d)", __func__, cpuid, caller - kernel_slide, idx, idx - 3);
+
+    if(res){
+        kprintf(", got external method @ %#llx [unslid] back\n",
+                res->func - kernel_slide);
+    }
+    else{
+        kprintf(", got nothing back\n");
+    }
+
+    void *provider = *(void **)((uintptr_t)this + 0xd8);
+    
+    if(!provider)
+        return res;
+
+    void *provider_vtab = *(void **)provider;
+    uintptr_t plus_0x578 = (uintptr_t)provider_vtab + 0x578;
+
+    kprintf("%s: +0x578 == %#llx\n", __func__, plus_0x578 - kernel_slide);
+
+    return res;
+}
+
 static struct hook {
     uint64_t kva;
     void *replacement;
@@ -783,29 +826,31 @@ static struct hook {
     { 0xFFFFFFF007C031E4, kalloc_canblock, &kalloc_canblock_orig },
     { 0xFFFFFFF007C4B420, zone_require, &zone_require_orig },
     { 0xFFFFFFF007BEAFD0, mach_msg_trap_hook, &mach_msg_trap_orig },
+    { 0xFFFFFFF00878A31C, _FairPlayIOKitUserClient_getTargetAndMethodForIndex,
+        &FairPlayIOKitUserClient_getTargetAndMethodForIndex },
 };
 
 const size_t g_nhooks = sizeof(g_hooks) / sizeof(*g_hooks);
 
-static void sig(int signum){
-    int ret;
+/* static void sig(int signum){ */
+/*     int ret; */
 
-    for(int i=0; i<g_nhooks; i++){
-        struct hook *h = &g_hooks[i];
+/*     for(int i=0; i<g_nhooks; i++){ */
+/*         struct hook *h = &g_hooks[i]; */
 
-        ret = syscall(SYS_xnuspy_ctl, XNUSPY_UNINSTALL_HOOK, h->kva);
+/*         ret = syscall(SYS_xnuspy_ctl, XNUSPY_UNINSTALL_HOOK, h->kva); */
 
-        if(ret){
-            printf("%s: could not uninstall hook for %#llx: %s\n", __func__,
-                    h->kva, strerror(errno));
-        }
-    }
+/*         if(ret){ */
+/*             printf("%s: could not uninstall hook for %#llx: %s\n", __func__, */
+/*                     h->kva, strerror(errno)); */
+/*         } */
+/*     } */
 
-    exit(0);
-}
+/*     exit(0); */
+/* } */
 
 int main(int argc, char **argv){
-    signal(SIGINT, sig);
+    /* signal(SIGINT, sig); */
 
     /* before we begin, figure out what system call was patched */
     size_t oldlen = sizeof(long);
@@ -959,16 +1004,16 @@ int main(int argc, char **argv){
     printf("Hit enter to quit\n");
     getchar();
 
-    for(int i=0; i<g_nhooks; i++){
-        struct hook *h = &g_hooks[i];
+    /* for(int i=0; i<g_nhooks; i++){ */
+    /*     struct hook *h = &g_hooks[i]; */
 
-        ret = syscall(SYS_xnuspy_ctl, XNUSPY_UNINSTALL_HOOK, h->kva);
+    /*     ret = syscall(SYS_xnuspy_ctl, XNUSPY_UNINSTALL_HOOK, h->kva); */
 
-        if(ret){
-            printf("%s: could not uninstall hook for %#llx: %s\n", __func__,
-                    h->kva, strerror(errno));
-        }
-    }
+    /*     if(ret){ */
+    /*         printf("%s: could not uninstall hook for %#llx: %s\n", __func__, */
+    /*                 h->kva, strerror(errno)); */
+    /*     } */
+    /* } */
 
     return 0;
 }

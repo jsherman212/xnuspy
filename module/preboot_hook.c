@@ -578,6 +578,10 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
             *va = 0xFFFFFFF007FF85E0 + kernel_slide;
             return;
         }
+        else if(strcmp(ksym, "_lck_rw_lock_shared_to_exclusive") == 0){
+            *va = 0xFFFFFFF007D0A018 + kernel_slide;
+            return;
+        }
         else if(strcmp(ksym, "_lck_rw_lock") == 0){
             *va = 0xFFFFFFF007D098F4 + kernel_slide;
             return;
