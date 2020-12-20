@@ -211,7 +211,6 @@ MARK_AS_KERNEL_OFFSET kern_return_t (*kernel_memory_allocate)(void *map,
         uint64_t *addrp, vm_size_t size, vm_offset_t mask, int flags, int tag);
 
 MARK_AS_KERNEL_OFFSET void **kernel_mapp;
-MARK_AS_KERNEL_OFFSET void **kernprocp;
 
 MARK_AS_KERNEL_OFFSET kern_return_t (*vm_map_wire_kernel)(void *map,
         uint64_t start, uint64_t end, vm_prot_t prot, int tag, int user_wire);
@@ -240,7 +239,8 @@ struct proc {
     LIST_ENTRY(proc) p_list;
 };
 
-MARK_AS_KERNEL_OFFSET LIST_HEAD(proclist, proc) **allprocp;
+MARK_AS_KERNEL_OFFSET void **kernprocp;
+MARK_AS_KERNEL_OFFSET LIST_HEAD(, proc) **allprocp;
 
 typedef struct {
     unsigned int
@@ -1370,22 +1370,20 @@ static int xnuspy_uninstall_hook(uint64_t target){
  * if the owner of a given xnuspy_mapping_metadata struct is no longer present.
  * If so, all the hooks associated with that metadata struct are uninstalled
  * and sent back to the freelist. */
-static void death_listener_thread(void *param, int wait_result){
-    /* struct xnuspy_mapping_metadata *mm = param; */
-    /* kprintf("%s: hello from death listener! mm @ %#llx\n", __func__, mm); */
-    /* desc_xnuspy_mapping_metadata(mm); */
-
-    kprintf("%s: hello from death listener!\n", __func__);
+static void xnuspy_gc_thread(void *param, int wait_result){
+    kprintf("%s: hello from xnuspy gc thread!\n", __func__);
     
-    /* struct proclist *allproc = *allprocp; */
-
     for(;;){
         struct proc *entry;
 
         proc_list_lock();
 
+        entry = *(struct proc **)allprocp;
+
         /* XXX we don't seem to hit the last proc in the list? */
-        LIST_FOREACH(entry, *allprocp, p_list){
+        /* LIST_FOREACH(entry, *allprocp, p_list){ */
+        /* LIST_FOREACH(entry, *kernprocp, p_list){ */
+        for(;;){
             proc_ref_locked(entry);
 
             pid_t pid = proc_pid(entry);
@@ -1395,6 +1393,11 @@ static void death_listener_thread(void *param, int wait_result){
 
             kprintf("%s: current proc %#llx, unique id: %lld, pid: %d\n",
                     __func__, entry, uniqueid, pid);
+
+            if(pid == 0)
+                break;
+
+            entry = *(struct proc **)entry;
         }
 
         proc_list_unlock();
@@ -1443,15 +1446,15 @@ static int xnuspy_init(void){
         cursor++;
     }
 
-    void *dlt = NULL;
-    kern_return_t kret = kernel_thread_start(death_listener_thread, NULL, &dlt);
+    void *gct = NULL;
+    kern_return_t kret = kernel_thread_start(xnuspy_gc_thread, NULL, &gct);
 
     if(kret){
         kprintf("%s: kernel_thread_start failed: %d\n", __func__, kret);
         return kern_return_to_errno(kret);
     }
 
-    thread_deallocate(dlt);
+    thread_deallocate(gct);
 
     /* desc_lists(); */
 
