@@ -626,6 +626,14 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
             *va = 0xFFFFFFF007FF852C + kernel_slide;
             return;
         }
+        else if(strcmp(ksym, "_ipc_port_release_send") == 0){
+            *va = 0xFFFFFFF007BDE3D8 + kernel_slide;
+            return;
+        }
+        else if(strcmp(ksym, "_mach_vm_deallocate") == 0){
+            *va = 0xFFFFFFF007CD1B1C + kernel_slide;
+            return;
+        }
     }
 }
 
@@ -920,13 +928,6 @@ void xnuspy_preboot_hook(void){
     }
 
     free_static_memory -= (reflector_pages_allocsz + PAGE_SIZE) & ~(PAGE_SIZE - 1);
-
-    /* g_reflector_pages_start = alloc_static(free_static_memory); */
-    /* g_reflector_pages_end = g_reflector_pages_start + free_static_memory; */
-
-    /* /1* turn these into kernel virtual addresses *1/ */
-    /* g_reflector_pages_start = xnu_ptr_to_va(g_reflector_pages_start); */
-    /* g_reflector_pages_end = xnu_ptr_to_va(g_reflector_pages_end); */
 
     /* Build the linked list of reflector pages */
     uint64_t num_reflector_pages = free_static_memory / PAGE_SIZE;

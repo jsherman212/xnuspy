@@ -10,7 +10,6 @@
 #include "asm.h"
 #include "mem.h"
 #include "pte.h"
-/* #include "queue.h" */
 #include "tramp.h"
 
 #include "../../common/xnuspy_structs.h"
@@ -225,6 +224,10 @@ typedef	void (*thread_continue_t)(void *param, int wait_result);
 MARK_AS_KERNEL_OFFSET kern_return_t (*kernel_thread_start)(thread_continue_t continuation,
         void *parameter, void **new_thread);
 MARK_AS_KERNEL_OFFSET void (*thread_deallocate)(void *thread);
+
+MARK_AS_KERNEL_OFFSET void (*ipc_port_release_send)(void *port);
+MARK_AS_KERNEL_OFFSET kern_return_t (*mach_vm_deallocate)(void *map,
+        uint64_t start, uint64_t size);
 
 typedef	struct {
     mach_msg_bits_t     msgh_bits;
@@ -1001,6 +1004,16 @@ nextcmd:
      */
     metadata = alloced_tramp->mapping_metadata;
 
+    kprintf("%s: old metadata %#llx\n", __func__, metadata);
+
+    if(metadata){
+        kprintf("%s: OLD METADATA DESCRIPTION:\n", __func__);
+        desc_xnuspy_mapping_metadata(metadata);
+    }
+
+    void *kernel_map = *kernel_mapp;
+    kern_return_t kret;
+
     if(!metadata || metadata->refcnt > 0){
         metadata = common_kalloc(sizeof(*metadata));
 
@@ -1020,8 +1033,16 @@ nextcmd:
                     " unmap the previous shared mapping and the memory object\n",
                     __func__); 
 
-            /* TODO: unmap shared mapping and destroy the memory object.
-             * XXX will the memory object still be alive here? */
+            ipc_port_release_send(metadata->memory_object);
+            metadata->memory_object = NULL;
+
+            /* XXX XXX freezes the phone */
+            kret = mach_vm_deallocate(kernel_map, metadata->mapping_addr,
+                    metadata->mapping_size);
+
+            if(kret){
+                kprintf("%s: ******mach_vm_deallocate: %d\n", __func__, kret);
+            }
         }
 
         /* No need to kfree this, we can just reuse the memory */
@@ -1031,9 +1052,8 @@ nextcmd:
     metadata->refcnt = 0;
     metadata->owner = proc_uniqueid(current_proc());
 
-    uint64_t text_start = text->vmaddr + aslr_slide;
-    uint64_t text_end = text_start + text->vmsize;
-    kern_return_t kret;
+    /* uint64_t text_start = text->vmaddr + aslr_slide; */
+    /* uint64_t text_end = text_start + text->vmsize; */
 
     /* Wire down __TEXT and __DATA of the calling process so they are not
      * swapped out. We only set VM_PROT_READ in case there were some segments
@@ -1049,30 +1069,39 @@ nextcmd:
      * may screw things up?
      */
 
-    kret = vm_map_wire_kernel(current_map, text_start, text_end, VM_PROT_READ,//text->initprot,
+    kret = vm_map_wire_kernel(current_map, copystart, copysz, VM_PROT_READ,
             VM_KERN_MEMORY_OSFMK, 1);
 
     if(kret){
-        kprintf("%s: vm_map_wire_kernel failed when wiring down __TEXT: %d\n",
-                __func__, kret);
+        kprintf("%s: vm_map_wire_kernel failed when wiring down "
+                "[copystart, copysz): %d\n", __func__, kret);
         *retval = kern_return_to_errno(kret);
         goto failed;
     }
 
-    uint64_t data_start = data->vmaddr + aslr_slide;
-    uint64_t data_end = data_start + data->vmsize;
+    /* kret = vm_map_wire_kernel(current_map, text_start, text_end, VM_PROT_READ,//text->initprot, */
+    /*         VM_KERN_MEMORY_OSFMK, 1); */
 
-    kret = vm_map_wire_kernel(current_map, data_start, data_end, VM_PROT_READ,//data->initprot,
-            VM_KERN_MEMORY_OSFMK, 1);
+    /* if(kret){ */
+    /*     kprintf("%s: vm_map_wire_kernel failed when wiring down __TEXT: %d\n", */
+    /*             __func__, kret); */
+    /*     *retval = kern_return_to_errno(kret); */
+    /*     goto failed; */
+    /* } */
 
-    if(kret){
-        kprintf("%s: vm_map_wire_kernel failed when wiring down __DATA: %d\n",
-                __func__, kret);
-        *retval = kern_return_to_errno(kret);
-        goto failed;
-    }
+    /* uint64_t data_start = data->vmaddr + aslr_slide; */
+    /* uint64_t data_end = data_start + data->vmsize; */
 
-    void *kernel_map = *kernel_mapp;
+    /* kret = vm_map_wire_kernel(current_map, data_start, data_end, VM_PROT_READ,//data->initprot, */
+    /*         VM_KERN_MEMORY_OSFMK, 1); */
+
+    /* if(kret){ */
+    /*     kprintf("%s: vm_map_wire_kernel failed when wiring down __DATA: %d\n", */
+    /*             __func__, kret); */
+    /*     *retval = kern_return_to_errno(kret); */
+    /*     goto failed; */
+    /* } */
+
     
     /* We create the mapping with only VM_PROT_READ because that is the
      * minimum VM protections for a segment (unless they have none, which won't
@@ -1108,7 +1137,6 @@ nextcmd:
         goto failed;
     }
 
-    /* XXX: should we take a reference on this port? */
     metadata->memory_object = shm_object;
 
     uint64_t shm_addr = 0;
@@ -1140,6 +1168,18 @@ nextcmd:
         goto failed;
     }
 
+    /* kprintf("%s: first 8 bytes of mem object: %#llx\n", __func__, */
+    /*         *(uint64_t *)metadata->memory_object); */
+    /* kprintf("%s: first 8 bytes of mem object: ", __func__); */
+    /* uint8_t *c = (uint8_t *)metadata->memory_object; */
+    /* for(int i=0; i<sizeof(uint64_t); i++){ */
+    /*     kprintf("%#x ", c[i]); */
+    /* } */
+    /* kprintf("\n"); */
+
+    /* kprintf("%s: ref count of mem entry: %#x\n", __func__, */
+    /*         *(uint32_t *)((uint8_t *)metadata->memory_object + 0x4)); */
+    
     metadata->mapping_addr = shm_addr;
     metadata->mapping_size = copysz;
 
@@ -1333,6 +1373,8 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
 
     uint32_t branch = assemble_b(target, (uint64_t)tramp->tramp);
 
+    desc_xnuspy_tramp(tramp, orig_tramp_len);
+
     lck_rw_done(xnuspy_rw_lck);
 
     kwrite_instr(target, branch);
@@ -1451,8 +1493,10 @@ static int xnuspy_init(void){
     STAILQ_INIT(&usedlist);
 
     struct xnuspy_tramp *cursor = (struct xnuspy_tramp *)xnuspy_tramp_page;
-    
-    while((uint8_t *)cursor < xnuspy_tramp_page_end){
+
+    int lim = 8;
+    /* while((uint8_t *)cursor < xnuspy_tramp_page_end){ */
+    for(int i=0; i<lim; i++){
         struct stailq_entry *entry = common_kalloc(sizeof(*entry));
 
         if(!entry){
