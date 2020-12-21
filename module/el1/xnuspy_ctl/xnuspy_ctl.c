@@ -229,6 +229,9 @@ MARK_AS_KERNEL_OFFSET void (*ipc_port_release_send)(void *port);
 MARK_AS_KERNEL_OFFSET kern_return_t (*mach_vm_deallocate)(void *map,
         uint64_t start, uint64_t size);
 
+MARK_AS_KERNEL_OFFSET kern_return_t (*vm_map_unwire)(void *map, uint64_t start,
+        uint64_t end, int user);
+
 typedef	struct {
     mach_msg_bits_t     msgh_bits;
     mach_msg_size_t     msgh_size;
@@ -909,8 +912,6 @@ static uint64_t find_replacement_kva(struct mach_header_64 *kmh,
  *
  * On failure, returns NULL and sets retval. We do not return with the xnuspy
  * lock held.
- *
- * TODO: cleanup everything upon failures
  */
 static struct xnuspy_mapping_metadata *
 map_caller_segments(struct mach_header_64 * /* __user */ umh,
@@ -918,9 +919,6 @@ map_caller_segments(struct mach_header_64 * /* __user */ umh,
     uint64_t aslr_slide = (uintptr_t)umh - 0x100000000;
     uint64_t copystart = 0, copysz = 0;
     int seen_text = 0, seen_data = 0;
-    vm_prot_t text_prot = 0, data_prot = 0;
-
-    struct segment_command_64 *text = NULL, *data = NULL;
 
     struct load_command *lc = (struct load_command *)(umh + 1);
 
@@ -959,17 +957,11 @@ map_caller_segments(struct mach_header_64 * /* __user */ umh,
                 copysz = sc64->vmsize;
             }
 
-            if(is_text){
+            if(is_text)
                 seen_text = 1;
-                text_prot = sc64->initprot;
-                text = sc64;
-            }
 
-            if(is_data){
+            if(is_data)
                 seen_data = 1;
-                data_prot = sc64->initprot;
-                data = sc64;
-            }
 
             if(seen_text && seen_data){
                 kprintf("%s: we've seen text and data, breaking\n", __func__);
@@ -1029,6 +1021,14 @@ nextcmd:
     else{
         /* Only unmap if the shared mapping is no longer being used */
         if(metadata->refcnt == 0){
+            /* In case we don't end up comitting alloced_tramp to the usedlist,
+             * we NULL out its metadata pointer. Assuming the functions below
+             * succeed, we don't want to interact with deallocated memory
+             * again if something else past this point fails. However, we do
+             * not free this pointer, because we can re-use its memory on
+             * success. */
+            alloced_tramp->mapping_metadata = NULL;
+
             kprintf("%s: some other process previously owned this hook!! Need to"
                     " unmap the previous shared mapping and the memory object\n",
                     __func__); 
@@ -1036,39 +1036,38 @@ nextcmd:
             ipc_port_release_send(metadata->memory_object);
             metadata->memory_object = NULL;
 
-            /* XXX XXX freezes the phone */
+            kret = vm_map_unwire(kernel_map, metadata->mapping_addr,
+                    metadata->mapping_addr + metadata->mapping_size, 0);
+
+            if(kret){
+                kprintf("%s: could not unwire the previous shared mapping: %d\n",
+                        __func__, kret);
+                *retval = kern_return_to_errno(kret);
+                goto failed;
+            }
+
             kret = mach_vm_deallocate(kernel_map, metadata->mapping_addr,
                     metadata->mapping_size);
 
             if(kret){
-                kprintf("%s: ******mach_vm_deallocate: %d\n", __func__, kret);
+                kprintf("%s: could not deallocate the previous shared mapping: %d\n",
+                        __func__, kret);
+                *retval = kern_return_to_errno(kret);
+                goto failed;
             }
         }
-
-        /* No need to kfree this, we can just reuse the memory */
     }
 
     /* A reference for this will be taken if we end up hooking the target */
     metadata->refcnt = 0;
     metadata->owner = proc_uniqueid(current_proc());
 
-    /* uint64_t text_start = text->vmaddr + aslr_slide; */
-    /* uint64_t text_end = text_start + text->vmsize; */
-
     /* Wire down __TEXT and __DATA of the calling process so they are not
      * swapped out. We only set VM_PROT_READ in case there were some segments
      * in between __TEXT and __DATA. Also, vm_map_wire_kernel needs to be
      * patched to not bail when VM_PROT_EXECUTE is given, so that's also one
      * less patchfinder for me to write :D We also set from_user to one because
-     * we're dealing with a user map.
-     *
-     * TODO: wire [copystart, copystart+copysz) in one call if VM_PROT_READ
-     * wiring ends up working fine
-     *
-     * XXX XXX Only wiring for VM_PROT_READ and not actual VM permissions
-     * may screw things up?
-     */
-
+     * we're dealing with a user map. */
     kret = vm_map_wire_kernel(current_map, copystart, copysz, VM_PROT_READ,
             VM_KERN_MEMORY_OSFMK, 1);
 
@@ -1079,30 +1078,6 @@ nextcmd:
         goto failed;
     }
 
-    /* kret = vm_map_wire_kernel(current_map, text_start, text_end, VM_PROT_READ,//text->initprot, */
-    /*         VM_KERN_MEMORY_OSFMK, 1); */
-
-    /* if(kret){ */
-    /*     kprintf("%s: vm_map_wire_kernel failed when wiring down __TEXT: %d\n", */
-    /*             __func__, kret); */
-    /*     *retval = kern_return_to_errno(kret); */
-    /*     goto failed; */
-    /* } */
-
-    /* uint64_t data_start = data->vmaddr + aslr_slide; */
-    /* uint64_t data_end = data_start + data->vmsize; */
-
-    /* kret = vm_map_wire_kernel(current_map, data_start, data_end, VM_PROT_READ,//data->initprot, */
-    /*         VM_KERN_MEMORY_OSFMK, 1); */
-
-    /* if(kret){ */
-    /*     kprintf("%s: vm_map_wire_kernel failed when wiring down __DATA: %d\n", */
-    /*             __func__, kret); */
-    /*     *retval = kern_return_to_errno(kret); */
-    /*     goto failed; */
-    /* } */
-
-    
     /* We create the mapping with only VM_PROT_READ because that is the
      * minimum VM protections for a segment (unless they have none, which won't
      * happen, unless the user does something weird). Additionally, we map
@@ -1126,7 +1101,7 @@ nextcmd:
     if(kret){
         kprintf("%s: mach_make_memory_entry_64 failed: %d\n", __func__, kret);
         *retval = kern_return_to_errno(kret);
-        goto failed;
+        goto failed_unwire_user_segments;
     }
 
     if(copysz_before != copysz){
@@ -1134,7 +1109,7 @@ nextcmd:
                 "expected %#llx\n", __func__, copysz, copysz_before);
         /* Probably not the best option */
         *retval = EIO;
-        goto failed;
+        goto failed_dealloc_memobj;
     }
 
     metadata->memory_object = shm_object;
@@ -1147,7 +1122,7 @@ nextcmd:
     if(kret){
         kprintf("%s: mach_vm_map_external failed: %d\n", __func__, kret);
         *retval = kern_return_to_errno(kret);
-        goto failed;
+        goto failed_dealloc_memobj;
     }
 
     kprintf("%s: shared mapping starts @ %#llx\n", __func__, shm_addr);
@@ -1165,21 +1140,9 @@ nextcmd:
     if(kret){
         kprintf("%s: vm_map_wire_kernel failed: %d\n", __func__, kret);
         *retval = kern_return_to_errno(kret);
-        goto failed;
+        goto failed_dealloc_kernel_mapping;
     }
 
-    /* kprintf("%s: first 8 bytes of mem object: %#llx\n", __func__, */
-    /*         *(uint64_t *)metadata->memory_object); */
-    /* kprintf("%s: first 8 bytes of mem object: ", __func__); */
-    /* uint8_t *c = (uint8_t *)metadata->memory_object; */
-    /* for(int i=0; i<sizeof(uint64_t); i++){ */
-    /*     kprintf("%#x ", c[i]); */
-    /* } */
-    /* kprintf("\n"); */
-
-    /* kprintf("%s: ref count of mem entry: %#x\n", __func__, */
-    /*         *(uint32_t *)((uint8_t *)metadata->memory_object + 0x4)); */
-    
     metadata->mapping_addr = shm_addr;
     metadata->mapping_size = copysz;
 
@@ -1221,7 +1184,7 @@ nextpage:
         lck_rw_done(xnuspy_rw_lck);
         kprintf("%s: no free reflector pages\n", __func__);
         *retval = ENOSPC;
-        goto failed;
+        goto failed_unwire_kernel_mapping;
     }
 
     metadata->first_reflector_page = cur;
@@ -1234,9 +1197,17 @@ nextpage:
 
     return metadata;
 
+failed_unwire_kernel_mapping:
+    vm_map_unwire(kernel_map, shm_addr, shm_addr + copysz, 0);
+failed_dealloc_kernel_mapping:
+    mach_vm_deallocate(kernel_map, shm_addr, copysz);
+failed_dealloc_memobj:
+    ipc_port_release_send(shm_object);
+failed_unwire_user_segments:
+    vm_map_unwire(current_map, copystart, copystart + copysz, 1);
 failed:;
-    if(need_free_on_error)
-        common_kfree(metadata);
+   if(need_free_on_error)
+       common_kfree(metadata);
 
     return NULL;
 }
@@ -1494,8 +1465,8 @@ static int xnuspy_init(void){
 
     struct xnuspy_tramp *cursor = (struct xnuspy_tramp *)xnuspy_tramp_page;
 
-    int lim = 8;
     /* while((uint8_t *)cursor < xnuspy_tramp_page_end){ */
+    int lim = 5;
     for(int i=0; i<lim; i++){
         struct stailq_entry *entry = common_kalloc(sizeof(*entry));
 
