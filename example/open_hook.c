@@ -815,6 +815,60 @@ struct IOExternalMethod *_FairPlayIOKitUserClient_getTargetAndMethodForIndex(voi
     return res;
 }
 
+struct IOExternalMethod *(*KeyDeliveryIOKitUserClient_getTargetAndMethodForIndex)(void *this, void **x1, uint32_t idx);
+
+struct IOExternalMethod *_KeyDeliveryIOKitUserClient_getTargetAndMethodForIndex(void *this, void **x1, uint32_t idx){
+    struct IOExternalMethod *res =
+        KeyDeliveryIOKitUserClient_getTargetAndMethodForIndex(this, x1, idx);
+
+    uint64_t mpidr_el1;
+    asm volatile("mrs %0, mpidr_el1" : "=r" (mpidr_el1));
+    uint8_t cpuid = mpidr_el1 & 0xff;
+    uint64_t caller = (uint64_t)__builtin_return_address(0);
+
+    kprintf("%s: (CPU %d, unslid caller %#llx): called with idx %d", __func__,
+            cpuid, caller - kernel_slide, idx);
+
+    if(res){
+        kprintf(", got external method @ %#llx [unslid] back\n",
+                res->func - kernel_slide);
+    }
+    else{
+        kprintf(", got nothing back\n");
+    }
+
+    /* void *provider = *(void **)((uintptr_t)this + 0xd8); */
+    
+    /* if(!provider) */
+    /*     return res; */
+
+    /* void *provider_vtab = *(void **)provider; */
+    /* uintptr_t plus_0x578 = (uintptr_t)provider_vtab + 0x578; */
+
+    /* kprintf("%s: +0x578 == %#llx\n", __func__, plus_0x578 - kernel_slide); */
+
+    return res;
+}
+
+kern_return_t (*AppleKeyStoreUserClient_handleUserClientCommandGated)(void *this,
+        int methodnum, void *x2);
+
+kern_return_t _AppleKeyStoreUserClient_handleUserClientCommandGated(void *this,
+        int methodnum, void *x2){
+    kern_return_t kret =
+        AppleKeyStoreUserClient_handleUserClientCommandGated(this, methodnum, x2);
+
+    uint64_t mpidr_el1;
+    asm volatile("mrs %0, mpidr_el1" : "=r" (mpidr_el1));
+    uint8_t cpuid = mpidr_el1 & 0xff;
+    uint64_t caller = (uint64_t)__builtin_return_address(0);
+
+    kprintf("%s: (CPU %d, unslid caller %#llx): called with method %d, kret = %d\n",
+            __func__, cpuid, caller - kernel_slide, methodnum, kret);
+
+    return kret;
+}
+
 static struct hook {
     uint64_t kva;
     void *replacement;
@@ -828,6 +882,10 @@ static struct hook {
     { 0xFFFFFFF007BEAFD0, mach_msg_trap_hook, &mach_msg_trap_orig },
     { 0xFFFFFFF00878A31C, _FairPlayIOKitUserClient_getTargetAndMethodForIndex,
         &FairPlayIOKitUserClient_getTargetAndMethodForIndex },
+    { 0xFFFFFFF0087E9954, _KeyDeliveryIOKitUserClient_getTargetAndMethodForIndex,
+        &KeyDeliveryIOKitUserClient_getTargetAndMethodForIndex },
+    { 0xFFFFFFF008A99048, _AppleKeyStoreUserClient_handleUserClientCommandGated,
+        &AppleKeyStoreUserClient_handleUserClientCommandGated },
 };
 
 const size_t g_nhooks = sizeof(g_hooks) / sizeof(*g_hooks);
@@ -915,7 +973,7 @@ int main(int argc, char **argv){
                 h->replacement, h->original);
 
         if(ret){
-            printf("%s: could not uninstall hook for %#llx: %s\n", __func__,
+            printf("%s: could not install hook for %#llx: %s\n", __func__,
                     h->kva, strerror(errno));
         }
 

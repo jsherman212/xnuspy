@@ -797,7 +797,7 @@ static struct stailq_entry *xnuspy_tramp_disconnect(uint64_t target){
 }
 
 static struct xnuspy_mapping_metadata *find_mapping_metadata(void){
-    pid_t cpid = proc_pid(current_proc());
+    uint64_t cuniqueid = proc_uniqueid(current_proc());
     struct stailq_entry *entry;
 
     lck_rw_lock(xnuspy_rw_lck, LCK_RW_TYPE_SHARED);
@@ -805,7 +805,7 @@ static struct xnuspy_mapping_metadata *find_mapping_metadata(void){
     STAILQ_FOREACH(entry, &usedlist, link){
         struct xnuspy_tramp *tramp = entry->elem;
 
-        if(tramp->mapping_metadata->owner == cpid){
+        if(tramp->mapping_metadata->owner == cuniqueid){
             lck_rw_done(xnuspy_rw_lck);
             return tramp->mapping_metadata;
         }
@@ -1033,32 +1033,42 @@ nextcmd:
                     " unmap the previous shared mapping and the memory object\n",
                     __func__); 
 
-            ipc_port_release_send(metadata->memory_object);
-            metadata->memory_object = NULL;
-
-            kret = vm_map_unwire(kernel_map, metadata->mapping_addr,
-                    metadata->mapping_addr + metadata->mapping_size, 0);
-
-            if(kret){
-                kprintf("%s: could not unwire the previous shared mapping: %d\n",
-                        __func__, kret);
-                *retval = kern_return_to_errno(kret);
-                goto failed;
+            if(metadata->memory_object){
+                ipc_port_release_send(metadata->memory_object);
+                metadata->memory_object = NULL;
             }
 
-            kret = mach_vm_deallocate(kernel_map, metadata->mapping_addr,
-                    metadata->mapping_size);
+            uint64_t mapping_addr = metadata->mapping_addr;
+            uint64_t mapping_size = metadata->mapping_size;
 
-            if(kret){
-                kprintf("%s: could not deallocate the previous shared mapping: %d\n",
-                        __func__, kret);
-                *retval = kern_return_to_errno(kret);
-                goto failed;
+            metadata->mapping_addr = 0;
+            metadata->mapping_size = 0;
+
+            if(mapping_addr){
+                kret = vm_map_unwire(kernel_map, mapping_addr,
+                        mapping_addr + mapping_size, 0);
+
+                if(kret){
+                    kprintf("%s: could not unwire the previous shared "
+                            "mapping: %d\n", __func__, kret);
+                    *retval = kern_return_to_errno(kret);
+                    goto failed;
+                }
+
+                kret = mach_vm_deallocate(kernel_map, mapping_addr,
+                        mapping_size);
+
+                if(kret){
+                    kprintf("%s: could not deallocate the previous shared "
+                            "mapping: %d\n", __func__, kret);
+                    *retval = kern_return_to_errno(kret);
+                    goto failed;
+                }
             }
         }
     }
 
-    /* A reference for this will be taken if we end up hooking the target */
+    /* A reference for this will be taken if we end up committing alloced_tramp */
     metadata->refcnt = 0;
     metadata->owner = proc_uniqueid(current_proc());
 
@@ -1228,17 +1238,16 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
         goto out;
     }
 
-    struct xnuspy_tramp_metadata *tramp_metadata =
-        common_kalloc(sizeof(*tramp_metadata));
+    struct xnuspy_tramp_metadata *tm = common_kalloc(sizeof(*tm));
 
-    if(!tramp_metadata){
+    if(!tm){
         kprintf("%s: failed allocating mem for tramp metadata\n", __func__);
         res = ENOMEM;
         goto out;
     }
 
-    tramp_metadata->hooked = target;
-    tramp_metadata->orig_instr = *(uint32_t *)target;
+    tm->hooked = target;
+    tm->orig_instr = *(uint32_t *)target;
 
     struct stailq_entry *tramp_entry = xnuspy_tramp_alloc();
 
@@ -1248,12 +1257,10 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
     if(!tramp_entry){
         kprintf("%s: no free xnuspy_tramp structs\n", __func__);
         res = ENOMEM;
-        goto out_free;
+        goto out_free_tramp_metadata;
     }
 
     struct xnuspy_tramp *tramp = tramp_entry->elem;
-
-    tramp->tramp_metadata = tramp_metadata;
 
     /* Build the trampoline to the replacement as well as the trampoline
      * that represents the original function */
@@ -1269,7 +1276,7 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
 
     if(res){
         kprintf("%s: copyout failed\n", __func__);
-        goto out_free;
+        goto out_free_tramp_entry;
     }
 
     /* offset found in mmap */
@@ -1293,7 +1300,7 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
         if(!mm){
             kprintf("%s: failed to create mapping metadata for this hook\n",
                     __func__);
-            goto out_free;
+            goto out_free_tramp_entry;
         }
 
         /* map_caller_segments succeeded, and we returned from it with the
@@ -1337,6 +1344,7 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
         mapping_addr += PAGE_SIZE;
     }
 
+    tramp->tramp_metadata = tm;
     tramp->mapping_metadata = mm;
 
     xnuspy_mapping_metadata_reference(tramp->mapping_metadata);
@@ -1352,13 +1360,10 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
 
     return 0;
 
-out_free:;
-    if(tramp){
-        xnuspy_tramp_teardown(tramp);
-        xnuspy_tramp_free(tramp_entry);
-    }
-
-    common_kfree(tramp_metadata);
+out_free_tramp_entry:
+    xnuspy_tramp_free(tramp_entry);
+out_free_tramp_metadata:
+    common_kfree(tm);
 out:
     return res;
 }
@@ -1386,8 +1391,8 @@ static void xnuspy_gc_thread(void *param, int wait_result){
 
             proc_list_lock();
 
-            /* Looping through allproc with LIST_FOREACH doesn't pick up the last
-             * proc structure in the list for some reason */
+            /* Looping through allproc with LIST_FOREACH doesn't pick up the
+             * last proc structure in the list for some reason */
             void *curproc = *allprocp;
             pid_t pid;
             /* For simplicity, assume owner is dead before we start the
