@@ -164,6 +164,10 @@ MARK_AS_KERNEL_OFFSET int (*lck_rw_lock_exclusive_to_shared)(lck_rw_t *lck);
 MARK_AS_KERNEL_OFFSET void (*lck_rw_lock)(lck_rw_t *lock, lck_rw_type_t lck_rw_type);
 MARK_AS_KERNEL_OFFSET void (*lck_rw_unlock)(lck_rw_t *lock, lck_rw_type_t lck_rw_type);
 
+/* the two below found by xrefing l2tp_udp_init: can't alloc mutex for iOS 13.x */
+MARK_AS_KERNEL_OFFSET void (*lck_rw_free)(lck_rw_t *lock, void *grp);
+MARK_AS_KERNEL_OFFSET void (*lck_grp_free)(void *grp);
+
 /* this will figure out how it was locked and unlock accordingly, probably
  * better to use this instead of lck_rw_unlock */
 MARK_AS_KERNEL_OFFSET uint32_t (*lck_rw_done)(lck_rw_t *lock);
@@ -835,21 +839,21 @@ static int hook_already_exists(uint64_t target){
     return 0;
 }
 
-static int freelist_empty(void){
-    int res;
-    lck_rw_lock(xnuspy_rw_lck, LCK_RW_TYPE_SHARED);
-    res = STAILQ_EMPTY(&freelist);
-    lck_rw_done(xnuspy_rw_lck);
-    return res;
-}
+/* static int freelist_empty(void){ */
+/*     int res; */
+/*     lck_rw_lock(xnuspy_rw_lck, LCK_RW_TYPE_SHARED); */
+/*     res = STAILQ_EMPTY(&freelist); */
+/*     lck_rw_done(xnuspy_rw_lck); */
+/*     return res; */
+/* } */
 
-static int usedlist_empty(void){
-    int res;
-    lck_rw_lock(xnuspy_rw_lck, LCK_RW_TYPE_SHARED);
-    res = STAILQ_EMPTY(&usedlist);
-    lck_rw_done(xnuspy_rw_lck);
-    return res;
-}
+/* static int usedlist_empty(void){ */
+/*     int res; */
+/*     lck_rw_lock(xnuspy_rw_lck, LCK_RW_TYPE_SHARED); */
+/*     res = STAILQ_EMPTY(&usedlist); */
+/*     lck_rw_done(xnuspy_rw_lck); */
+/*     return res; */
+/* } */
 
 /* XXX Not sure if I can kprintf while holding a rw lock in xnu so I won't */
 static void desc_freelist(void){
@@ -923,8 +927,6 @@ map_caller_segments(struct mach_header_64 * /* __user */ umh,
     struct load_command *lc = (struct load_command *)(umh + 1);
 
     for(int i=0; i<umh->ncmds; i++){
-        /* kprintf("%s: got cmd %d\n", __func__, lc->cmd); */
-
         if(lc->cmd != LC_SEGMENT_64)
             goto nextcmd;
 
@@ -937,18 +939,12 @@ map_caller_segments(struct mach_header_64 * /* __user */ umh,
         uint64_t start = sc64->vmaddr + aslr_slide;
         uint64_t end = start + sc64->vmsize;
 
-        /* kprintf("%s: segment '%s' start %#llx end %#llx\n", __func__, */
-        /*         sc64->segname, start, end); */
-
         /* If this segment is neither __TEXT nor __DATA, but we've already
          * seen __TEXT or __DATA, we need to make sure we account for
          * that gap. copystart being non-zero implies we've already seen
          * __TEXT or __DATA */
-        if(copystart && !is_text && !is_data){
-            /* kprintf("%s: got segment '%s' in between __TEXT and __DATA\n", */
-            /*         __func__, sc64->segname); */
+        if(copystart && !is_text && !is_data)
             copysz += sc64->vmsize;
-        }
         else if(is_text || is_data){
             if(copystart)
                 copysz += sc64->vmsize;
@@ -1447,6 +1443,8 @@ unlock_and_sleep:;
 static int xnuspy_init_flag = 0;
 
 static int xnuspy_init(void){
+    int res = 0;
+
     /* Kinda sucks I can't statically initialize the xnuspy lock, so I'll have
      * to deal with racing inside xnuspy_init. Why would anyone try to race
      * this function anyway */
@@ -1454,14 +1452,16 @@ static int xnuspy_init(void){
     
     if(!grp){
         kprintf("%s: no mem for lck grp\n", __func__);
-        return ENOMEM;
+        res = ENOMEM;
+        goto out;
     }
 
     xnuspy_rw_lck = lck_rw_alloc_init(grp, NULL);
 
     if(!xnuspy_rw_lck){
         kprintf("%s: no mem for xnuspy rw lck\n", __func__);
-        return ENOMEM;
+        res = ENOMEM;
+        goto out_dealloc_grp;
     }
 
     /* Build the initial freelist/usedlist for xnuspy_tramp structs */
@@ -1470,20 +1470,22 @@ static int xnuspy_init(void){
 
     struct xnuspy_tramp *cursor = (struct xnuspy_tramp *)xnuspy_tramp_page;
 
-    /* while((uint8_t *)cursor < xnuspy_tramp_page_end){ */
-    int lim = 5;
-    for(int i=0; i<lim; i++){
+    int c = 0;
+    while((uint8_t *)cursor < xnuspy_tramp_page_end){
+    /* int lim = 5; */
+    /* for(int i=0; i<lim; i++){ */
         struct stailq_entry *entry = common_kalloc(sizeof(*entry));
 
         if(!entry){
             kprintf("%s: no mem for stailq_entry\n", __func__);
-            /* TODO: free what was allocated before this */
-            return ENOMEM;
+            res = ENOMEM;
+            goto out_dealloc_xnuspy_lck;
         }
 
         entry->elem = cursor;
         STAILQ_INSERT_TAIL(&freelist, entry, link);
         cursor++;
+        c++;
     }
 
     void *gct = NULL;
@@ -1491,7 +1493,8 @@ static int xnuspy_init(void){
 
     if(kret){
         kprintf("%s: kernel_thread_start failed: %d\n", __func__, kret);
-        return kern_return_to_errno(kret);
+        res = kern_return_to_errno(kret);
+        goto out_dealloc_xnuspy_lck;
     }
 
     thread_deallocate(gct);
@@ -1511,24 +1514,33 @@ static int xnuspy_init(void){
     }
 
     /* Zero out PAN in case no instruction did it before us. After our kernel
-     * patches, the PAN bit cannot be set to 1 again.
-     *
-     * msr pan, #0
-     *
-     * XXX XXX NEED TO CHECK IF THE HARDWARE SUPPORTS THIS BIT
-     */
+     * patches, the PAN bit cannot be set to 1 again. MSR PAN, #0 */
+    // XXX XXX NEED TO CHECK IF THE HARDWARE SUPPORTS THIS BIT
     asm volatile(".long 0xd500409f");
     asm volatile("isb sy");
-
-    /* combat short read of this image */
-    /* asm volatile(".align 14"); */
-    /* asm volatile(".align 14"); */
 
     xnuspy_init_flag = 1;
 
     kprintf("%s: xnuspy inited\n", __func__);
 
     return 0;
+
+out_dealloc_xnuspy_lck:;
+    lck_rw_free(xnuspy_rw_lck, grp);
+    xnuspy_rw_lck = NULL;
+out_dealloc_freelist:;
+    struct stailq_entry *entry, *tmp;
+
+    STAILQ_FOREACH_SAFE(entry, &freelist, link, tmp){
+        STAILQ_REMOVE(&freelist, entry, stailq_entry, link);
+        common_kfree(entry);
+    }
+
+    STAILQ_INIT(&freelist);
+out_dealloc_grp:
+    lck_grp_free(grp);
+out:
+    return res;
 }
 
 /* TODO: figure out a better way to do this */
@@ -1605,7 +1617,7 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
             res = xnuspy_dump_ttes(uap->arg1, uap->arg2);
             break;
         case XNUSPY_KREAD:
-            res = copyout(uap->arg1, uap->arg2, uap->arg3);
+            res = copyout((const void *)uap->arg1, uap->arg2, uap->arg3);
             break;
         case XNUSPY_GET_CURRENT_TASK:
             {
