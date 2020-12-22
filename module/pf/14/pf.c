@@ -11,7 +11,7 @@
 uint64_t g_kalloc_external_addr = 0;
 uint64_t g_kfree_ext_addr = 0;
 
-/* confirmed working 14.0-14.2 */
+/* confirmed working 14.0-14.3 */
 bool kalloc_external_finder_14(xnu_pf_patch_t *patch, void *cacheable_stream){
     xnu_pf_disable_patch(patch);
 
@@ -37,7 +37,7 @@ bool kalloc_external_finder_14(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
-/* confirmed working 14.0-14.2 */
+/* confirmed working 14.0-14.3 */
 bool kfree_ext_finder_14(xnu_pf_patch_t *patch, void *cacheable_stream){
     xnu_pf_disable_patch(patch);
 
@@ -63,7 +63,7 @@ bool kfree_ext_finder_14(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
-/* confirmed working 14.0-14.2 */
+/* confirmed working 14.0-14.3 */
 bool ExceptionVectorsBase_finder_14(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     xnu_pf_disable_patch(patch);
@@ -105,47 +105,57 @@ bool ExceptionVectorsBase_finder_14(xnu_pf_patch_t *patch,
     return true;
 }
 
-/* confirmed working 14.0-14.2 */
+/* confirmed working 14.0-14.3 */
 bool sysctl__kern_children_and_register_oid_finder_14(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     xnu_pf_disable_patch(patch);
 
+    /* We've landed inside corecrypto_kext_start. There's a stream of
+     * ADRP, BL _sysctl_register_oid right above where we are. I know that the
+     * first ADRP in this stream is how we can get sysctl_kern_children, so
+     * let's find the beginning. Search up, looking for STUR X8, [X29, n] */
     uint32_t *opcode_stream = cacheable_stream;
+    uint32_t limit = 500;
 
-    /* we've landed in entropy_buffer_init
-     *
-     * The first adrp/adr from this point on will lead us to
-     * sysctl__kern_children
-     */
+    while((*opcode_stream & 0xffe00fff) != 0xf80003a8){
+        if(limit-- == 0)
+            return false;
+
+        opcode_stream--;
+    }
+
+    /* Now we're on the STUR. The first ADRP,BL pair is actually a kprintf
+     * call, so skip the next four instructions */
+    opcode_stream += 4;
+
     uint64_t addr_va = 0;
 
-    if(bits(opcode_stream[7], 31, 31) == 0)
-        addr_va = get_adr_va_target(opcode_stream + 7);
+    if(bits(*opcode_stream, 31, 31) == 0)
+        addr_va = get_adr_va_target(opcode_stream);
     else
-        addr_va = get_adrp_add_va_target(opcode_stream + 7);
+        addr_va = get_adrp_add_va_target(opcode_stream);
 
     g_sysctl__kern_children_addr = *(uint64_t *)xnu_va_to_ptr(addr_va);
 
     /* tagged pointer */
-    if((g_sysctl__kern_children_addr & 0xffff000000000000) != 0xffff000000000000){
-        /* untag and slide */
+    if((g_sysctl__kern_children_addr & 0xffff000000000000) != 0xffff000000000000)
+        /* untag */
         g_sysctl__kern_children_addr |= ((uint64_t)0xffff << 48);
-        g_sysctl__kern_children_addr += kernel_slide;
-    }
 
-    /* the BL right after the adrp/adr is branching to sysctl_register_oid */
-    uint32_t *sysctl_register_oid = get_branch_dst_ptr(opcode_stream[9],
-            opcode_stream + 9);
+    g_sysctl__kern_children_addr += kernel_slide;
+
+    uint32_t *sysctl_register_oid = get_branch_dst_ptr(opcode_stream[2],
+            opcode_stream + 2);
 
     g_sysctl_register_oid_addr = xnu_ptr_to_va(sysctl_register_oid);
 
-    puts("xnuspy: found sysctl__kern_children");
-    puts("xnuspy: found sysctl_register_oid");
+    puts("svc_stalker: found sysctl__kern_children");
+    puts("svc_stalker: found sysctl_register_oid");
 
     return true;
 }
 
-/* confirmed working 14.0-14.2 */
+/* confirmed working 14.0-14.3 */
 bool lck_grp_alloc_init_finder_14(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     xnu_pf_disable_patch(patch);
@@ -162,7 +172,7 @@ bool lck_grp_alloc_init_finder_14(xnu_pf_patch_t *patch,
     return true;
 }
 
-/* confirmed working 14.0-14.2 */
+/* confirmed working 14.0-14.3 */
 bool lck_rw_alloc_init_finder_14(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     xnu_pf_disable_patch(patch);
@@ -179,7 +189,7 @@ bool lck_rw_alloc_init_finder_14(xnu_pf_patch_t *patch,
     return true;
 }
 
-/* confirmed working on all KTRR kernels 14.0-14.2 */
+/* confirmed working on all KTRR kernels 14.0-14.3 */
 bool ktrr_lockdown_patcher_14(xnu_pf_patch_t *patch, void *cacheable_stream){
     xnu_pf_disable_patch(patch);
 
@@ -195,7 +205,7 @@ bool ktrr_lockdown_patcher_14(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
-/* confirmed working on all KTRR kernels 14.0-14.2 */
+/* confirmed working on all KTRR kernels 14.0-14.3 */
 bool amcc_lockdown_patcher_14(xnu_pf_patch_t *patch, void *cacheable_stream){
     xnu_pf_disable_patch(patch);
 

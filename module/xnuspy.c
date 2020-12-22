@@ -262,8 +262,7 @@ struct kextrange {
 };
 
 /* purpose of this function is to add patchfinder ranges for kexts in such
- * a way that there are no duplicates in `*ranges`
- */
+ * a way that there are no duplicates in `*ranges` */
 static void add_kext_range(struct kextrange **ranges, const char *kext,
         const char *seg, const char *sect, size_t *nkextranges_out){
     size_t nkextranges = *nkextranges_out;
@@ -276,8 +275,7 @@ static void add_kext_range(struct kextrange **ranges, const char *kext,
         struct kextrange *kr = ranges[i];
 
         /* kext will never be NULL, otherwise, this function would have
-         * no point
-         */
+         * no point */
         if(strcmp(kr->kext, kext) == 0){
             /* same segment? It will be the same range even if the section differs */
             if(seg && strcmp(kr->seg, seg) == 0)

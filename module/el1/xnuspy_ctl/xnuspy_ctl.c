@@ -20,100 +20,7 @@
 
 #define PAGE_SIZE                   (0x4000)
 
-#define VM_KERN_MEMORY_NONE		0
-#define VM_KERN_MEMORY_OSFMK		1
-#define VM_KERN_MEMORY_BSD		2
-#define VM_KERN_MEMORY_IOKIT		3
-#define VM_KERN_MEMORY_LIBKERN		4
-#define VM_KERN_MEMORY_OSKEXT		5
-#define VM_KERN_MEMORY_KEXT		6
-#define VM_KERN_MEMORY_IPC		7
-#define VM_KERN_MEMORY_STACK		8
-#define VM_KERN_MEMORY_CPU		9
-#define VM_KERN_MEMORY_PMAP		10
-#define VM_KERN_MEMORY_PTE		11
-#define VM_KERN_MEMORY_ZONE		12
-#define VM_KERN_MEMORY_KALLOC		13
-#define VM_KERN_MEMORY_COMPRESSOR	14
-#define VM_KERN_MEMORY_COMPRESSED_DATA	15
-#define VM_KERN_MEMORY_PHANTOM_CACHE	16
-#define VM_KERN_MEMORY_WAITQ		17
-#define VM_KERN_MEMORY_DIAG		18
-#define VM_KERN_MEMORY_LOG		19
-#define VM_KERN_MEMORY_FILE		20
-#define VM_KERN_MEMORY_MBUF		21
-#define VM_KERN_MEMORY_UBC		22
-#define VM_KERN_MEMORY_SECURITY		23
-#define VM_KERN_MEMORY_MLOCK		24
-#define VM_KERN_MEMORY_REASON		25
-#define VM_KERN_MEMORY_SKYWALK		26
-#define VM_KERN_MEMORY_LTABLE		27
-#define VM_KERN_MEMORY_FIRST_DYNAMIC	28
-
-static const char *tagname(int tag){
-    switch(tag){
-        case VM_KERN_MEMORY_NONE:
-            return "none";
-        case VM_KERN_MEMORY_OSFMK:
-            return "osfmk";
-        case VM_KERN_MEMORY_BSD:
-            return "bsd";
-        case VM_KERN_MEMORY_IOKIT:
-            return "iokit";
-        case VM_KERN_MEMORY_LIBKERN:
-            return "libkern";
-        case VM_KERN_MEMORY_OSKEXT:
-            return "oskext";
-        case VM_KERN_MEMORY_KEXT:
-            return "kext";
-        case VM_KERN_MEMORY_IPC:
-            return "ipc";
-        case VM_KERN_MEMORY_STACK:
-            return "stack";
-        case VM_KERN_MEMORY_CPU:
-            return "cpu";
-        case VM_KERN_MEMORY_PMAP:
-            return "pmap";
-        case VM_KERN_MEMORY_PTE:
-            return "pte";
-        case VM_KERN_MEMORY_ZONE:
-            return "zone";
-        case VM_KERN_MEMORY_KALLOC:
-            return "kalloc";
-        case VM_KERN_MEMORY_COMPRESSOR:
-            return "compressor";
-        case VM_KERN_MEMORY_COMPRESSED_DATA:
-            return "compressed data";
-        case VM_KERN_MEMORY_PHANTOM_CACHE:
-            return "phantom cache";
-        case VM_KERN_MEMORY_WAITQ:
-            return "waitq";
-        case VM_KERN_MEMORY_DIAG:
-            return "diag";
-        case VM_KERN_MEMORY_LOG:
-            return "log";
-        case VM_KERN_MEMORY_FILE:
-            return "file";
-        case VM_KERN_MEMORY_MBUF:
-            return "mbuf";
-        case VM_KERN_MEMORY_UBC:
-            return "ubc";
-        case VM_KERN_MEMORY_SECURITY:
-            return "security";
-        case VM_KERN_MEMORY_MLOCK:
-            return "mlock";
-        case VM_KERN_MEMORY_REASON:
-            return "reason";
-        case VM_KERN_MEMORY_SKYWALK:
-            return "skywalk";
-        case VM_KERN_MEMORY_LTABLE:
-            return "liable";
-        case VM_KERN_MEMORY_FIRST_DYNAMIC:
-            return "first dynamic";
-        default:
-            return "unknown tag";
-    };
-}
+#define VM_KERN_MEMORY_OSFMK		(1)
 
 #define XNUSPY_INSTALL_HOOK         (0)
 #define XNUSPY_CHECK_IF_PATCHED     (1)
@@ -142,9 +49,23 @@ typedef unsigned int lck_rw_type_t;
 /* write */
 #define	LCK_RW_TYPE_EXCLUSIVE       0x02
 
+typedef	void (*thread_continue_t)(void *param, int wait_result);
+
+/* flags for mach_make_memory_entry_64 */
+#define MAP_MEM_LEDGER_TAG_NETWORK 0x002000 /* charge to "network" ledger */
+#define MAP_MEM_PURGABLE_KERNEL_ONLY 0x004000 /* volatility controlled by kernel */
+#define MAP_MEM_GRAB_SECLUDED	0x008000 /* can grab secluded pages */
+#define MAP_MEM_ONLY		0x010000 /* change processor caching  */
+#define MAP_MEM_NAMED_CREATE	0x020000 /* create extant object      */
+#define MAP_MEM_PURGABLE	0x040000 /* create a purgable VM object */
+#define MAP_MEM_NAMED_REUSE	0x080000 /* reuse provided entry if identical */
+#define MAP_MEM_USE_DATA_ADDR	0x100000 /* preserve address of data, rather than base of page */
+#define MAP_MEM_VM_COPY		0x200000 /* make a copy of a VM range */
+#define MAP_MEM_VM_SHARE	0x400000 /* extract a VM range for remap */
+#define	MAP_MEM_4K_DATA_ADDR	0x800000 /* preserve 4K aligned address of data */
+
 #define MARK_AS_KERNEL_OFFSET __attribute__((section("__DATA,__koff")))
 
-/* XXX For debugging only */
 MARK_AS_KERNEL_OFFSET void (*kprintf)(const char *fmt, ...);
 MARK_AS_KERNEL_OFFSET void (*IOSleep)(unsigned int millis);
 
@@ -154,15 +75,15 @@ MARK_AS_KERNEL_OFFSET void *(*kalloc_canblock)(vm_size_t *sizep, bool canblock,
 MARK_AS_KERNEL_OFFSET void *(*kalloc_external)(vm_size_t sz);
 MARK_AS_KERNEL_OFFSET void (*kfree_addr)(void *addr);
 MARK_AS_KERNEL_OFFSET void (*kfree_ext)(void *addr, vm_size_t sz);
-MARK_AS_KERNEL_OFFSET void (*lck_rw_lock_shared)(void *lock);
+/* MARK_AS_KERNEL_OFFSET void (*lck_rw_lock_shared)(void *lock); */
 
 MARK_AS_KERNEL_OFFSET int (*lck_rw_lock_shared_to_exclusive)(lck_rw_t *lck);
 
 /* XXX XXX these one has not had its offset found yet!! */
-MARK_AS_KERNEL_OFFSET int (*lck_rw_lock_exclusive_to_shared)(lck_rw_t *lck);
+/* MARK_AS_KERNEL_OFFSET int (*lck_rw_lock_exclusive_to_shared)(lck_rw_t *lck); */
 
 MARK_AS_KERNEL_OFFSET void (*lck_rw_lock)(lck_rw_t *lock, lck_rw_type_t lck_rw_type);
-MARK_AS_KERNEL_OFFSET void (*lck_rw_unlock)(lck_rw_t *lock, lck_rw_type_t lck_rw_type);
+/* MARK_AS_KERNEL_OFFSET void (*lck_rw_unlock)(lck_rw_t *lock, lck_rw_type_t lck_rw_type); */
 
 /* the two below found by xrefing l2tp_udp_init: can't alloc mutex for iOS 13.x */
 MARK_AS_KERNEL_OFFSET void (*lck_rw_free)(lck_rw_t *lock, void *grp);
@@ -191,29 +112,28 @@ MARK_AS_KERNEL_OFFSET uint64_t (*proc_uniqueid)(void *proc);
 MARK_AS_KERNEL_OFFSET void (*proc_ref_locked)(void *proc);
 MARK_AS_KERNEL_OFFSET void (*proc_rele_locked)(void *proc);
 
-MARK_AS_KERNEL_OFFSET uint32_t *ncpusp;
-MARK_AS_KERNEL_OFFSET struct cpu_data_entry *CpuDataEntriesp;
-MARK_AS_KERNEL_OFFSET vm_offset_t (*ml_io_map)(vm_offset_t phys_addr,
-        vm_size_t size);
-MARK_AS_KERNEL_OFFSET void *mh_execute_header;
+/* MARK_AS_KERNEL_OFFSET uint32_t *ncpusp; */
+/* MARK_AS_KERNEL_OFFSET struct cpu_data_entry *CpuDataEntriesp; */
+/* MARK_AS_KERNEL_OFFSET vm_offset_t (*ml_io_map)(vm_offset_t phys_addr, */
+/*         vm_size_t size); */
+/* MARK_AS_KERNEL_OFFSET void *mh_execute_header; */
 MARK_AS_KERNEL_OFFSET uint64_t kernel_slide;
 
-MARK_AS_KERNEL_OFFSET void (*flush_mmu_tlb_region)(uint64_t va, uint32_t len);
-MARK_AS_KERNEL_OFFSET void (*flush_mmu_tlb_region_asid_async)(uint64_t va,
-        uint32_t len, void *pmap);
-MARK_AS_KERNEL_OFFSET void (*InvalidatePoU_IcacheRegion)(uint64_t va, uint32_t len);
-MARK_AS_KERNEL_OFFSET void *(*current_task)(void);
-MARK_AS_KERNEL_OFFSET uint64_t (*pmap_map)(uint64_t virt, vm_offset_t start,
-        vm_offset_t end, vm_prot_t prot, unsigned int flags);
-MARK_AS_KERNEL_OFFSET void *kernel_pmap;
-MARK_AS_KERNEL_OFFSET int (*pmap_expand)(void *pmap, uint64_t v, unsigned int options,
-        unsigned int level);
-MARK_AS_KERNEL_OFFSET void (*_disable_preemption)(void);
-MARK_AS_KERNEL_OFFSET void (*_enable_preemption)(void);
-MARK_AS_KERNEL_OFFSET kern_return_t (*kernel_memory_allocate)(void *map,
-        uint64_t *addrp, vm_size_t size, vm_offset_t mask, int flags, int tag);
+/* MARK_AS_KERNEL_OFFSET void (*flush_mmu_tlb_region)(uint64_t va, uint32_t len); */
+/* MARK_AS_KERNEL_OFFSET void (*flush_mmu_tlb_region_asid_async)(uint64_t va, */
+/*         uint32_t len, void *pmap); */
+/* MARK_AS_KERNEL_OFFSET void (*InvalidatePoU_IcacheRegion)(uint64_t va, uint32_t len); */
+/* MARK_AS_KERNEL_OFFSET void *(*current_task)(void); */
+/* MARK_AS_KERNEL_OFFSET uint64_t (*pmap_map)(uint64_t virt, vm_offset_t start, */
+/*         vm_offset_t end, vm_prot_t prot, unsigned int flags); */
+/* MARK_AS_KERNEL_OFFSET void *kernel_pmap; */
+/* MARK_AS_KERNEL_OFFSET int (*pmap_expand)(void *pmap, uint64_t v, unsigned int options, */
+/*         unsigned int level); */
+/* MARK_AS_KERNEL_OFFSET void (*_disable_preemption)(void); */
+/* MARK_AS_KERNEL_OFFSET void (*_enable_preemption)(void); */
+/* MARK_AS_KERNEL_OFFSET kern_return_t (*kernel_memory_allocate)(void *map, */
+/*         uint64_t *addrp, vm_size_t size, vm_offset_t mask, int flags, int tag); */
 
-MARK_AS_KERNEL_OFFSET void **kernel_mapp;
 
 MARK_AS_KERNEL_OFFSET kern_return_t (*vm_map_wire_kernel)(void *map,
         uint64_t start, uint64_t end, vm_prot_t prot, int tag, int user_wire);
@@ -223,35 +143,44 @@ MARK_AS_KERNEL_OFFSET kern_return_t (*_mach_make_memory_entry_64)(void *target_m
         uint64_t *size, uint64_t offset, vm_prot_t prot, void **object_handle,
         void *parent_handle);
 
-typedef	void (*thread_continue_t)(void *param, int wait_result);
-
 MARK_AS_KERNEL_OFFSET kern_return_t (*kernel_thread_start)(thread_continue_t continuation,
         void *parameter, void **new_thread);
+
 MARK_AS_KERNEL_OFFSET void (*thread_deallocate)(void *thread);
 
 MARK_AS_KERNEL_OFFSET void (*ipc_port_release_send)(void *port);
+
 MARK_AS_KERNEL_OFFSET kern_return_t (*mach_vm_deallocate)(void *map,
         uint64_t start, uint64_t size);
 
 MARK_AS_KERNEL_OFFSET kern_return_t (*vm_map_unwire)(void *map, uint64_t start,
         uint64_t end, int user);
 
-typedef	struct {
-    mach_msg_bits_t     msgh_bits;
-    mach_msg_size_t     msgh_size;
-    mach_port_t         msgh_remote_port;
-    mach_port_t         msgh_local_port;
-    mach_port_name_t    msgh_voucher_port;
-    mach_msg_id_t       msgh_id;
-} k_mach_msg_header_t;
-
-/* struct proc { */
-/*     LIST_ENTRY(proc) p_list; */
-/* }; */
-
-MARK_AS_KERNEL_OFFSET void **kernprocp;
-/* MARK_AS_KERNEL_OFFSET LIST_HEAD(, proc) **allprocp; */
+/* MARK_AS_KERNEL_OFFSET void **kernprocp; */
+MARK_AS_KERNEL_OFFSET void **kernel_mapp;
 MARK_AS_KERNEL_OFFSET void **allprocp;
+
+
+MARK_AS_KERNEL_OFFSET kern_return_t (*mach_vm_map_external)(void *target_map,
+        uint64_t *address, uint64_t size, uint64_t mask, int flags,
+        void *memory_object, uint64_t offset, int copy,
+        vm_prot_t cur_protection, vm_prot_t max_protection,
+        vm_inherit_t inheritance);
+
+/* MARK_AS_KERNEL_OFFSET kern_return_t (*mach_vm_map_kernel)(void *target_map, */
+/*         uint64_t *address, uint64_t size, uint64_t mask, int flags, */
+/*         vm_map_kernel_flags_t vmk_flags, int tag, void *memory_object, */
+/*         uint64_t offset, int copy, vm_prot_t cur_protection, */
+/*         vm_prot_t max_protection, vm_inherit_t inheritance); */
+
+/* MARK_AS_KERNEL_OFFSET kern_return_t (*ml_static_protect)(uint64_t vaddr, */
+/*         uint64_t size, vm_prot_t prot); */
+
+/* MARK_AS_KERNEL_OFFSET void (*pmap_protect_options)(void *pmap, uint64_t start, */
+/*         uint64_t end, vm_prot_t prot, unsigned int options, void *args); */
+
+/* MARK_AS_KERNEL_OFFSET kern_return_t (*vm_map_protect)(void *map, uint64_t start, */
+/*         uint64_t end, vm_prot_t new_prot, int setmax); */
 
 typedef struct {
     unsigned int
@@ -275,95 +204,6 @@ typedef struct {
         vmkf_no_copy_on_read:1,
         __vmkf_unused:14;
 } vm_map_kernel_flags_t;
-
-MARK_AS_KERNEL_OFFSET kern_return_t (*mach_vm_map_external)(void *target_map,
-        uint64_t *address, uint64_t size, uint64_t mask, int flags,
-        void *memory_object, uint64_t offset, int copy,
-        vm_prot_t cur_protection, vm_prot_t max_protection,
-        vm_inherit_t inheritance);
-
-MARK_AS_KERNEL_OFFSET kern_return_t (*mach_vm_map_kernel)(void *target_map,
-        uint64_t *address, uint64_t size, uint64_t mask, int flags,
-        vm_map_kernel_flags_t vmk_flags, int tag, void *memory_object,
-        uint64_t offset, int copy, vm_prot_t cur_protection,
-        vm_prot_t max_protection, vm_inherit_t inheritance);
-
-MARK_AS_KERNEL_OFFSET kern_return_t (*ml_static_protect)(uint64_t vaddr,
-        uint64_t size, vm_prot_t prot);
-
-MARK_AS_KERNEL_OFFSET void (*pmap_protect_options)(void *pmap, uint64_t start,
-        uint64_t end, vm_prot_t prot, unsigned int options, void *args);
-
-MARK_AS_KERNEL_OFFSET kern_return_t (*vm_map_protect)(void *map, uint64_t start,
-        uint64_t end, vm_prot_t new_prot, int setmax);
-
-/* flags for mach_make_memory_entry_64 */
-#define MAP_MEM_LEDGER_TAG_NETWORK 0x002000 /* charge to "network" ledger */
-#define MAP_MEM_PURGABLE_KERNEL_ONLY 0x004000 /* volatility controlled by kernel */
-#define MAP_MEM_GRAB_SECLUDED	0x008000 /* can grab secluded pages */
-#define MAP_MEM_ONLY		0x010000 /* change processor caching  */
-#define MAP_MEM_NAMED_CREATE	0x020000 /* create extant object      */
-#define MAP_MEM_PURGABLE	0x040000 /* create a purgable VM object */
-#define MAP_MEM_NAMED_REUSE	0x080000 /* reuse provided entry if identical */
-#define MAP_MEM_USE_DATA_ADDR	0x100000 /* preserve address of data, rather than base of page */
-#define MAP_MEM_VM_COPY		0x200000 /* make a copy of a VM range */
-#define MAP_MEM_VM_SHARE	0x400000 /* extract a VM range for remap */
-#define	MAP_MEM_4K_DATA_ADDR	0x800000 /* preserve 4K aligned address of data */
-
-/* flags for kernel_memory_allocate */
-#define KMA_HERE        0x01
-#define KMA_NOPAGEWAIT  0x02
-#define KMA_KOBJECT     0x04
-#define KMA_LOMEM       0x08
-#define KMA_GUARD_FIRST 0x10
-#define KMA_GUARD_LAST  0x20
-#define KMA_PERMANENT   0x40
-#define KMA_NOENCRYPT   0x80
-#define KMA_KSTACK      0x100
-#define KMA_VAONLY      0x200
-#define KMA_COMPRESSOR  0x400   /* Pages belonging to the compressor are not on the paging queues, nor are they counted as wired. */
-#define KMA_ATOMIC      0x800
-#define KMA_ZERO        0x1000
-#define KMA_PAGEABLE    0x2000
-
-struct pmap_statistics {
-    integer_t	resident_count;	/* # of pages mapped (total)*/
-    integer_t	resident_max;	/* # of pages mapped (peak) */
-    integer_t	wired_count;	/* # of pages wired */
-    integer_t	device;
-    integer_t	device_peak;
-    integer_t	internal;
-    integer_t	internal_peak;
-    integer_t	external;
-    integer_t	external_peak;
-    integer_t	reusable;
-    integer_t	reusable_peak;
-    uint64_t	compressed __attribute__((aligned(8)));
-    uint64_t	compressed_peak __attribute__((aligned(8)));
-    uint64_t	compressed_lifetime __attribute__((aligned(8)));
-};
-
-struct queue_entry {
-    struct queue_entry *next;
-    struct queue_entry *prev;
-};
-
-typedef struct queue_entry queue_chain_t;
-typedef struct queue_entry queue_head_t;
-
-struct pmap {
-    uint64_t *tte;
-    uint64_t ttep;
-    uint64_t min;
-    uint64_t max;
-    void *ledger;
-    struct {
-        uint64_t lock_data;
-        uint64_t type;
-    } lock;
-    struct pmap_statistics stats;
-    queue_chain_t pmaps;
-};
 
 struct vm_map_links {
     struct vm_map_entry *prev;
@@ -450,8 +290,8 @@ struct _vm_map {
     struct vm_map_header hdr;
 };
 
-MARK_AS_KERNEL_OFFSET struct pmap *(*get_task_pmap)(void *task);
-MARK_AS_KERNEL_OFFSET queue_head_t *map_pmap_list;
+/* MARK_AS_KERNEL_OFFSET struct pmap *(*get_task_pmap)(void *task); */
+/* MARK_AS_KERNEL_OFFSET queue_head_t *map_pmap_list; */
 
 /* shorter macros so I can stay under 80 column lines */
 /* #define DIST_FROM_REFCNT_TO(x) __builtin_offsetof(struct xnuspy_tramp, x) - \ */
@@ -1620,11 +1460,14 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
             res = copyout((const void *)uap->arg1, uap->arg2, uap->arg3);
             break;
         case XNUSPY_GET_CURRENT_TASK:
-            {
-                void *ct = current_task();
-                res = copyout(&ct, uap->arg1, sizeof(void *));
-                break;
-            }
+            *retval = -1;
+            return ENOSYS;
+        /* case XNUSPY_GET_CURRENT_TASK: */
+        /*     { */
+        /*         void *ct = current_task(); */
+        /*         res = copyout(&ct, uap->arg1, sizeof(void *)); */
+        /*         break; */
+        /*     } */
         default:
             *retval = -1;
             return EINVAL;

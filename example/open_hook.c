@@ -780,6 +780,12 @@ struct IOExternalMethod {
     uint64_t count1;
 };
 
+/* static void (*kernel_log)(int level, const char *fmt, ...) = */
+/*     (void (*)(int, const char *, ...))NULL; */
+/* static void (*kwrite_instr)(uint64_t dst, uint32_t instr) = */
+/*     (void (*)(uint64_t, uint32_t))NULL; */
+/* static void (*IOLog)(const char *fmt, ...) = (void (*)(const char *, ...))NULL; */
+
 struct IOExternalMethod *(*FairPlayIOKitUserClient_getTargetAndMethodForIndex)(void *this, void **x1, uint32_t idx);
 
 struct IOExternalMethod *_FairPlayIOKitUserClient_getTargetAndMethodForIndex(void *this, void **x1, uint32_t idx){
@@ -812,6 +818,12 @@ struct IOExternalMethod *_FairPlayIOKitUserClient_getTargetAndMethodForIndex(voi
 
     kprintf("%s: +0x578 == %#llx\n", __func__, plus_0x578 - kernel_slide);
 
+    /* kwrite_instr(0xFFFFFFF008118D20 + kernel_slide, 0xD503201F); */
+    /* kwrite_instr(0xFFFFFFF0081189C4 + kernel_slide, 0xD503201F); */
+    /* kwrite_instr(0xFFFFFFF0081D2904 + kernel_slide, 0x52800008); */
+    /* kernel_log(0, "%s: testing kernel_log\n", __func__); */
+    /* IOLog("%s: testing IOLog\n", __func__); */
+
     return res;
 }
 
@@ -836,6 +848,7 @@ struct IOExternalMethod *_KeyDeliveryIOKitUserClient_getTargetAndMethodForIndex(
     else{
         kprintf(", got nothing back\n");
     }
+
 
     /* void *provider = *(void **)((uintptr_t)this + 0xd8); */
     
@@ -943,6 +956,12 @@ int main(int argc, char **argv){
 
     ret = syscall(SYS_xnuspy_ctl, XNUSPY_GET_FUNCTION, KERNEL_SLIDE, &kernel_slide, 0);
     printf("got kernel slide @ %#llx\n", kernel_slide);
+
+    /* kernel_log = (void (*)(int, const char *, ...))(0xFFFFFFF007BF71CC + kernel_slide); */
+    /* /1* XXX NEED TO CHANGE EVERY TIME *1/ */
+    /* kwrite_instr = (void (*)(uint64_t, uint32_t))(0xFFFFFFF00A040994 + kernel_slide); */
+    /* IOLog = (void (*)(const char *, ...))(0xFFFFFFF008134654 + kernel_slide); */
+
     ret = syscall(SYS_xnuspy_ctl, XNUSPY_GET_FUNCTION, KPROTECT, &kprotect, 0);
     printf("got kprotect @ %#llx\n", kprotect);
     ret = syscall(SYS_xnuspy_ctl, XNUSPY_GET_FUNCTION, COPYOUT, &copyout, 0);

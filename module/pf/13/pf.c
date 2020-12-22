@@ -33,6 +33,7 @@ uint64_t g_bcopy_phys_addr = 0;
 uint64_t g_phystokv_addr = 0;
 uint64_t g_copyin_addr = 0;
 uint64_t g_copyout_addr = 0;
+uint64_t g_IOSleep_addr = 0;
 uint64_t g_xnuspy_sysctl_name_ptr = 0;
 uint64_t g_xnuspy_sysctl_descr_ptr = 0;
 uint64_t g_xnuspy_sysctl_fmt_ptr = 0;
@@ -611,7 +612,7 @@ bool copyin_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     g_copyin_addr = xnu_ptr_to_va(opcode_stream);
 
     puts("xnuspy: found copyin");
-    printf("%s: copyin @ %#llx\n", __func__, g_copyin_addr - kernel_slide);
+    /* printf("%s: copyin @ %#llx\n", __func__, g_copyin_addr - kernel_slide); */
 
     return true;
 }
@@ -647,7 +648,7 @@ bool copyout_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     g_copyout_addr = xnu_ptr_to_va(opcode_stream);
 
     puts("xnuspy: found copyout");
-    printf("%s: copyout @ %#llx\n", __func__, g_copyout_addr - kernel_slide);
+    /* printf("%s: copyout @ %#llx\n", __func__, g_copyout_addr - kernel_slide); */
 
     return true;
 }
@@ -660,6 +661,18 @@ bool PAN_disabler_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
+bool IOSleep_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
+    xnu_pf_disable_patch(patch);
+
+    g_IOSleep_addr = xnu_ptr_to_va(cacheable_stream);
+
+    puts("xnuspy: found IOSleep");
+    /* printf("%s: IOSleep @ %#llx\n", __func__, g_IOSleep_addr - kernel_slide); */
+
+    return true;
+}
+
+#if 0
 /* confirmed working on all kernels 13.0-14.2 */
 bool DAIFSet_patcher_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     /* Because we are using hardware breakpoints to synchronize access
@@ -723,3 +736,4 @@ bool LowResetVectorBase_patcher_13(xnu_pf_patch_t *patch, void *cacheable_stream
 
     return true;
 }
+#endif

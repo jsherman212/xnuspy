@@ -225,6 +225,7 @@ int main(int argc, char **argv, const char **envp){
     
     munmap(module_data, module_size);
 
+#if 0
     usleep(200 * 1000);
 
     err = pongo_send_command(pongo_device, "xnuspy-getkernelv\n");
@@ -240,7 +241,7 @@ int main(int argc, char **argv, const char **envp){
     /* we may have had to pwn SEPROM, so wait a bit longer before we continue */
     /* sleep(4); */
 
-    /* send the compiled xnuspy_ctl syscall */
+    /* send the compiled xnuspy_ctl image */
     err = pongo_init_bulk_upload(pongo_device);
 
     if(err < 0){
@@ -267,6 +268,7 @@ int main(int argc, char **argv, const char **envp){
     }
 
     sleep(2);
+#endif
 
 /* #if 0 */
     err = pongo_send_command(pongo_device, "xnuspy-prep\n");
@@ -279,7 +281,7 @@ int main(int argc, char **argv, const char **envp){
         return 1;
     }
 
-/* #if 0 */
+#if 0
     usleep(800 * 1000);
 
     err = pongo_send_command(pongo_device, "bootx\n");
@@ -291,7 +293,7 @@ int main(int argc, char **argv, const char **envp){
         libusb_exit(NULL);
         return 1;
     }
-/* #endif */
+#endif
 
     libusb_release_interface(pongo_device, 0);
     libusb_close(pongo_device);

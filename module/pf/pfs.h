@@ -165,22 +165,23 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
                 0x0,            /* ignore this instruction */
             }),
             8, sysctl__kern_children_finder_13, "__TEXT_EXEC"),
-        PF_DECL32("sysctl__kern_children & sysctl_register_oid finder iOS 14",
+        PF_DECL_FULL("sysctl__kern_children & sysctl_register_oid finder iOS 14",
             LISTIZE({
-                0x9e670260,     /* fmov d0, x19 */
-                0x0e205800,     /* cnt v0.8b, v0.8b */
-                0x2e303800,     /* uaddlv h0, v0.8b */
-                0x1e260008,     /* fmov w8, s0 */
-                0x7100827f,     /* cmp w19, 0x20 */
+                0x94000000,     /* bl n */
+                0x10000008,     /* adrp x8, n or adr x8, n */
+                0x0,            /* ignore this instruction */
+                0xad400500,     /* ldp q0, q1, [x8] */
+                0xad0087e0,     /* stp q0, q1, [sp, 0x10] */
             }),
             LISTIZE({
-                0xffffffff,     /* match exactly */
-                0xffffffff,     /* match exactly */
-                0xffffffff,     /* match exactly */
+                0xfc000000,     /* ignore immediate */
+                0x1f00001f,     /* ignore immediate */
+                0x0,            /* ignore this instruction */
                 0xffffffff,     /* match exactly */
                 0xffffffff,     /* match exactly */
             }),
-            5, sysctl__kern_children_and_register_oid_finder_14, "__TEXT_EXEC"),
+            5, XNU_PF_ACCESS_32BIT, sysctl__kern_children_and_register_oid_finder_14,
+            "com.apple.kec.corecrypto", "__TEXT_EXEC", NULL),
     },
     {
         PF_DECL32("sysctl_register_oid finder iOS 13",
@@ -646,7 +647,7 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
                 0xffffffff,     /* match exactly */
             }),
             1, PAN_disabler_13, "__TEXT_EXEC"),
-        PF_DECL32("PAN disabler iOS 13",
+        PF_DECL32("PAN disabler iOS 14",
             LISTIZE({
                 0xd500419f,     /* msr PAN, #1 */
             }),
@@ -654,6 +655,40 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
                 0xffffffff,     /* match exactly */
             }),
             1, PAN_disabler_13, "__TEXT_EXEC"),
+    },
+    {
+        PF_DECL32("IOSleep finder iOS 13",
+            LISTIZE({
+                0x52884801,     /* mov w1, 0x4240 */
+                0x72a001e1,     /* movk w1, 0xf, lsl 16 */
+                0x14000000,     /* b _delay_for_interval */
+                0x52884802,     /* mov w2, 0x4240 */
+                0x72a001e2,     /* movk w2, 0xf, lsl 16 */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xfc000000,     /* ignore immediate */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+            }),
+            5, IOSleep_finder_13, "__TEXT_EXEC"),
+        PF_DECL32("IOSleep finder iOS 14",
+            LISTIZE({
+                0x52884801,     /* mov w1, 0x4240 */
+                0x72a001e1,     /* movk w1, 0xf, lsl 16 */
+                0x14000000,     /* b _delay_for_interval */
+                0x52884802,     /* mov w2, 0x4240 */
+                0x72a001e2,     /* movk w2, 0xf, lsl 16 */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xfc000000,     /* ignore immediate */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+            }),
+            5, IOSleep_finder_13, "__TEXT_EXEC"),
     },
     /* { */
     /*     PF_DECL32("DAIFSet patcher iOS 13", */
