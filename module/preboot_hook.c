@@ -72,7 +72,7 @@ static uint64_t g_xnuspy_ctl_img_codesz = 0;
 /* iphone 8 13.6.1 */
 /* static uint64_t g_IOSleep_addr = 0xFFFFFFF00813462C; */
 /* iphone 8 13.6.1 */
-static uint64_t g_kprintf_addr = 0xFFFFFFF0081D28E0;
+/* static uint64_t g_kprintf_addr = 0xFFFFFFF0081D28E0; */
 /* iphone x 13.3.1 */
 /* static uint64_t g_kprintf_addr = 0xFFFFFFF0081A08F4; */
 
@@ -133,6 +133,7 @@ static struct xnuspy_ctl_offset {
     { "_kernel_slide", &kernel_slide },
     { "_kfree_addr", &g_kfree_addr_addr },
     { "_kfree_ext", &g_kfree_ext_addr },
+    { "_kprintf", &g_kprintf_addr },
     { "_lck_grp_alloc_init", &g_lck_grp_alloc_init_addr },
     { "_lck_rw_alloc_init", &g_lck_rw_alloc_init_addr },
     { "_lck_rw_done", &g_lck_rw_done_addr },

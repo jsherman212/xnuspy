@@ -657,7 +657,7 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
             1, PAN_disabler_13, "__TEXT_EXEC"),
     },
     {
-        PF_DECL32("IOSleep finder iOS 13",
+        PF_DECL32("IOSleep finder iOS 14",
             LISTIZE({
                 0x52884801,     /* mov w1, 0x4240 */
                 0x72a001e1,     /* movk w1, 0xf, lsl 16 */
@@ -689,6 +689,36 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
                 0xffffffff,     /* match exactly */
             }),
             5, IOSleep_finder_13, "__TEXT_EXEC"),
+    },
+    {
+        PF_DECL32("kprintf finder iOS 13",
+            LISTIZE({
+                0x910003fd,     /* add x29, sp, #n */
+                0xaa1e03f3,     /* mov x19, x30 */
+                0xaa0003f4,     /* mov x20, x0 */
+                0xa9007fff,     /* stp xzr, xzr, [sp] */
+            }),
+            LISTIZE({
+                0xffc003ff,     /* ignore immediate */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+            }),
+            4, kprintf_finder_13, "__TEXT_EXEC"),
+        PF_DECL32("kprintf finder iOS 14",
+            LISTIZE({
+                0x910003fd,     /* add x29, sp, #n */
+                0xaa1e03f3,     /* mov x19, x30 */
+                0xaa0003f4,     /* mov x20, x0 */
+                0xa9007fff,     /* stp xzr, xzr, [sp] */
+            }),
+            LISTIZE({
+                0xffc003ff,     /* ignore immediate */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+            }),
+            4, kprintf_finder_13, "__TEXT_EXEC"),
     },
     /* { */
     /*     PF_DECL32("DAIFSet patcher iOS 13", */

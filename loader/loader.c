@@ -225,7 +225,7 @@ int main(int argc, char **argv, const char **envp){
     
     munmap(module_data, module_size);
 
-#if 0
+/* #if 0 */
     usleep(200 * 1000);
 
     err = pongo_send_command(pongo_device, "xnuspy-getkernelv\n");
@@ -268,7 +268,7 @@ int main(int argc, char **argv, const char **envp){
     }
 
     sleep(2);
-#endif
+/* #endif */
 
 /* #if 0 */
     err = pongo_send_command(pongo_device, "xnuspy-prep\n");

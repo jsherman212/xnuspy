@@ -34,6 +34,7 @@ uint64_t g_phystokv_addr = 0;
 uint64_t g_copyin_addr = 0;
 uint64_t g_copyout_addr = 0;
 uint64_t g_IOSleep_addr = 0;
+uint64_t g_kprintf_addr = 0;
 uint64_t g_xnuspy_sysctl_name_ptr = 0;
 uint64_t g_xnuspy_sysctl_descr_ptr = 0;
 uint64_t g_xnuspy_sysctl_fmt_ptr = 0;
@@ -41,7 +42,7 @@ uint64_t g_xnuspy_sysctl_mib_ptr = 0;
 uint64_t g_xnuspy_sysctl_mib_count_ptr = 0;
 uint64_t g_xnuspy_ctl_callnum = 0;
 
-/* confirmed working on all kernels 13.0-14.2 */
+/* confirmed working on all kernels 13.0-14.3 */
 bool sysent_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     uint32_t *opcode_stream = cacheable_stream;
 
@@ -284,7 +285,7 @@ bool sysctl_register_oid_finder_13(xnu_pf_patch_t *patch,
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.2 */
+/* confirmed working on all kernels 13.0-14.3 */
 bool sysctl_handle_long_finder_13(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     uint32_t *opcode_stream = cacheable_stream;
@@ -305,7 +306,7 @@ bool sysctl_handle_long_finder_13(xnu_pf_patch_t *patch,
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.2 */
+/* confirmed working on all kernels 13.0-14.3 */
 bool name2oid_and_its_dependencies_finder_13(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     uint32_t *opcode_stream = cacheable_stream;
@@ -353,7 +354,7 @@ bool name2oid_and_its_dependencies_finder_13(xnu_pf_patch_t *patch,
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.2 */
+/* confirmed working on all kernels 13.0-14.3 */
 bool hook_system_check_sysctlbyname_finder_13(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     uint32_t *opcode_stream = cacheable_stream;
@@ -461,7 +462,7 @@ bool lck_rw_alloc_init_finder_13(xnu_pf_patch_t *patch,
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.2 */
+/* confirmed working on all kernels 13.0-14.3 */
 bool bcopy_phys_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     uint32_t *opcode_stream = cacheable_stream;
 
@@ -500,7 +501,7 @@ bool bcopy_phys_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.2 */
+/* confirmed working on all kernels 13.0-14.3 */
 bool phystokv_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     xnu_pf_disable_patch(patch);
 
@@ -519,7 +520,7 @@ bool phystokv_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
-/* confirmed working on all KPP kernels 13.0-14.2 */
+/* confirmed working on all KPP kernels 13.0-14.3 */
 bool kpp_patcher_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     xnu_pf_disable_patch(patch);
 
@@ -528,7 +529,7 @@ bool kpp_patcher_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     /* We do not want the kernel telling KPP to enforce kernel integrity,
      * so we patch monitor_call's smc 0x11 to NOP.
      */
-    /* XXX 14.2 panics with this NOP patch */
+    /* XXX 14.3 panics with this NOP patch */
     /* *opcode_stream = 0xd503201f; */
     /* *opcode_stream = 0xD2800000; */
 
@@ -590,7 +591,7 @@ bool amcc_lockdown_patcher_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.2 */
+/* confirmed working on all kernels 13.0-14.3 */
 bool copyin_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     xnu_pf_disable_patch(patch);
 
@@ -617,7 +618,7 @@ bool copyin_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.2 */
+/* confirmed working on all kernels 13.0-14.3 */
 bool copyout_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     uint32_t *opcode_stream = cacheable_stream;
 
@@ -653,7 +654,7 @@ bool copyout_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.2 */
+/* confirmed working on all kernels 13.0-14.3 */
 bool PAN_disabler_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     /* replaces all msr PAN, #1 with msr PAN, #0 */
     *(uint32_t *)cacheable_stream = 0xd500409f;
@@ -661,6 +662,7 @@ bool PAN_disabler_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
+/* confirmed working on all kernels 13.0-14.3 */
 bool IOSleep_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     xnu_pf_disable_patch(patch);
 
@@ -672,8 +674,31 @@ bool IOSleep_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
+/* confirmed working on all kernels 13.0-14.3 */
+bool kprintf_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
+    xnu_pf_disable_patch(patch);
+
+    /* We've landed inside kprintf, search up for the start of its prologue */
+    uint32_t *opcode_stream = cacheable_stream;
+
+    uint32_t instr_limit = 20;
+
+    while((*opcode_stream & 0xffc003ff) != 0xd10003ff){
+        if(instr_limit-- == 0)
+            return false;
+
+        opcode_stream--;
+    }
+
+    g_kprintf_addr = xnu_ptr_to_va(opcode_stream);
+
+    puts("xnuspy: found kprintf");
+    printf("%s: kprintf @ %#llx\n", __func__, g_kprintf_addr - kernel_slide);
+    return true;
+}
+
 #if 0
-/* confirmed working on all kernels 13.0-14.2 */
+/* confirmed working on all kernels 13.0-14.3 */
 bool DAIFSet_patcher_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     /* Because we are using hardware breakpoints to synchronize access
      * to code we're modifying, we need to make sure PSTATE.D is never
@@ -689,7 +714,7 @@ bool DAIFSet_patcher_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.2 */
+/* confirmed working on all kernels 13.0-14.3 */
 bool LowResetVectorBase_patcher_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     /* PSTATE.D is masked before the device returns to LowResetVectorBase
      * upon reset. See the pseudocode for AArch64.TakeReset in the ARMv8
