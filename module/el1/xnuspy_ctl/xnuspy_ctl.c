@@ -1310,7 +1310,10 @@ static int xnuspy_init(void){
 
     struct xnuspy_tramp *cursor = (struct xnuspy_tramp *)xnuspy_tramp_page;
 
+<<<<<<< HEAD
     int c = 0;
+=======
+>>>>>>> 9a59bf6c6dcde1f90fd9cd6c9ab120ab9094993c
     while((uint8_t *)cursor < xnuspy_tramp_page_end){
     /* int lim = 5; */
     /* for(int i=0; i<lim; i++){ */
@@ -1318,8 +1321,14 @@ static int xnuspy_init(void){
 
         if(!entry){
             kprintf("%s: no mem for stailq_entry\n", __func__);
+<<<<<<< HEAD
             res = ENOMEM;
             goto out_dealloc_xnuspy_lck;
+=======
+            /* TODO: free what was allocated before this and destroy what
+             * has been made of the freelist and usedlist */
+            return ENOMEM;
+>>>>>>> 9a59bf6c6dcde1f90fd9cd6c9ab120ab9094993c
         }
 
         entry->elem = cursor;
