@@ -1,8 +1,6 @@
 CFLAGS += -mkernel
 LDFLAGS = -Xlinker -kext -nostdlib
 
-# XXX compress later
-
 all : asm.o mem.o pte.o tramp.o xnuspy_ctl
 
 asm.o : asm.c asm.h externs.h

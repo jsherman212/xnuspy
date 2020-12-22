@@ -1470,14 +1470,15 @@ static int xnuspy_init(void){
 
     struct xnuspy_tramp *cursor = (struct xnuspy_tramp *)xnuspy_tramp_page;
 
-    /* while((uint8_t *)cursor < xnuspy_tramp_page_end){ */
-    int lim = 5;
-    for(int i=0; i<lim; i++){
+    while((uint8_t *)cursor < xnuspy_tramp_page_end){
+    /* int lim = 5; */
+    /* for(int i=0; i<lim; i++){ */
         struct stailq_entry *entry = common_kalloc(sizeof(*entry));
 
         if(!entry){
             kprintf("%s: no mem for stailq_entry\n", __func__);
-            /* TODO: free what was allocated before this */
+            /* TODO: free what was allocated before this and destroy what
+             * has been made of the freelist and usedlist */
             return ENOMEM;
         }
 

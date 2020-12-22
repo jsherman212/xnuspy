@@ -1,4 +1,4 @@
-TARGET_DIRS = loader module
+TARGET_DIRS = loader opdump module
 
 all : $(TARGET_DIRS)
 
