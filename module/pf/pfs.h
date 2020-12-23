@@ -800,6 +800,37 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
             kernel_thread_start_thread_deallocate_finder_13,
             "com.apple.filesystems.apfs", "__TEXT_EXEC", NULL),
     },
+    {
+        PF_DECL32("mach_make_memory_entry_64 finder iOS 13",
+            LISTIZE({
+                0x7218107f,     /* tst w3, 0x1f00 */
+                0x54000000,     /* b.eq n */
+                0x52800240,     /* mov w0, 0x12 */
+                0xd65f03c0,     /* ret */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+                0xff00001f,     /* ignore immediate */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+            }),
+            4, mach_make_memory_entry_64_finder_13, "__TEXT_EXEC"),
+        PF_DECL32("mach_make_memory_entry_64 finder iOS 14",
+            LISTIZE({
+                0x7218107f,     /* tst w3, 0x1f00 */
+                0x54000000,     /* b.eq n */
+                0x52800240,     /* mov w0, 0x12 */
+                0xd65f03c0,     /* ret */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+                0xff00001f,     /* ignore immediate */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+            }),
+            4, mach_make_memory_entry_64_finder_13, "__TEXT_EXEC"),
+    },
+
     /* { */
     /*     PF_DECL32("DAIFSet patcher iOS 13", */
     /*         LISTIZE({ */

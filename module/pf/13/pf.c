@@ -40,6 +40,7 @@ uint64_t g_vm_deallocate_addr = 0;
 uint64_t g_kernel_map_addr = 0;
 uint64_t g_kernel_thread_start_addr = 0;
 uint64_t g_thread_deallocate_addr = 0;
+uint64_t g_mach_make_memory_entry_64_addr = 0;
 uint64_t g_xnuspy_sysctl_name_ptr = 0;
 uint64_t g_xnuspy_sysctl_descr_ptr = 0;
 uint64_t g_xnuspy_sysctl_fmt_ptr = 0;
@@ -421,9 +422,9 @@ bool lck_grp_alloc_init_finder_13(xnu_pf_patch_t *patch,
 
     g_lck_grp_alloc_init_addr = xnu_ptr_to_va(lck_grp_alloc_init);
 
-    printf("%s: lck_grp_alloc_init @ %#llx [unslid %#llx]\n", __func__,
-            g_lck_grp_alloc_init_addr, g_lck_grp_alloc_init_addr - kernel_slide);
     puts("xnuspy: found lck_grp_alloc_init");
+    /* printf("%s: lck_grp_alloc_init @ %#llx [unslid %#llx]\n", __func__, */
+    /*         g_lck_grp_alloc_init_addr, g_lck_grp_alloc_init_addr - kernel_slide); */
 
     return true;
 }
@@ -777,9 +778,24 @@ bool kernel_thread_start_thread_deallocate_finder_13(xnu_pf_patch_t *patch,
     puts("xnuspy: found kernel_thread_start");
     puts("xnuspy: found thread_deallocate");
 
-    printf("%s: kernel_thread_start @ %#llx, thread_deallocate @ %#llx\n", __func__,
-            g_kernel_thread_start_addr - kernel_slide,
-            g_thread_deallocate_addr - kernel_slide);
+    /* printf("%s: kernel_thread_start @ %#llx, thread_deallocate @ %#llx\n", __func__, */
+    /*         g_kernel_thread_start_addr - kernel_slide, */
+    /*         g_thread_deallocate_addr - kernel_slide); */
+
+    return true;
+}
+
+/* confirmed working on all kernels 13.0-14.3 */
+bool mach_make_memory_entry_64_finder_13(xnu_pf_patch_t *patch,
+        void *cacheable_stream){
+    xnu_pf_disable_patch(patch);
+
+    g_mach_make_memory_entry_64_addr = xnu_ptr_to_va(cacheable_stream);
+
+    puts("xnuspy: found mach_make_memory_entry_64");
+
+    printf("%s: mach_make_memory_entry_64 @ %#llx\n", __func__,
+            g_mach_make_memory_entry_64_addr - kernel_slide);
 
     return true;
 }

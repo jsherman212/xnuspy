@@ -46,6 +46,7 @@ extern uint64_t g_vm_deallocate_addr;
 extern uint64_t g_kernel_map_addr;
 extern uint64_t g_kernel_thread_start_addr;
 extern uint64_t g_thread_deallocate_addr;
+extern uint64_t g_mach_make_memory_entry_64_addr;
 extern uint64_t g_xnuspy_sysctl_name_ptr;
 extern uint64_t g_xnuspy_sysctl_descr_ptr;
 extern uint64_t g_xnuspy_sysctl_fmt_ptr;

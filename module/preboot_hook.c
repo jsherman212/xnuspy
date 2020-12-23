@@ -132,6 +132,7 @@ static struct xnuspy_ctl_kernel_symbol {
     { "_kalloc_external", &g_kalloc_external_addr },
     { "_kernel_mapp", &g_kernel_map_addr },
     { "_kernel_slide", &kernel_slide },
+    { "_kernel_thread_start", &g_kernel_thread_start_addr },
     { "_kfree_addr", &g_kfree_addr_addr },
     { "_kfree_ext", &g_kfree_ext_addr },
     { "_kprintf", &g_kprintf_addr },
@@ -139,7 +140,9 @@ static struct xnuspy_ctl_kernel_symbol {
     { "_lck_rw_alloc_init", &g_lck_rw_alloc_init_addr },
     { "_lck_rw_done", &g_lck_rw_done_addr },
     { "_lck_rw_lock_shared", &g_lck_rw_lock_shared_addr },
+    { "__mach_make_memory_entry_64", &g_mach_make_memory_entry_64_addr },
     { "_phystokv", &g_phystokv_addr },
+    { "_thread_deallocate", &g_thread_deallocate_addr },
     { "__vm_deallocate", &g_vm_deallocate_addr },
     { "_vm_map_unwire", &g_vm_map_unwire_addr },
     { "_xnuspy_tramp_page", &g_xnuspy_tramp_page_addr },
@@ -204,6 +207,7 @@ static void anything_missing(void){
     chk(!g_kernel_map_addr, "kernel_map not found\n");
     chk(!g_kernel_thread_start_addr, "kernel_thread_start not found\n");
     chk(!g_thread_deallocate_addr, "thread_deallocate not found\n");
+    chk(!g_mach_make_memory_entry_64_addr, "mach_make_memory_entry_64 not found\n");
 
     /* if we printed the error header, something is missing */
     if(printed_err_hdr)
@@ -540,10 +544,10 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
             *va = 0xFFFFFFF007C94BC8 + kernel_slide;
             return;
         }
-        else if(strcmp(ksym, "__mach_make_memory_entry_64") == 0){
-            *va = 0xFFFFFFF007CD3424 + kernel_slide;
-            return;
-        }
+        /* else if(strcmp(ksym, "__mach_make_memory_entry_64") == 0){ */
+        /*     *va = 0xFFFFFFF007CD3424 + kernel_slide; */
+        /*     return; */
+        /* } */
         else if(strcmp(ksym, "_mach_vm_map_external") == 0){
             *va = 0xFFFFFFF007CD22DC + kernel_slide;
             return;
