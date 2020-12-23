@@ -149,8 +149,8 @@ bool sysctl__kern_children_and_register_oid_finder_14(xnu_pf_patch_t *patch,
 
     g_sysctl_register_oid_addr = xnu_ptr_to_va(sysctl_register_oid);
 
-    puts("svc_stalker: found sysctl__kern_children");
-    puts("svc_stalker: found sysctl_register_oid");
+    puts("xnuspy: found sysctl__kern_children");
+    puts("xnuspy: found sysctl_register_oid");
 
     return true;
 }

@@ -202,6 +202,8 @@ static void anything_missing(void){
     chk(!g_vm_map_unwire_addr, "vm_map_unwire not found\n");
     chk(!g_vm_deallocate_addr, "vm_deallocate not found\n");
     chk(!g_kernel_map_addr, "kernel_map not found\n");
+    chk(!g_kernel_thread_start_addr, "kernel_thread_start not found\n");
+    chk(!g_thread_deallocate_addr, "thread_deallocate not found\n");
 
     /* if we printed the error header, something is missing */
     if(printed_err_hdr)
@@ -239,15 +241,6 @@ static void initialize_xnuspy_cache(void){
 
     XNUSPY_CACHE_WRITE(g_phystokv_addr);
 
-    /* iphone 8 13.6.1 */
-    /* uint64_t kvtophys = 0xFFFFFFF007CF83B8 + kernel_slide; */
-    /* iphone 7 14.2 */
-    /* uint64_t kvtophys = 0xFFFFFFF00727F0C0 + kernel_slide; */
-    /* iphone 7 14.1 */
-    /* XXX this offset seems wrong */
-    /* uint64_t kvtophys = 0xFFFFFFF007272AF0 + kernel_slide; */
-    /* XNUSPY_CACHE_WRITE(kvtophys); */
-
     XNUSPY_CACHE_WRITE(g_bcopy_phys_addr);
 
     if(g_kern_version_major == iOS_13_x){
@@ -261,15 +254,6 @@ static void initialize_xnuspy_cache(void){
 
     /* new PTE space, zero it out */
     XNUSPY_CACHE_WRITE(0);
-
-    /* iphone 8 13.6.1 */
-    /* uint64_t IOLog = 0xFFFFFFF008134654 + kernel_slide; */
-    /* XNUSPY_CACHE_WRITE(IOLog); */
-
-
-    /* iphone 8 13.6.1 */
-    /* uint64_t flush_mmu_tlb_region = 0xFFFFFFF007CF85F0 + kernel_slide; */
-    /* XNUSPY_CACHE_WRITE(flush_mmu_tlb_region); */
 
     /* ios 14.2 iphone 7 ktrr/amcc lockdown patches */
     /* uint32_t *ktrr_p0 = xnu_va_to_ptr(0xFFFFFFF00727E468 + kernel_slide); */
@@ -548,10 +532,10 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
         /*     *va = 0xFFFFFFF007C89084 + kernel_slide; */
         /*     return; */
         /* } */
-        else if(strcmp(ksym, "_kernel_mapp") == 0){
-            *va = 0xFFFFFFF0079316C0 + kernel_slide;
-            return;
-        }
+        /* else if(strcmp(ksym, "_kernel_mapp") == 0){ */
+        /*     *va = 0xFFFFFFF0079316C0 + kernel_slide; */
+        /*     return; */
+        /* } */
         else if(strcmp(ksym, "_vm_map_wire_kernel") == 0){
             *va = 0xFFFFFFF007C94BC8 + kernel_slide;
             return;
@@ -600,14 +584,14 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
         /*     *va = 0xFFFFFFF007D0A650 + kernel_slide; */
         /*     return; */
         /* } */
-        else if(strcmp(ksym, "_kernel_thread_start") == 0){
-            *va = 0xFFFFFFF007C3375C + kernel_slide;
-            return;
-        }
-        else if(strcmp(ksym, "_thread_deallocate") == 0){
-            *va = 0xFFFFFFF007C31E78 + kernel_slide;
-            return;
-        }
+        /* else if(strcmp(ksym, "_kernel_thread_start") == 0){ */
+        /*     *va = 0xFFFFFFF007C3375C + kernel_slide; */
+        /*     return; */
+        /* } */
+        /* else if(strcmp(ksym, "_thread_deallocate") == 0){ */
+        /*     *va = 0xFFFFFFF007C31E78 + kernel_slide; */
+        /*     return; */
+        /* } */
         /* else if(strcmp(ksym, "_kernprocp") == 0){ */
         /*     *va = 0xFFFFFFF009256DB0 + kernel_slide; */
         /*     return; */
@@ -640,14 +624,14 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
             *va = 0xFFFFFFF007BDE3D8 + kernel_slide;
             return;
         }
-        else if(strcmp(ksym, "_mach_vm_deallocate") == 0){
-            *va = 0xFFFFFFF007CD1B1C + kernel_slide;
-            return;
-        }
-        else if(strcmp(ksym, "_vm_map_unwire") == 0){
-            *va = 0xFFFFFFF007C96E34 + kernel_slide;
-            return;
-        }
+        /* else if(strcmp(ksym, "_mach_vm_deallocate") == 0){ */
+        /*     *va = 0xFFFFFFF007CD1B1C + kernel_slide; */
+        /*     return; */
+        /* } */
+        /* else if(strcmp(ksym, "_vm_map_unwire") == 0){ */
+        /*     *va = 0xFFFFFFF007C96E34 + kernel_slide; */
+        /*     return; */
+        /* } */
         else if(strcmp(ksym, "_lck_rw_free") == 0){
             *va = 0xFFFFFFF007D097F8 + kernel_slide;
             return;

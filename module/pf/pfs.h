@@ -762,6 +762,44 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
             kernel_map_vm_deallocate_vm_map_unwire_finder_13,
             "com.apple.security.sandbox", "__TEXT_EXEC", NULL),
     },
+    {
+        PF_DECL_FULL("kernel_thread_start,thread_deallocate finder iOS 13",
+            LISTIZE({
+                0x94000000,     /* bl _kernel_thread_start */
+                0x34000000,     /* cbz w0, n */
+                0xf900027f,     /* str xzr, [x19] */
+                0x528000a0,     /* mov w0, 5 */
+                0xa9417bfd,     /* ldp x29, x30, [sp, 0x10] */
+            }),
+            LISTIZE({
+                0xfc000000,     /* ignore immediate */
+                0xff00001f,     /* ignore immediate */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+            }),
+            5, XNU_PF_ACCESS_32BIT,
+            kernel_thread_start_thread_deallocate_finder_13,
+            "com.apple.filesystems.apfs", "__TEXT_EXEC", NULL),
+        PF_DECL_FULL("kernel_thread_start,thread_deallocate finder iOS 14",
+            LISTIZE({
+                0x94000000,     /* bl _kernel_thread_start */
+                0x34000000,     /* cbz w0, n */
+                0xf900027f,     /* str xzr, [x19] */
+                0x528000a0,     /* mov w0, 5 */
+                0xa9417bfd,     /* ldp x29, x30, [sp, 0x10] */
+            }),
+            LISTIZE({
+                0xfc000000,     /* ignore immediate */
+                0xff00001f,     /* ignore immediate */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+            }),
+            5, XNU_PF_ACCESS_32BIT,
+            kernel_thread_start_thread_deallocate_finder_13,
+            "com.apple.filesystems.apfs", "__TEXT_EXEC", NULL),
+    },
     /* { */
     /*     PF_DECL32("DAIFSet patcher iOS 13", */
     /*         LISTIZE({ */

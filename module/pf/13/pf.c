@@ -38,6 +38,8 @@ uint64_t g_kprintf_addr = 0;
 uint64_t g_vm_map_unwire_addr = 0;
 uint64_t g_vm_deallocate_addr = 0;
 uint64_t g_kernel_map_addr = 0;
+uint64_t g_kernel_thread_start_addr = 0;
+uint64_t g_thread_deallocate_addr = 0;
 uint64_t g_xnuspy_sysctl_name_ptr = 0;
 uint64_t g_xnuspy_sysctl_descr_ptr = 0;
 uint64_t g_xnuspy_sysctl_fmt_ptr = 0;
@@ -303,8 +305,8 @@ bool sysctl_handle_long_finder_13(xnu_pf_patch_t *patch,
     g_sysctl_handle_long_addr = xnu_ptr_to_va(opcode_stream);
 
     puts("xnuspy: found sysctl_handle_long");
-    printf("%s: sysctl_handle_long @ %#llx\n", __func__,
-            g_sysctl_handle_long_addr - kernel_slide);
+    /* printf("%s: sysctl_handle_long @ %#llx\n", __func__, */
+    /*         g_sysctl_handle_long_addr - kernel_slide); */
 
     return true;
 }
@@ -499,7 +501,7 @@ bool bcopy_phys_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     g_bcopy_phys_addr = xnu_ptr_to_va(opcode_stream);
     
     puts("xnuspy: found bcopy_phys");
-    printf("%s: bcopy_phys @ %#llx\n", __func__, g_bcopy_phys_addr - kernel_slide);
+    /* printf("%s: bcopy_phys @ %#llx\n", __func__, g_bcopy_phys_addr - kernel_slide); */
 
     return true;
 }
@@ -518,7 +520,7 @@ bool phystokv_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     g_phystokv_addr = xnu_ptr_to_va(phystokv);
 
     puts("xnuspy: found phystokv");
-    printf("%s: phystokv @ %#llx\n", __func__, g_phystokv_addr - kernel_slide);
+    /* printf("%s: phystokv @ %#llx\n", __func__, g_phystokv_addr - kernel_slide); */
 
     return true;
 }
@@ -709,6 +711,7 @@ bool kernel_map_vm_deallocate_vm_map_unwire_finder_13(xnu_pf_patch_t *patch,
      * we've landed inside _profile_destroy. For vm_map_unwire, it'll be the
      * branch we're currently sitting at. */
     uint32_t *opcode_stream = cacheable_stream;
+
     uint32_t *vm_map_unwire = get_branch_dst_ptr(*opcode_stream, opcode_stream);
     uint32_t *vm_deallocate = get_branch_dst_ptr(opcode_stream[3], opcode_stream + 3);
 
@@ -730,7 +733,13 @@ bool kernel_map_vm_deallocate_vm_map_unwire_finder_13(xnu_pf_patch_t *patch,
     if(((opcode_stream[1] >> 25) & 5) == 4){
         uint64_t pva = get_adrp_ldr_va_target(opcode_stream);
         uint64_t *ptr = xnu_va_to_ptr(pva);
-        g_kernel_map_addr = *ptr + kernel_slide;
+
+        g_kernel_map_addr = *ptr;
+
+        if((g_kernel_map_addr & 0xffff000000000000) != 0xffff000000000000)
+            g_kernel_map_addr |= ((uint64_t)0xffff << 48);
+
+        g_kernel_map_addr += kernel_slide;
     }
     else{
         if(*opcode_stream & 0x80000000)
@@ -746,6 +755,31 @@ bool kernel_map_vm_deallocate_vm_map_unwire_finder_13(xnu_pf_patch_t *patch,
     /* printf("%s: vm_map_unwire @ %#llx, vm_deallocate @ %#llx, kernel_map @ %#llx\n", */
     /*         __func__, g_vm_map_unwire_addr - kernel_slide, */
     /*         g_vm_deallocate_addr - kernel_slide, g_kernel_map_addr - kernel_slide); */
+
+    return true;
+}
+
+/* confirmed working on all kernels 13.0-14.3 */
+bool kernel_thread_start_thread_deallocate_finder_13(xnu_pf_patch_t *patch,
+        void *cacheable_stream){
+    /* There's two hits for this, but they're identical, so whatever is
+     * matched first will do */
+    xnu_pf_disable_patch(patch);
+
+    uint32_t *opcode_stream = cacheable_stream;
+
+    uint32_t *kernel_thread_start = get_branch_dst_ptr(*opcode_stream, opcode_stream);
+    uint32_t *thread_deallocate = get_branch_dst_ptr(opcode_stream[8], opcode_stream + 8);
+
+    g_kernel_thread_start_addr = xnu_ptr_to_va(kernel_thread_start);
+    g_thread_deallocate_addr = xnu_ptr_to_va(thread_deallocate);
+
+    puts("xnuspy: found kernel_thread_start");
+    puts("xnuspy: found thread_deallocate");
+
+    printf("%s: kernel_thread_start @ %#llx, thread_deallocate @ %#llx\n", __func__,
+            g_kernel_thread_start_addr - kernel_slide,
+            g_thread_deallocate_addr - kernel_slide);
 
     return true;
 }
