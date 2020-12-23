@@ -147,8 +147,10 @@ static struct xnuspy_ctl_kernel_symbol {
     { "_phystokv", &g_phystokv_addr },
     { "_proc_list_lock", &g_proc_list_lock_addr },
     { "_proc_list_mlockp", &g_proc_list_mlock_addr },
+    { "_proc_pid", &g_proc_pid_addr },
     { "_proc_ref_locked", &g_proc_ref_locked_addr },
     { "_proc_rele_locked", &g_proc_rele_locked_addr },
+    { "_proc_uniqueid", &g_proc_uniqueid_addr },
     { "_thread_deallocate", &g_thread_deallocate_addr },
     { "__vm_deallocate", &g_vm_deallocate_addr },
     { "_vm_map_unwire", &g_vm_map_unwire_addr },
@@ -222,6 +224,8 @@ static void anything_missing(void){
     chk(!g_proc_list_mlock_addr, "address of proc_list_mlock not found\n");
     chk(!g_lck_mtx_unlock_addr, "lck_mtx_unlock not found\n");
     chk(!g_proc_rele_locked_addr, "proc_rele_locked not found\n");
+    chk(!g_proc_uniqueid_addr, "proc_uniqueid not found\n");
+    chk(!g_proc_pid_addr, "proc_pid not found\n");
 
     /* if we printed the error header, something is missing */
     if(printed_err_hdr)
@@ -586,10 +590,10 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
         /*     *va = 0xFFFFFFF0080E933C + kernel_slide; */
         /*     return; */
         /* } */
-        else if(strcmp(ksym, "_proc_pid") == 0){
-            *va = 0xFFFFFFF007FF85E0 + kernel_slide;
-            return;
-        }
+        /* else if(strcmp(ksym, "_proc_pid") == 0){ */
+        /*     *va = 0xFFFFFFF007FF85E0 + kernel_slide; */
+        /*     return; */
+        /* } */
         else if(strcmp(ksym, "_lck_rw_lock_shared_to_exclusive") == 0){
             *va = 0xFFFFFFF007D0A018 + kernel_slide;
             return;
@@ -626,10 +630,10 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
         /*     *va = 0xFFFFFFF007FF2CD8 + kernel_slide; */
         /*     return; */
         /* } */
-        else if(strcmp(ksym, "_proc_uniqueid") == 0){
-            *va = 0xFFFFFFF007FF952C + kernel_slide;
-            return;
-        }
+        /* else if(strcmp(ksym, "_proc_uniqueid") == 0){ */
+        /*     *va = 0xFFFFFFF007FF952C + kernel_slide; */
+        /*     return; */
+        /* } */
         /* else if(strcmp(ksym, "_proc_ref_locked") == 0){ */
         /*     *va = 0xFFFFFFF007FF8144 + kernel_slide; */
         /*     return; */
@@ -721,92 +725,6 @@ static void process_xnuspy_ctl_image(void *xnuspy_ctl_image){
             g_xnuspy_ctl_img_codesz);
     printf("%s: image @ %#llx [unslid %#llx]\n", __func__, xnu_ptr_to_va(mh),
             xnu_ptr_to_va(mh) - kernel_slide);
-}
-
-static void patch_exception_vectors(void){
-    /* PSTATE.D is masked upon taking an exception. See the pseudocode for
-     * AArch64.TakeException in the ARMv8 reference manual. The hardware masks
-     * this bit before it branches to the appropriate exception handler specified
-     * by VBAR_EL1. In order to keep our hardware breakpoints alive, we need to
-     * modify each exception handler to unmask PSTATE.D and the D bit of SPSR_EL1.
-     *
-     * Each handler follows this format:
-     *      [NOP]   <repeats n times>
-     *      MRS X18, TPIDR_EL1 or MRS X18, TTBR0_EL1
-     *      ...
-     *      BR X18
-     *      [NOP]   <repeats n times>
-     *
-     * In all, X18 is the only used register.
-     *
-     * It'll be easy to figure out where each start/end. We will patch
-     * each to:
-     *      MSR DAIFClr, #0x8
-     *      MRS X18, SPSR_EL1
-     *      AND X18, X18, ~0x200
-     *      MSR SPSR_EL1, X18
-     *      [original handler code]
-     *
-     * All the handlers are aligned on 0x80 byte boundries so we have enough
-     * space. XNU seems to only have 12 handlers, but I'd like to not hardcode
-     * that limit. XNU aligns the page the handlers are on to a 4K boundry.
-     */
-    /* we already checked if this was missing */
-    uint32_t *opcode_stream = g_ExceptionVectorsBase_stream;
-
-    uint32_t patches[] = {
-        0xd50348ff,
-        0xd5384012,
-        0x9276fa52,
-        0xd5184012,
-    };
-
-    const size_t num_patches = sizeof(patches) / sizeof(*patches);
-
-    uint32_t instr_limit = 0x1000 / sizeof(uint32_t);
-
-    while(instr_limit > 0){
-        /* are we at the beginning of a handler? */
-        if(*opcode_stream != 0xd538d092 && *opcode_stream != 0xd5382012){
-            /* nope, carry on */
-            opcode_stream++;
-            instr_limit--;
-        }
-        else{
-            /* yep, figure out the bounds of this handler */
-            uint32_t *handler_start = opcode_stream;
-            uint32_t *handler_end = handler_start;
-
-            /* search for br x18 */
-            while(*handler_end != 0xd61f0240)
-                handler_end++;
-
-            /* get off the br x18 */
-            handler_end++;
-
-            size_t len_in_instrs = handler_end - handler_start;
-            printf("%s: %zu instrs in this handler\n", __func__, len_in_instrs);
-
-            /* Hardcoded so ___chkstk_darwin calls are not generated.
-             * This is more than enough.
-             */
-            uint32_t orig_instrs[0x20];
-            memcpy(orig_instrs, handler_start, sizeof(uint32_t) * len_in_instrs);
-
-            /* insert our patches */
-            memcpy(handler_start, patches, sizeof(patches));
-
-            /* restore original instrs */
-            memcpy(handler_start + num_patches, orig_instrs,
-                    sizeof(uint32_t) * len_in_instrs);
-
-            opcode_stream += len_in_instrs + num_patches;
-
-            instr_limit -= len_in_instrs + num_patches;
-        }
-    }
-
-    puts("xnuspy: patched exception handlers");
 }
 
 void (*next_preboot_hook)(void);

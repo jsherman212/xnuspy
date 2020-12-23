@@ -465,10 +465,14 @@ static void desc_xnuspy_tramp(struct xnuspy_tramp *t, uint32_t orig_tramp_len){
 }
 
 __attribute__ ((naked)) static uint64_t current_thread(void){
-    asm volatile(""
-            "mrs x0, tpidr_el1\n"
-            "ret\n"
-            );
+    asm(""
+        "mrs x0, tpidr_el1\n"
+        "ret\n"
+       );
+}
+
+static struct _vm_map *current_map(void){
+    return *(struct _vm_map **)(current_thread() + offsetof_struct_thread_map);
 }
 
 static int kern_return_to_errno(kern_return_t kret){
@@ -1119,11 +1123,12 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
         goto out_free_tramp_entry;
     }
 
-    /* offset found in mmap */
-    struct _vm_map *current_map = *(struct _vm_map **)(current_thread() + 0x320);
+    /* struct _vm_map *current_map = */
+    /*     *(struct _vm_map **)(current_thread() + offsetof_struct_thread_map); */
+    struct _vm_map *cm = current_map();
 
     /* User pointer to Mach header of the calling process */
-    struct mach_header_64 *umh = (struct mach_header_64 *)current_map->hdr.vme_start;
+    struct mach_header_64 *umh = (struct mach_header_64 *)cm->hdr.vme_start;
 
     /* Check if we've got mapping metadata for the calling process already.
      * If we don't, we need to create a shared mapping out of __TEXT and
@@ -1135,7 +1140,7 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
     else{
         kprintf("%s: need to map __TEXT and __DATA\n", __func__);
 
-        mm = map_caller_segments(umh, tramp, current_map, &res);
+        mm = map_caller_segments(umh, tramp, cm, &res);
 
         if(!mm){
             kprintf("%s: failed to create mapping metadata for this hook\n",

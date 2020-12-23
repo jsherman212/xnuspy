@@ -902,70 +902,36 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
             }),
             7, proc_stuff0_finder_13, "__TEXT_EXEC"),
     },
-    /* { */
-    /*     PF_DECL32("DAIFSet patcher iOS 13", */
-    /*         LISTIZE({ */
-    /*             0xd50340df,     /1* msr DAIFSet, #imm4 *1/ */
-    /*         }), */
-    /*         LISTIZE({ */
-    /*             0xfffff0ff,     /1* ignore imm4 *1/ */
-    /*         }), */
-    /*         1, DAIFSet_patcher_13, "__TEXT_EXEC"), */
-    /*     PF_DECL32("DAIFSet patcher iOS 14", */
-    /*         LISTIZE({ */
-    /*             0xd50340df,     /1* msr DAIFSet, #imm4 *1/ */
-    /*         }), */
-    /*         LISTIZE({ */
-    /*             0xfffff0ff,     /1* ignore imm4 *1/ */
-    /*         }), */
-    /*         1, DAIFSet_patcher_13, "__TEXT_EXEC"), */
-    /* }, */
-    /* { */
-    /*     PF_DECL32("LowResetVectorBase patcher iOS 13", */
-    /*         LISTIZE({ */
-    /*             0x14000000,     /1* b n *1/ */
-    /*             0xd503201f,     /1* nop *1/ */
-    /*             0xd503201f,     /1* nop *1/ */
-    /*             0xd503201f,     /1* nop *1/ */
-    /*             0xd503201f,     /1* nop *1/ */
-    /*             0xd503201f,     /1* nop *1/ */
-    /*             0xd503201f,     /1* nop *1/ */
-    /*             0xd503201f,     /1* nop *1/ */
-    /*         }), */
-    /*         LISTIZE({ */
-    /*             0xfc000000,     /1* ignore immediate *1/ */
-    /*             0xffffffff,     /1* match exactly *1/ */
-    /*             0xffffffff,     /1* match exactly *1/ */
-    /*             0xffffffff,     /1* match exactly *1/ */
-    /*             0xffffffff,     /1* match exactly *1/ */
-    /*             0xffffffff,     /1* match exactly *1/ */
-    /*             0xffffffff,     /1* match exactly *1/ */
-    /*             0xffffffff,     /1* match exactly *1/ */
-    /*         }), */
-    /*         8, LowResetVectorBase_patcher_13, "__TEXT_EXEC"), */
-    /*     PF_DECL32("LowResetVectorBase patcher iOS 14", */
-    /*         LISTIZE({ */
-    /*             0x14000000,     /1* b n *1/ */
-    /*             0xd503201f,     /1* nop *1/ */
-    /*             0xd503201f,     /1* nop *1/ */
-    /*             0xd503201f,     /1* nop *1/ */
-    /*             0xd503201f,     /1* nop *1/ */
-    /*             0xd503201f,     /1* nop *1/ */
-    /*             0xd503201f,     /1* nop *1/ */
-    /*             0xd503201f,     /1* nop *1/ */
-    /*         }), */
-    /*         LISTIZE({ */
-    /*             0xfc000000,     /1* ignore immediate *1/ */
-    /*             0xffffffff,     /1* match exactly *1/ */
-    /*             0xffffffff,     /1* match exactly *1/ */
-    /*             0xffffffff,     /1* match exactly *1/ */
-    /*             0xffffffff,     /1* match exactly *1/ */
-    /*             0xffffffff,     /1* match exactly *1/ */
-    /*             0xffffffff,     /1* match exactly *1/ */
-    /*             0xffffffff,     /1* match exactly *1/ */
-    /*         }), */
-    /*         8, LowResetVectorBase_patcher_13, "__TEXT_EXEC"), */
-    /* }, */
+    {
+        PF_DECL_FULL("proc stuff finder 1 iOS 13",
+            LISTIZE({
+                0xf81f82a0,     /* stur x0, [x21, -0x8] */
+                0xf81e82bf,     /* stur xzr, [x21, -0x18] */
+                0xb81f02bf,     /* stur wzr, [x21, -0x10] */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+            }),
+            3, XNU_PF_ACCESS_32BIT,
+            proc_stuff1_finder_13, "com.apple.security.sandbox", "__TEXT_EXEC",
+            NULL),
+        PF_DECL_FULL("proc stuff finder 1 iOS 14",
+            LISTIZE({
+                0xf81f82a0,     /* stur x0, [x21, -0x8] */
+                0xf81e82bf,     /* stur xzr, [x21, -0x18] */
+                0xb81f02bf,     /* stur wzr, [x21, -0x10] */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+            }),
+            3, XNU_PF_ACCESS_32BIT,
+            proc_stuff1_finder_13, "com.apple.security.sandbox", "__TEXT_EXEC",
+            NULL),
+    },
     { PF_END, PF_END },
 };
 

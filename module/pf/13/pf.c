@@ -48,6 +48,8 @@ uint64_t g_proc_ref_locked_addr = 0;
 uint64_t g_proc_list_mlock_addr = 0;
 uint64_t g_lck_mtx_unlock_addr = 0;
 uint64_t g_proc_rele_locked_addr = 0;
+uint64_t g_proc_uniqueid_addr = 0;
+uint64_t g_proc_pid_addr = 0;
 uint64_t g_xnuspy_sysctl_name_ptr = 0;
 uint64_t g_xnuspy_sysctl_descr_ptr = 0;
 uint64_t g_xnuspy_sysctl_fmt_ptr = 0;
@@ -922,68 +924,49 @@ bool proc_stuff0_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
-#if 0
 /* confirmed working on all kernels 13.0-14.3 */
-bool DAIFSet_patcher_13(xnu_pf_patch_t *patch, void *cacheable_stream){
-    /* Because we are using hardware breakpoints to synchronize access
-     * to code we're modifying, we need to make sure PSTATE.D is never
-     * masked. PSTATE.D being unmasked is one of the conditions for hardware
-     * breakpoints to fire inside EL1.
+bool proc_stuff1_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
+    /* We've landed in sandbox_reference_retain. This finds:
+     *      - proc_pid
+     *      - proc_uniqueid
      *
-     * DAIFSet controls the setting of PSTATE.{D,A,I,F} to 1, so for every
-     * msr DAIFSet, #n we find, we turn off the bit that represents PSTATE.D
-     * in its immediate.
-     */
-    *(uint32_t *)cacheable_stream &= ~0x800;
-
-    return true;
-}
-
-/* confirmed working on all kernels 13.0-14.3 */
-bool LowResetVectorBase_patcher_13(xnu_pf_patch_t *patch, void *cacheable_stream){
-    /* PSTATE.D is masked before the device returns to LowResetVectorBase
-     * upon reset. See the pseudocode for AArch64.TakeReset in the ARMv8
-     * reference manual. In order to keep our hardware breakpoints alive,
-     * we need to unmask PSTATE.D.
-     *
-     * This decides if we're at LowResetVectorBase. If we are, we modify it to 
-     * look like this:
-     *      MSR DAIFClr, #0x8
-     *      B _reset_vector
-     */
-    uint32_t *opcode_stream = cacheable_stream;
-    uint32_t *maybe_reset_vector = get_branch_dst_ptr(*opcode_stream, opcode_stream);
-
-    /* first instruction is msr oslar_el1, xzr? */
-    if(*maybe_reset_vector != 0xd510109f)
-        return false;
-
-    /* third instruction is not mov x0, x20? */
-    if(maybe_reset_vector[2] == 0xaa0003f4)
-        return false;
-
+     * The first branch we see while searching up will be proc_uniqueid, and
+     * the brach before that one will be proc_pid */
     xnu_pf_disable_patch(patch);
 
-    /* if we're here, we found LowResetVectorBase */
-    uint32_t *LowResetVectorBase = opcode_stream;
+    uint32_t *opcode_stream = cacheable_stream;
+    uint32_t instr_limit = 50;
 
-    uint32_t saved_branch = *LowResetVectorBase;
+    while((*opcode_stream & 0xfc000000) != 0x94000000){
+        if(instr_limit-- == 0)
+            return false;
 
-    /* msr DAIFClr, #0x8 */
-    *LowResetVectorBase = 0xd50348ff;
+        opcode_stream--;
+    }
 
-    /* the branch is now 4 bytes closer to reset_vector, so update its
-     * immediate
-     */
-    int32_t new_imm26 = bits(saved_branch, 0, 25) - 1;
+    uint32_t *proc_uniqueid = get_branch_dst_ptr(*opcode_stream, opcode_stream);
 
-    saved_branch &= ~0x3ffffff;
-    saved_branch |= new_imm26;
+    /* Get off the branch to proc_uniqueid */
+    opcode_stream--;
 
-    LowResetVectorBase[1] = saved_branch;
+    while((*opcode_stream & 0xfc000000) != 0x94000000){
+        if(instr_limit-- == 0)
+            return false;
 
-    puts("xnuspy: patched LowResetVectorBase");
+        opcode_stream--;
+    }
+
+    uint32_t *proc_pid = get_branch_dst_ptr(*opcode_stream, opcode_stream);
+
+    g_proc_uniqueid_addr = xnu_ptr_to_va(proc_uniqueid);
+    g_proc_pid_addr = xnu_ptr_to_va(proc_pid);
+
+    puts("xnuspy: found proc_uniqueid");
+    puts("xnuspy: found proc_pid");
+
+    printf("%s: proc_uniqueid @ %#llx, proc_pid @ %#llx\n", __func__,
+            g_proc_uniqueid_addr - kernel_slide,
+            g_proc_pid_addr - kernel_slide);
 
     return true;
 }
-#endif

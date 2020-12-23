@@ -54,6 +54,8 @@ extern uint64_t g_proc_ref_locked_addr;
 extern uint64_t g_proc_list_mlock_addr;
 extern uint64_t g_lck_mtx_unlock_addr;
 extern uint64_t g_proc_rele_locked_addr;
+extern uint64_t g_proc_uniqueid_addr;
+extern uint64_t g_proc_pid_addr;
 extern uint64_t g_xnuspy_sysctl_name_ptr;
 extern uint64_t g_xnuspy_sysctl_descr_ptr;
 extern uint64_t g_xnuspy_sysctl_fmt_ptr;
