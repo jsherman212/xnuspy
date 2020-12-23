@@ -860,6 +860,48 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
             }),
             4, offsetof_struct_thread_map_finder_13, "__TEXT_EXEC"),
     },
+    {
+        PF_DECL32("proc stuff finder 0 iOS 13",
+            LISTIZE({
+                0x910043fd,     /* add x29, sp, 0x10 */
+                0x94000000,     /* bl _current_proc */
+                0xaa0003f3,     /* mov x19, x0 */
+                0x94000000,     /* bl _proc_list_lock */
+                0xaa1303e0,     /* mov x0, x19 */
+                0x94000000,     /* bl _proc_ref_locked */
+                0xeb00027f,     /* cmp x19, x0 */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+                0xfc000000,     /* ignore immediate */
+                0xffffffff,     /* match exactly */
+                0xfc000000,     /* ignore immediate */
+                0xffffffff,     /* match exactly */
+                0xfc000000,     /* ignore immediate */
+                0xffffffff,     /* match exactly */
+            }),
+            7, proc_stuff0_finder_13, "__TEXT_EXEC"),
+        PF_DECL32("proc stuff finder 0 iOS 14",
+            LISTIZE({
+                0x910043fd,     /* add x29, sp, 0x10 */
+                0x94000000,     /* bl _current_proc */
+                0xaa0003f3,     /* mov x19, x0 */
+                0x94000000,     /* bl _proc_list_lock */
+                0xaa1303e0,     /* mov x0, x19 */
+                0x94000000,     /* bl _proc_ref_locked */
+                0xeb00027f,     /* cmp x19, x0 */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+                0xfc000000,     /* ignore immediate */
+                0xffffffff,     /* match exactly */
+                0xfc000000,     /* ignore immediate */
+                0xffffffff,     /* match exactly */
+                0xfc000000,     /* ignore immediate */
+                0xffffffff,     /* match exactly */
+            }),
+            7, proc_stuff0_finder_13, "__TEXT_EXEC"),
+    },
     /* { */
     /*     PF_DECL32("DAIFSet patcher iOS 13", */
     /*         LISTIZE({ */

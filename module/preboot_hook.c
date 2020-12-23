@@ -125,6 +125,7 @@ static struct xnuspy_ctl_kernel_symbol {
     { "_bcopy_phys", &g_bcopy_phys_addr },
     { "_copyin", &g_copyin_addr },
     { "_copyout", &g_copyout_addr },
+    { "_current_proc", &g_current_proc_addr },
     { "_first_reflector_page", &g_first_reflector_page },
     { "_iOS_version", &g_kern_version_major },
     { "_IOSleep", &g_IOSleep_addr },
@@ -137,12 +138,17 @@ static struct xnuspy_ctl_kernel_symbol {
     { "_kfree_ext", &g_kfree_ext_addr },
     { "_kprintf", &g_kprintf_addr },
     { "_lck_grp_alloc_init", &g_lck_grp_alloc_init_addr },
+    { "_lck_mtx_unlock", &g_lck_mtx_unlock_addr },
     { "_lck_rw_alloc_init", &g_lck_rw_alloc_init_addr },
     { "_lck_rw_done", &g_lck_rw_done_addr },
     { "_lck_rw_lock_shared", &g_lck_rw_lock_shared_addr },
     { "__mach_make_memory_entry_64", &g_mach_make_memory_entry_64_addr },
     { "_offsetof_struct_thread_map", &g_offsetof_struct_thread_map },
     { "_phystokv", &g_phystokv_addr },
+    { "_proc_list_lock", &g_proc_list_lock_addr },
+    { "_proc_list_mlockp", &g_proc_list_mlock_addr },
+    { "_proc_ref_locked", &g_proc_ref_locked_addr },
+    { "_proc_rele_locked", &g_proc_rele_locked_addr },
     { "_thread_deallocate", &g_thread_deallocate_addr },
     { "__vm_deallocate", &g_vm_deallocate_addr },
     { "_vm_map_unwire", &g_vm_map_unwire_addr },
@@ -210,6 +216,12 @@ static void anything_missing(void){
     chk(!g_thread_deallocate_addr, "thread_deallocate not found\n");
     chk(!g_mach_make_memory_entry_64_addr, "mach_make_memory_entry_64 not found\n");
     chk(!g_offsetof_struct_thread_map, "offsetof(struct thread, map) not found\n");
+    chk(!g_current_proc_addr, "current_proc not found\n");
+    chk(!g_proc_list_lock_addr, "proc_list_lock not found\n");
+    chk(!g_proc_ref_locked_addr, "proc_ref_locked not found\n");
+    chk(!g_proc_list_mlock_addr, "address of proc_list_mlock not found\n");
+    chk(!g_lck_mtx_unlock_addr, "lck_mtx_unlock not found\n");
+    chk(!g_proc_rele_locked_addr, "proc_rele_locked not found\n");
 
     /* if we printed the error header, something is missing */
     if(printed_err_hdr)
@@ -570,10 +582,10 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
         /*     *va = 0xFFFFFFF007CD2360 + kernel_slide; */
         /*     return; */
         /* } */
-        else if(strcmp(ksym, "_current_proc") == 0){
-            *va = 0xFFFFFFF0080E933C + kernel_slide;
-            return;
-        }
+        /* else if(strcmp(ksym, "_current_proc") == 0){ */
+        /*     *va = 0xFFFFFFF0080E933C + kernel_slide; */
+        /*     return; */
+        /* } */
         else if(strcmp(ksym, "_proc_pid") == 0){
             *va = 0xFFFFFFF007FF85E0 + kernel_slide;
             return;
@@ -606,26 +618,26 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
             *va = 0xFFFFFFF009257AB0 + kernel_slide;
             return;
         }
-        else if(strcmp(ksym, "_proc_list_lock") == 0){
-            *va = 0xFFFFFFF007FF2C78 + kernel_slide;
-            return;
-        }
-        else if(strcmp(ksym, "_proc_list_unlock") == 0){
-            *va = 0xFFFFFFF007FF2CD8 + kernel_slide;
-            return;
-        }
+        /* else if(strcmp(ksym, "_proc_list_lock") == 0){ */
+        /*     *va = 0xFFFFFFF007FF2C78 + kernel_slide; */
+        /*     return; */
+        /* } */
+        /* else if(strcmp(ksym, "_proc_list_unlock") == 0){ */
+        /*     *va = 0xFFFFFFF007FF2CD8 + kernel_slide; */
+        /*     return; */
+        /* } */
         else if(strcmp(ksym, "_proc_uniqueid") == 0){
             *va = 0xFFFFFFF007FF952C + kernel_slide;
             return;
         }
-        else if(strcmp(ksym, "_proc_ref_locked") == 0){
-            *va = 0xFFFFFFF007FF8144 + kernel_slide;
-            return;
-        }
-        else if(strcmp(ksym, "_proc_rele_locked") == 0){
-            *va = 0xFFFFFFF007FF852C + kernel_slide;
-            return;
-        }
+        /* else if(strcmp(ksym, "_proc_ref_locked") == 0){ */
+        /*     *va = 0xFFFFFFF007FF8144 + kernel_slide; */
+        /*     return; */
+        /* } */
+        /* else if(strcmp(ksym, "_proc_rele_locked") == 0){ */
+        /*     *va = 0xFFFFFFF007FF852C + kernel_slide; */
+        /*     return; */
+        /* } */
         else if(strcmp(ksym, "_ipc_port_release_send") == 0){
             *va = 0xFFFFFFF007BDE3D8 + kernel_slide;
             return;

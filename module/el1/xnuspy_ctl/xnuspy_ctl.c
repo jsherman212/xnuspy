@@ -107,10 +107,14 @@ MARK_AS_KERNEL_OFFSET int (*copyout)(const void *kaddr, uint64_t uaddr,
 MARK_AS_KERNEL_OFFSET void *(*current_proc)(void);
 MARK_AS_KERNEL_OFFSET pid_t (*proc_pid)(void *proc);
 MARK_AS_KERNEL_OFFSET void (*proc_list_lock)(void);
-MARK_AS_KERNEL_OFFSET void (*proc_list_unlock)(void);
+/* MARK_AS_KERNEL_OFFSET void (*proc_list_unlock)(void); */
 MARK_AS_KERNEL_OFFSET uint64_t (*proc_uniqueid)(void *proc);
 MARK_AS_KERNEL_OFFSET void (*proc_ref_locked)(void *proc);
 MARK_AS_KERNEL_OFFSET void (*proc_rele_locked)(void *proc);
+
+MARK_AS_KERNEL_OFFSET void **proc_list_mlockp;
+
+MARK_AS_KERNEL_OFFSET void (*lck_mtx_unlock)(void *lock);
 
 /* MARK_AS_KERNEL_OFFSET uint32_t *ncpusp; */
 /* MARK_AS_KERNEL_OFFSET struct cpu_data_entry *CpuDataEntriesp; */
@@ -1202,6 +1206,12 @@ out_free_tramp_metadata:
     common_kfree(tm);
 out:
     return res;
+}
+
+/* proc_list_unlock has been inlined so aggressively on all kernels that there
+ * are no xrefs to the actual function so we need to do it like this */
+static void proc_list_unlock(void){
+    lck_mtx_unlock(*proc_list_mlockp);
 }
 
 /* Every second, this thread loops through the proc list, and checks

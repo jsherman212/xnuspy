@@ -110,7 +110,7 @@ uint64_t get_adrp_ldr_va_target(uint32_t *adrpp){
     return addr_va + pimm;
 }
 
-uint64_t get_adrp_x_va_target(uint32_t *adrpp){
+uint64_t get_pc_rel_va_target(uint32_t *adrpp){
     if(((adrpp[1] >> 25) & 5) == 4)
         return get_adrp_ldr_va_target(adrpp);
     else if(*adrpp & 0x80000000)

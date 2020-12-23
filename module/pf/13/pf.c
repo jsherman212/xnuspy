@@ -42,6 +42,12 @@ uint64_t g_kernel_thread_start_addr = 0;
 uint64_t g_thread_deallocate_addr = 0;
 uint64_t g_mach_make_memory_entry_64_addr = 0;
 uint64_t g_offsetof_struct_thread_map = 0;
+uint64_t g_current_proc_addr = 0;
+uint64_t g_proc_list_lock_addr = 0;
+uint64_t g_proc_ref_locked_addr = 0;
+uint64_t g_proc_list_mlock_addr = 0;
+uint64_t g_lck_mtx_unlock_addr = 0;
+uint64_t g_proc_rele_locked_addr = 0;
 uint64_t g_xnuspy_sysctl_name_ptr = 0;
 uint64_t g_xnuspy_sysctl_descr_ptr = 0;
 uint64_t g_xnuspy_sysctl_fmt_ptr = 0;
@@ -806,6 +812,8 @@ bool offsetof_struct_thread_map_finder_13(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     /* We landed in mmap, the first LDR we matched contains the offset
      * of the map pointer inside struct thread */
+    xnu_pf_disable_patch(patch);
+
     uint32_t *opcode_stream = cacheable_stream;
 
     uint32_t ldr = opcode_stream[1];
@@ -817,6 +825,99 @@ bool offsetof_struct_thread_map_finder_13(xnu_pf_patch_t *patch,
     puts("xnuspy: found offsetof(struct thread, map)");
     /* printf("%s: offsetof(struct thread, map) = %#llx\n", __func__, */
     /*         g_offsetof_struct_thread_map); */
+
+    return true;
+}
+
+/* confirmed working on all kernels 13.0-14.3 */
+bool proc_stuff0_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
+    /* We've landed in proc_self. This finds:
+     *      - current_proc
+     *      - proc_list_lock
+     *      - proc_ref_locked
+     *      - proc_list_mlock
+     *      - lck_mtx_unlock
+     *      - proc_rele_locked
+     * Right above proc_self is proc_rele_locked. proc_list_unlock
+     * has been inlined so aggressively that there are no xrefs to the actual
+     * function, which is obnoxious */
+    xnu_pf_disable_patch(patch);
+
+    uint32_t *opcode_stream = cacheable_stream;
+
+    uint32_t *current_proc = get_branch_dst_ptr(opcode_stream[1], opcode_stream + 1);
+    uint32_t *proc_list_lock = get_branch_dst_ptr(opcode_stream[3], opcode_stream + 3);
+    uint32_t *proc_ref_locked = get_branch_dst_ptr(opcode_stream[5], opcode_stream + 5);
+
+    g_current_proc_addr = xnu_ptr_to_va(current_proc);
+    g_proc_list_lock_addr = xnu_ptr_to_va(proc_list_lock);
+    g_proc_ref_locked_addr = xnu_ptr_to_va(proc_ref_locked);
+
+    /* Go down until we hit an ADRP or ADR, this will be proc_list_mlock, and
+     * the first bl below that will be lck_mtx_unlock */
+    uint32_t instr_limit = 50;
+
+    while((*opcode_stream & 0x1f000000) != 0x10000000){
+        if(instr_limit-- == 0)
+            return false;
+
+        opcode_stream++;
+    }
+
+    g_proc_list_mlock_addr = get_pc_rel_va_target(opcode_stream);
+
+    instr_limit = 20;
+
+    while((*opcode_stream & 0xfc000000) != 0x94000000){
+        if(instr_limit-- == 0)
+            return false;
+
+        opcode_stream++;
+    }
+
+    uint32_t *lck_mtx_unlock = get_branch_dst_ptr(*opcode_stream, opcode_stream);
+
+    g_lck_mtx_unlock_addr = xnu_ptr_to_va(lck_mtx_unlock);
+
+    /* Finally, search up for proc_rele_locked. We'll look until we hit
+     * ldr w8, [x0, n]. On some kernels, clang did not place the prologue
+     * at the beginning of this function, but at the bottom for a call to
+     * panic. So, we could either have ldr w8, [x0, n] or stp x29, x30, [sp, -0x10]!
+     * at the beginning, but the ldr is guarenteed to be somewhere close
+     * to the start so we'll look for that. */
+    instr_limit = 250;
+
+    while((*opcode_stream & 0xffc003ff) != 0xb9400008){
+        if(instr_limit-- == 0)
+            return false;
+
+        opcode_stream--;
+    }
+
+    /* We're at the ldr, and if we're at the beginning of proc_rele_locked,
+     * we will not see mov x29, sp. If we see that, the beginning is two
+     * instruction behind this point. */
+    if(opcode_stream[-1] == 0x910003fd)
+        opcode_stream -= 2;
+
+    g_proc_rele_locked_addr = xnu_ptr_to_va(opcode_stream);
+
+    puts("xnuspy: found current_proc");
+    puts("xnuspy: found proc_list_lock");
+    puts("xnuspy: found proc_ref_locked");
+    puts("xnuspy: found proc_list_mlock");
+    puts("xnuspy: found lck_mtx_unlock");
+    puts("xnuspy: found proc_rele_locked");
+
+    /* printf("%s: current_proc @ %#llx, proc_list_lock @ %#llx" */
+    /*         ", proc_ref_locked @ %#llx, &proc_list_mlock @ %#llx" */
+    /*         ", lck_mtx_unlock @ %#llx, proc_rele_locked @ %#llx\n", __func__, */
+    /*         g_current_proc_addr - kernel_slide, */
+    /*         g_proc_list_lock_addr - kernel_slide, */
+    /*         g_proc_ref_locked_addr - kernel_slide, */
+    /*         g_proc_list_mlock_addr - kernel_slide, */
+    /*         g_lck_mtx_unlock_addr - kernel_slide, */
+    /*         g_proc_rele_locked_addr - kernel_slide); */
 
     return true;
 }
