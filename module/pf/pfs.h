@@ -830,7 +830,36 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
             }),
             4, mach_make_memory_entry_64_finder_13, "__TEXT_EXEC"),
     },
-
+    {
+        PF_DECL32("offsetof(struct thread, map) finder iOS 13",
+            LISTIZE({
+                0xd538d088,     /* mrs x8, tpidr_el1 */
+                0xf9400100,     /* ldr Xn, [x8, n] */
+                0xf9400020,     /* ldr Xn, [x1] */
+                0xa9007fe0,     /* stp Xn, xzr, [sp, n] */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+                0xffc003e0,     /* ignore Rt and immediate */
+                0xffffffe0,     /* ignore Rt */
+                0xffc07fe0,     /* ignore Rt and immediate */
+            }),
+            4, offsetof_struct_thread_map_finder_13, "__TEXT_EXEC"),
+        PF_DECL32("offsetof(struct thread, map) finder iOS 14",
+            LISTIZE({
+                0xd538d088,     /* mrs x8, tpidr_el1 */
+                0xf9400100,     /* ldr Xn, [x8, n] */
+                0xf9400020,     /* ldr Xn, [x1] */
+                0xa9007fe0,     /* stp Xn, xzr, [sp, n] */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+                0xffc003e0,     /* ignore Rt and immediate */
+                0xffffffe0,     /* ignore Rt */
+                0xffc07fe0,     /* ignore Rt and immediate */
+            }),
+            4, offsetof_struct_thread_map_finder_13, "__TEXT_EXEC"),
+    },
     /* { */
     /*     PF_DECL32("DAIFSet patcher iOS 13", */
     /*         LISTIZE({ */

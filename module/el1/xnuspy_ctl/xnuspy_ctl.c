@@ -167,6 +167,7 @@ MARK_AS_KERNEL_OFFSET kern_return_t (*mach_vm_map_external)(void *target_map,
         vm_prot_t cur_protection, vm_prot_t max_protection,
         vm_inherit_t inheritance);
 
+MARK_AS_KERNEL_OFFSET uint64_t offsetof_struct_thread_map;
 /* MARK_AS_KERNEL_OFFSET kern_return_t (*mach_vm_map_kernel)(void *target_map, */
 /*         uint64_t *address, uint64_t size, uint64_t mask, int flags, */
 /*         vm_map_kernel_flags_t vmk_flags, int tag, void *memory_object, */

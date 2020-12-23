@@ -41,6 +41,7 @@ uint64_t g_kernel_map_addr = 0;
 uint64_t g_kernel_thread_start_addr = 0;
 uint64_t g_thread_deallocate_addr = 0;
 uint64_t g_mach_make_memory_entry_64_addr = 0;
+uint64_t g_offsetof_struct_thread_map = 0;
 uint64_t g_xnuspy_sysctl_name_ptr = 0;
 uint64_t g_xnuspy_sysctl_descr_ptr = 0;
 uint64_t g_xnuspy_sysctl_fmt_ptr = 0;
@@ -794,8 +795,28 @@ bool mach_make_memory_entry_64_finder_13(xnu_pf_patch_t *patch,
 
     puts("xnuspy: found mach_make_memory_entry_64");
 
-    printf("%s: mach_make_memory_entry_64 @ %#llx\n", __func__,
-            g_mach_make_memory_entry_64_addr - kernel_slide);
+    /* printf("%s: mach_make_memory_entry_64 @ %#llx\n", __func__, */
+    /*         g_mach_make_memory_entry_64_addr - kernel_slide); */
+
+    return true;
+}
+
+/* confirmed working on all kernels 13.0-14.3 */
+bool offsetof_struct_thread_map_finder_13(xnu_pf_patch_t *patch,
+        void *cacheable_stream){
+    /* We landed in mmap, the first LDR we matched contains the offset
+     * of the map pointer inside struct thread */
+    uint32_t *opcode_stream = cacheable_stream;
+
+    uint32_t ldr = opcode_stream[1];
+    uint64_t imm12 = (ldr & 0x3ffc00) >> 10;
+    uint32_t size = ldr >> 30;
+
+    g_offsetof_struct_thread_map = (uint64_t)(imm12 << size);
+
+    puts("xnuspy: found offsetof(struct thread, map)");
+    /* printf("%s: offsetof(struct thread, map) = %#llx\n", __func__, */
+    /*         g_offsetof_struct_thread_map); */
 
     return true;
 }

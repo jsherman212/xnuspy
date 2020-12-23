@@ -30,6 +30,7 @@ bool kprintf_finder_13(xnu_pf_patch_t *, void *);
 bool kernel_map_vm_deallocate_vm_map_unwire_finder_13(xnu_pf_patch_t *, void *);
 bool kernel_thread_start_thread_deallocate_finder_13(xnu_pf_patch_t *, void *);
 bool mach_make_memory_entry_64_finder_13(xnu_pf_patch_t *, void *);
+bool offsetof_struct_thread_map_finder_13(xnu_pf_patch_t *, void *);
 
 /* bool DAIFSet_patcher_13(xnu_pf_patch_t *, void *); */
 /* bool LowResetVectorBase_patcher_13(xnu_pf_patch_t *, void *); */

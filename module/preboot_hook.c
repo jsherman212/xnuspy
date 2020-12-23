@@ -141,6 +141,7 @@ static struct xnuspy_ctl_kernel_symbol {
     { "_lck_rw_done", &g_lck_rw_done_addr },
     { "_lck_rw_lock_shared", &g_lck_rw_lock_shared_addr },
     { "__mach_make_memory_entry_64", &g_mach_make_memory_entry_64_addr },
+    { "_offsetof_struct_thread_map", &g_offsetof_struct_thread_map },
     { "_phystokv", &g_phystokv_addr },
     { "_thread_deallocate", &g_thread_deallocate_addr },
     { "__vm_deallocate", &g_vm_deallocate_addr },
@@ -208,6 +209,7 @@ static void anything_missing(void){
     chk(!g_kernel_thread_start_addr, "kernel_thread_start not found\n");
     chk(!g_thread_deallocate_addr, "thread_deallocate not found\n");
     chk(!g_mach_make_memory_entry_64_addr, "mach_make_memory_entry_64 not found\n");
+    chk(!g_offsetof_struct_thread_map, "offsetof(struct thread, map) not found\n");
 
     /* if we printed the error header, something is missing */
     if(printed_err_hdr)
@@ -997,11 +999,8 @@ void xnuspy_preboot_hook(void){
     scratch_space = write_xnuspy_ctl_tramp_instrs(scratch_space,
             &num_free_instrs);
 
-    /* patch_exception_vectors(); */
-
     initialize_xnuspy_cache();
 
-    /* combat short read */
     printf("xnuspy: handing it off to checkra1n...\n");
 
     /* iphone 8 13.6.1 */
