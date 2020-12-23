@@ -150,7 +150,8 @@ MARK_AS_KERNEL_OFFSET void (*thread_deallocate)(void *thread);
 
 MARK_AS_KERNEL_OFFSET void (*ipc_port_release_send)(void *port);
 
-MARK_AS_KERNEL_OFFSET kern_return_t (*mach_vm_deallocate)(void *map,
+/* extra underscore so compiler stops complaining */
+MARK_AS_KERNEL_OFFSET kern_return_t (*_vm_deallocate)(void *map,
         uint64_t start, uint64_t size);
 
 MARK_AS_KERNEL_OFFSET kern_return_t (*vm_map_unwire)(void *map, uint64_t start,
@@ -159,7 +160,6 @@ MARK_AS_KERNEL_OFFSET kern_return_t (*vm_map_unwire)(void *map, uint64_t start,
 /* MARK_AS_KERNEL_OFFSET void **kernprocp; */
 MARK_AS_KERNEL_OFFSET void **kernel_mapp;
 MARK_AS_KERNEL_OFFSET void **allprocp;
-
 
 MARK_AS_KERNEL_OFFSET kern_return_t (*mach_vm_map_external)(void *target_map,
         uint64_t *address, uint64_t size, uint64_t mask, int flags,
@@ -891,8 +891,7 @@ nextcmd:
                     goto failed;
                 }
 
-                kret = mach_vm_deallocate(kernel_map, mapping_addr,
-                        mapping_size);
+                kret = _vm_deallocate(kernel_map, mapping_addr, mapping_size);
 
                 if(kret){
                     kprintf("%s: could not deallocate the previous shared "
@@ -1046,7 +1045,7 @@ nextpage:
 failed_unwire_kernel_mapping:
     vm_map_unwire(kernel_map, shm_addr, shm_addr + copysz, 0);
 failed_dealloc_kernel_mapping:
-    mach_vm_deallocate(kernel_map, shm_addr, copysz);
+    _vm_deallocate(kernel_map, shm_addr, copysz);
 failed_dealloc_memobj:
     ipc_port_release_send(shm_object);
 failed_unwire_user_segments:

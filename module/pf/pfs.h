@@ -720,6 +720,48 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
             }),
             4, kprintf_finder_13, "__TEXT_EXEC"),
     },
+    {
+        PF_DECL_FULL("kernel_map,vm_deallocate,vm_map_unwire finder iOS 13",
+            LISTIZE({
+                0x94000000,     /* bl _vm_map_unwire */
+                0xf94002e0,     /* ldr x0, [x23] */
+                0xa9400a61,     /* ldp x1, x2, [x19] */
+                0x94000000,     /* bl _vm_deallocate */
+                0xa9402668,     /* ldp x8, x9, [x19] */
+                0x8b090114,     /* add x20, x8, x9 */
+            }),
+            LISTIZE({
+                0xfc000000,     /* ignore immediate */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xfc000000,     /* ignore immediate */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+            }),
+            6, XNU_PF_ACCESS_32BIT,
+            kernel_map_vm_deallocate_vm_map_unwire_finder_13,
+            "com.apple.security.sandbox", "__TEXT_EXEC", NULL),
+        PF_DECL_FULL("kernel_map,vm_deallocate,vm_map_unwire finder iOS 14",
+            LISTIZE({
+                0x94000000,     /* bl _vm_map_unwire */
+                0xf94002e0,     /* ldr x0, [x23] */
+                0xa9400a61,     /* ldp x1, x2, [x19] */
+                0x94000000,     /* bl _vm_deallocate */
+                0xa9402668,     /* ldp x8, x9, [x19] */
+                0x8b090114,     /* add x20, x8, x9 */
+            }),
+            LISTIZE({
+                0xfc000000,     /* ignore immediate */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xfc000000,     /* ignore immediate */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+            }),
+            6, XNU_PF_ACCESS_32BIT,
+            kernel_map_vm_deallocate_vm_map_unwire_finder_13,
+            "com.apple.security.sandbox", "__TEXT_EXEC", NULL),
+    },
     /* { */
     /*     PF_DECL32("DAIFSet patcher iOS 13", */
     /*         LISTIZE({ */

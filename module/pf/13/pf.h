@@ -27,6 +27,7 @@ bool copyout_finder_13(xnu_pf_patch_t *, void *);
 bool PAN_disabler_13(xnu_pf_patch_t *, void *);
 bool IOSleep_finder_13(xnu_pf_patch_t *, void *);
 bool kprintf_finder_13(xnu_pf_patch_t *, void *);
+bool kernel_map_vm_deallocate_vm_map_unwire_finder_13(xnu_pf_patch_t *, void *);
 
 /* bool DAIFSet_patcher_13(xnu_pf_patch_t *, void *); */
 /* bool LowResetVectorBase_patcher_13(xnu_pf_patch_t *, void *); */

@@ -110,6 +110,15 @@ uint64_t get_adrp_ldr_va_target(uint32_t *adrpp){
     return addr_va + pimm;
 }
 
+uint64_t get_adrp_x_va_target(uint32_t *adrpp){
+    if(((adrpp[1] >> 25) & 5) == 4)
+        return get_adrp_ldr_va_target(adrpp);
+    else if(*adrpp & 0x80000000)
+        return get_adrp_add_va_target(adrpp);
+    else
+        return get_adr_va_target(adrpp);
+}
+
 uint32_t *get_branch_dst_ptr(uint32_t branch, uint32_t *pc){
     intptr_t signed_pc = (intptr_t)pc;
     int32_t imm26 = sign_extend(bits(branch, 0, 25) << 2, 28);

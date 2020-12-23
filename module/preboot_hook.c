@@ -118,10 +118,10 @@ uint64_t *xnuspy_cache_base = NULL;
         *xnuspy_cache_cursor++ = (thing); \
     } while (0) \
 
-static struct xnuspy_ctl_offset {
-    const char *name;
-    uint64_t *val;
-} g_xnuspy_ctl_needed_offsets[] = {
+static struct xnuspy_ctl_kernel_symbol {
+    const char *symbol;
+    uint64_t *valp;
+} g_xnuspy_ctl_needed_symbols[] = {
     { "_bcopy_phys", &g_bcopy_phys_addr },
     { "_copyin", &g_copyin_addr },
     { "_copyout", &g_copyout_addr },
@@ -130,6 +130,7 @@ static struct xnuspy_ctl_offset {
     { "_IOSleep", &g_IOSleep_addr },
     { "_kalloc_canblock", &g_kalloc_canblock_addr },
     { "_kalloc_external", &g_kalloc_external_addr },
+    { "_kernel_mapp", &g_kernel_map_addr },
     { "_kernel_slide", &kernel_slide },
     { "_kfree_addr", &g_kfree_addr_addr },
     { "_kfree_ext", &g_kfree_ext_addr },
@@ -139,6 +140,8 @@ static struct xnuspy_ctl_offset {
     { "_lck_rw_done", &g_lck_rw_done_addr },
     { "_lck_rw_lock_shared", &g_lck_rw_lock_shared_addr },
     { "_phystokv", &g_phystokv_addr },
+    { "__vm_deallocate", &g_vm_deallocate_addr },
+    { "_vm_map_unwire", &g_vm_map_unwire_addr },
     { "_xnuspy_tramp_page", &g_xnuspy_tramp_page_addr },
     { "_xnuspy_tramp_page_end", &g_xnuspy_tramp_page_end },
 };
@@ -194,6 +197,11 @@ static void anything_missing(void){
     chk(!g_phystokv_addr, "phystokv not found\n");
     chk(!g_copyin_addr, "copyin not found\n");
     chk(!g_copyout_addr, "copyout not found\n");
+    chk(!g_IOSleep_addr, "IOSleep not found\n");
+    chk(!g_kprintf_addr, "kprintf not found\n");
+    chk(!g_vm_map_unwire_addr, "vm_map_unwire not found\n");
+    chk(!g_vm_deallocate_addr, "vm_deallocate not found\n");
+    chk(!g_kernel_map_addr, "kernel_map not found\n");
 
     /* if we printed the error header, something is missing */
     if(printed_err_hdr)
@@ -452,23 +460,23 @@ static void initialize_xnuspy_callnum_sysctl_offsets(void){
 }
 
 static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
-    const size_t num_needed_offsets = sizeof(g_xnuspy_ctl_needed_offsets) /
-        sizeof(*g_xnuspy_ctl_needed_offsets);
+    const size_t num_needed_symbols = sizeof(g_xnuspy_ctl_needed_symbols) /
+        sizeof(*g_xnuspy_ctl_needed_symbols);
 
-    for(size_t i=0; i<num_needed_offsets; i++){
-        if(strcmp(ksym, g_xnuspy_ctl_needed_offsets[i].name) == 0){
+    for(size_t i=0; i<num_needed_symbols; i++){
+        if(strcmp(ksym, g_xnuspy_ctl_needed_symbols[i].symbol) == 0){
             /* printf("%s: replacing '%s' with %#llx (unslid %#llx)\n", __func__, */
-            /*         ksym, *g_xnuspy_ctl_needed_offsets[i].val, */
-            /*         *g_xnuspy_ctl_needed_offsets[i].val - kernel_slide); */
+            /*         ksym, *g_xnuspy_ctl_needed_symbols[i].val, */
+            /*         *g_xnuspy_ctl_needed_symbols[i].val - kernel_slide); */
             
-            *va = *g_xnuspy_ctl_needed_offsets[i].val;
+            *va = *g_xnuspy_ctl_needed_symbols[i].valp;
 
             return;
         }
-        else if(strcmp(ksym, "_kprintf") == 0){
-            *va = g_kprintf_addr + kernel_slide;
-            return;
-        }
+        /* else if(strcmp(ksym, "_kprintf") == 0){ */
+        /*     *va = g_kprintf_addr + kernel_slide; */
+        /*     return; */
+        /* } */
         /* else if(strcmp(ksym, "_IOSleep") == 0){ */
         /*     *va = g_IOSleep_addr + kernel_slide; */
         /*     return; */

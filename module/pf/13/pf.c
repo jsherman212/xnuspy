@@ -35,6 +35,9 @@ uint64_t g_copyin_addr = 0;
 uint64_t g_copyout_addr = 0;
 uint64_t g_IOSleep_addr = 0;
 uint64_t g_kprintf_addr = 0;
+uint64_t g_vm_map_unwire_addr = 0;
+uint64_t g_vm_deallocate_addr = 0;
+uint64_t g_kernel_map_addr = 0;
 uint64_t g_xnuspy_sysctl_name_ptr = 0;
 uint64_t g_xnuspy_sysctl_descr_ptr = 0;
 uint64_t g_xnuspy_sysctl_fmt_ptr = 0;
@@ -693,7 +696,57 @@ bool kprintf_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     g_kprintf_addr = xnu_ptr_to_va(opcode_stream);
 
     puts("xnuspy: found kprintf");
-    printf("%s: kprintf @ %#llx\n", __func__, g_kprintf_addr - kernel_slide);
+    /* printf("%s: kprintf @ %#llx\n", __func__, g_kprintf_addr - kernel_slide); */
+    return true;
+}
+
+/* confirmed working on all kernels 13.0-14.3 */
+bool kernel_map_vm_deallocate_vm_map_unwire_finder_13(xnu_pf_patch_t *patch,
+        void *cacheable_stream){
+    xnu_pf_disable_patch(patch);
+
+    /* If we're 13.x, we've landed inside profile_release, if we're 14.x,
+     * we've landed inside _profile_destroy. For vm_map_unwire, it'll be the
+     * branch we're currently sitting at. */
+    uint32_t *opcode_stream = cacheable_stream;
+    uint32_t *vm_map_unwire = get_branch_dst_ptr(*opcode_stream, opcode_stream);
+    uint32_t *vm_deallocate = get_branch_dst_ptr(opcode_stream[3], opcode_stream + 3);
+
+    g_vm_map_unwire_addr = xnu_ptr_to_va(vm_map_unwire);
+    g_vm_deallocate_addr = xnu_ptr_to_va(vm_deallocate);
+
+    /* Finally, we can find kernel_map by searching up for the first ADRP
+     * or ADR from where we initially landed */
+    uint32_t instr_limit = 150;
+
+    while((*opcode_stream & 0x1f000000) != 0x10000000){
+        if(instr_limit-- == 0)
+            return false;
+
+        opcode_stream--;
+    }
+
+    /* The ADRP,LDR pairs require another level of indirection for this */
+    if(((opcode_stream[1] >> 25) & 5) == 4){
+        uint64_t pva = get_adrp_ldr_va_target(opcode_stream);
+        uint64_t *ptr = xnu_va_to_ptr(pva);
+        g_kernel_map_addr = *ptr + kernel_slide;
+    }
+    else{
+        if(*opcode_stream & 0x80000000)
+            g_kernel_map_addr = get_adrp_add_va_target(opcode_stream);
+        else
+            g_kernel_map_addr = get_adr_va_target(opcode_stream);
+    }
+
+    puts("xnuspy: found vm_map_unwire");
+    puts("xnuspy: found vm_deallocate");
+    puts("xnuspy: found kernel_map");
+
+    /* printf("%s: vm_map_unwire @ %#llx, vm_deallocate @ %#llx, kernel_map @ %#llx\n", */
+    /*         __func__, g_vm_map_unwire_addr - kernel_slide, */
+    /*         g_vm_deallocate_addr - kernel_slide, g_kernel_map_addr - kernel_slide); */
+
     return true;
 }
 
