@@ -19,7 +19,6 @@ uint64_t g_sysctl_register_oid_addr = 0;
 uint64_t g_sysctl_handle_long_addr = 0;
 uint64_t g_name2oid_addr = 0;
 uint64_t g_sysctl_geometry_lock_addr = 0;
-uint64_t g_lck_rw_lock_shared_addr = 0;
 uint64_t g_lck_rw_done_addr = 0;
 uint64_t g_h_s_c_sbn_branch_addr = 0;
 uint64_t g_h_s_c_sbn_epilogue_addr = 0;
@@ -51,6 +50,9 @@ uint64_t g_proc_rele_locked_addr = 0;
 uint64_t g_proc_uniqueid_addr = 0;
 uint64_t g_proc_pid_addr = 0;
 uint64_t g_allproc_addr = 0;
+uint64_t g_lck_rw_lock_shared_addr = 0;
+uint64_t g_lck_rw_lock_shared_to_exclusive_addr = 0;
+uint64_t g_lck_rw_lock_exclusive_addr = 0;
 uint64_t g_xnuspy_sysctl_name_ptr = 0;
 uint64_t g_xnuspy_sysctl_descr_ptr = 0;
 uint64_t g_xnuspy_sysctl_fmt_ptr = 0;
@@ -327,9 +329,8 @@ bool name2oid_and_its_dependencies_finder_13(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     uint32_t *opcode_stream = cacheable_stream;
 
-    /* This finds name2oid and three other things:
+    /* This finds name2oid and two other things:
      *      sysctl_geometry_lock (needs to be held when we call name2oid)
-     *      lck_rw_lock_shared
      *      lck_rw_done
      *
      * I can only do a maskmatch with 8 matches/masks, but I need 10.
@@ -347,11 +348,6 @@ bool name2oid_and_its_dependencies_finder_13(xnu_pf_patch_t *patch,
 
     g_sysctl_geometry_lock_addr = get_adrp_ldr_va_target(opcode_stream);
 
-    uint32_t *lck_rw_lock_shared = get_branch_dst_ptr(opcode_stream[2],
-            opcode_stream + 2);
-
-    g_lck_rw_lock_shared_addr = xnu_ptr_to_va(lck_rw_lock_shared);
-
     uint32_t *name2oid = get_branch_dst_ptr(opcode_stream[6],
             opcode_stream + 6);
 
@@ -363,7 +359,6 @@ bool name2oid_and_its_dependencies_finder_13(xnu_pf_patch_t *patch,
     g_lck_rw_done_addr = xnu_ptr_to_va(lck_rw_done);
 
     puts("xnuspy: found sysctl_geometry_lock");
-    puts("xnuspy: found lck_rw_lock_shared");
     puts("xnuspy: found name2oid");
     puts("xnuspy: found lck_rw_done");
 
@@ -982,7 +977,44 @@ bool allproc_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     g_allproc_addr = get_pc_rel_va_target(opcode_stream + 3);
 
     puts("xnuspy: found allproc");
-    printf("%s: &allproc @ %#llx\n", __func__, g_allproc_addr - kernel_slide);
+    /* printf("%s: &allproc @ %#llx\n", __func__, g_allproc_addr - kernel_slide); */
+
+    return true;
+}
+
+/* confirmed working on all kernels 13.0-14.3 */
+bool misc_lck_stuff_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
+    /* We've landed in sflt_initsock. This finds:
+     *      - lck_rw_lock_shared
+     *      - lck_rw_lock_shared_to_exclusive
+     *      - lck_rw_lock_exclusive
+     *
+     * From a programming perspective, lck_rw_lock would satisfy both the
+     * first and third, but from a patchfinding perspective, it's so much
+     * easier to get all three of these at once. */
+    uint32_t *opcode_stream = cacheable_stream;
+
+    uint32_t *lck_rw_lock_shared = get_branch_dst_ptr(*opcode_stream, opcode_stream);
+    uint32_t *lck_rw_lock_shared_to_exclusive =
+        get_branch_dst_ptr(opcode_stream[4], opcode_stream + 4);
+    uint32_t *lck_rw_lock_exclusive = get_branch_dst_ptr(opcode_stream[7],
+            opcode_stream + 7);
+
+    g_lck_rw_lock_shared_addr = xnu_ptr_to_va(lck_rw_lock_shared);
+    g_lck_rw_lock_shared_to_exclusive_addr =
+        xnu_ptr_to_va(lck_rw_lock_shared_to_exclusive);
+    g_lck_rw_lock_exclusive_addr = xnu_ptr_to_va(lck_rw_lock_exclusive);
+
+    puts("xnuspy: found lck_rw_lock_shared");
+    puts("xnuspy: found lck_rw_lock_shared_to_exclusive");
+    puts("xnuspy: found lck_rw_lock_exclusive");
+
+    printf("%s: lck_rw_lock_shared @ %#llx, "
+            "lck_rw_lock_shared_to_exclusive @ %#llx, "
+            "lck_rw_lock_exclusive @ %#llx\n", __func__,
+            g_lck_rw_lock_shared_addr - kernel_slide,
+            g_lck_rw_lock_shared_to_exclusive_addr - kernel_slide,
+            g_lck_rw_lock_exclusive_addr - kernel_slide);
 
     return true;
 }

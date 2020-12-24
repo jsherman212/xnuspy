@@ -75,14 +75,15 @@ MARK_AS_KERNEL_OFFSET void *(*kalloc_canblock)(vm_size_t *sizep, bool canblock,
 MARK_AS_KERNEL_OFFSET void *(*kalloc_external)(vm_size_t sz);
 MARK_AS_KERNEL_OFFSET void (*kfree_addr)(void *addr);
 MARK_AS_KERNEL_OFFSET void (*kfree_ext)(void *addr, vm_size_t sz);
-/* MARK_AS_KERNEL_OFFSET void (*lck_rw_lock_shared)(void *lock); */
+MARK_AS_KERNEL_OFFSET void (*lck_rw_lock_exclusive)(void *lock);
+MARK_AS_KERNEL_OFFSET void (*lck_rw_lock_shared)(void *lock);
 
 MARK_AS_KERNEL_OFFSET int (*lck_rw_lock_shared_to_exclusive)(lck_rw_t *lck);
 
 /* XXX XXX these one has not had its offset found yet!! */
 /* MARK_AS_KERNEL_OFFSET int (*lck_rw_lock_exclusive_to_shared)(lck_rw_t *lck); */
 
-MARK_AS_KERNEL_OFFSET void (*lck_rw_lock)(lck_rw_t *lock, lck_rw_type_t lck_rw_type);
+/* MARK_AS_KERNEL_OFFSET void (*lck_rw_lock)(lck_rw_t *lock, lck_rw_type_t lck_rw_type); */
 /* MARK_AS_KERNEL_OFFSET void (*lck_rw_unlock)(lck_rw_t *lock, lck_rw_type_t lck_rw_type); */
 
 /* the two below found by xrefing l2tp_udp_init: can't alloc mutex for iOS 13.x */
@@ -147,7 +148,7 @@ MARK_AS_KERNEL_OFFSET kern_return_t (*_mach_make_memory_entry_64)(void *target_m
         uint64_t *size, uint64_t offset, vm_prot_t prot, void **object_handle,
         void *parent_handle);
 
-MARK_AS_KERNEL_OFFSET kern_return_t (*kernel_thread_start)(thread_continue_t continuation,
+MARK_AS_KERNEL_OFFSET kern_return_t (*kernel_thread_start)(thread_continue_t cont,
         void *parameter, void **new_thread);
 
 MARK_AS_KERNEL_OFFSET void (*thread_deallocate)(void *thread);
@@ -593,7 +594,7 @@ static void xnuspy_tramp_teardown(struct xnuspy_tramp *t){
 
 /* Free an xnuspy_tramp struct by putting it at the end of the freelist */
 static void xnuspy_tramp_free(struct stailq_entry *stqe){
-    lck_rw_lock(xnuspy_rw_lck, LCK_RW_TYPE_EXCLUSIVE);
+    lck_rw_lock_exclusive(xnuspy_rw_lck);
     STAILQ_INSERT_TAIL(&freelist, stqe, link);
     lck_rw_done(xnuspy_rw_lck);
 }
@@ -601,7 +602,7 @@ static void xnuspy_tramp_free(struct stailq_entry *stqe){
 /* Pull an xnuspy_tramp struct off of the freelist, we may or may not commit
  * it to use */
 static struct stailq_entry *xnuspy_tramp_alloc(void){
-    lck_rw_lock(xnuspy_rw_lck, LCK_RW_TYPE_EXCLUSIVE);
+    lck_rw_lock_exclusive(xnuspy_rw_lck);
 
     if(STAILQ_EMPTY(&freelist)){
         lck_rw_done(xnuspy_rw_lck);
@@ -625,7 +626,7 @@ static void xnuspy_tramp_commit(struct stailq_entry *stqe){
 
 /* Pull an xnuspy_tramp off of the usedlist, according to its target */
 static struct stailq_entry *xnuspy_tramp_disconnect(uint64_t target){
-    lck_rw_lock(xnuspy_rw_lck, LCK_RW_TYPE_EXCLUSIVE);
+    lck_rw_lock_exclusive(xnuspy_rw_lck);
 
     if(STAILQ_EMPTY(&usedlist)){
         lck_rw_done(xnuspy_rw_lck);
@@ -653,7 +654,7 @@ static struct xnuspy_mapping_metadata *find_mapping_metadata(void){
     uint64_t cuniqueid = proc_uniqueid(current_proc());
     struct stailq_entry *entry;
 
-    lck_rw_lock(xnuspy_rw_lck, LCK_RW_TYPE_SHARED);
+    lck_rw_lock_shared(xnuspy_rw_lck);
 
     STAILQ_FOREACH(entry, &usedlist, link){
         struct xnuspy_tramp *tramp = entry->elem;
@@ -672,7 +673,7 @@ static struct xnuspy_mapping_metadata *find_mapping_metadata(void){
 static int hook_already_exists(uint64_t target){
     struct stailq_entry *entry;
 
-    lck_rw_lock(xnuspy_rw_lck, LCK_RW_TYPE_SHARED);
+    lck_rw_lock_shared(xnuspy_rw_lck);
 
     STAILQ_FOREACH(entry, &usedlist, link){
         struct xnuspy_tramp *tramp = entry->elem;
@@ -690,7 +691,7 @@ static int hook_already_exists(uint64_t target){
 
 /* static int freelist_empty(void){ */
 /*     int res; */
-/*     lck_rw_lock(xnuspy_rw_lck, LCK_RW_TYPE_SHARED); */
+/*     lck_rw_lock_shared(xnuspy_rw_lck); */
 /*     res = STAILQ_EMPTY(&freelist); */
 /*     lck_rw_done(xnuspy_rw_lck); */
 /*     return res; */
@@ -698,7 +699,7 @@ static int hook_already_exists(uint64_t target){
 
 /* static int usedlist_empty(void){ */
 /*     int res; */
-/*     lck_rw_lock(xnuspy_rw_lck, LCK_RW_TYPE_SHARED); */
+/*     lck_rw_lock_shared(xnuspy_rw_lck); */
 /*     res = STAILQ_EMPTY(&usedlist); */
 /*     lck_rw_done(xnuspy_rw_lck); */
 /*     return res; */
@@ -1007,7 +1008,7 @@ nextcmd:
 
     /* This needs to be locked because we check the reference count of more
      * than one reflector page */
-    lck_rw_lock(xnuspy_rw_lck, LCK_RW_TYPE_EXCLUSIVE);
+    lck_rw_lock_exclusive(xnuspy_rw_lck);
 
     while(cur){
         if(!xnuspy_reflector_page_free(cur))
@@ -1136,7 +1137,7 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
     struct xnuspy_mapping_metadata *mm = find_mapping_metadata();
 
     if(mm)
-        lck_rw_lock(xnuspy_rw_lck, LCK_RW_TYPE_EXCLUSIVE);
+        lck_rw_lock_exclusive(xnuspy_rw_lck);
     else{
         kprintf("%s: need to map __TEXT and __DATA\n", __func__);
 
@@ -1225,13 +1226,13 @@ static void proc_list_unlock(void){
  * and sent back to the freelist. */
 static void xnuspy_gc_thread(void *param, int wait_result){
     for(;;){
-        lck_rw_lock(xnuspy_rw_lck, LCK_RW_TYPE_SHARED);
+        lck_rw_lock_shared(xnuspy_rw_lck);
 
         if(STAILQ_EMPTY(&usedlist))
             goto unlock_and_sleep;
 
         if(!lck_rw_lock_shared_to_exclusive(xnuspy_rw_lck))
-            lck_rw_lock(xnuspy_rw_lck, LCK_RW_TYPE_EXCLUSIVE);
+            lck_rw_lock_exclusive(xnuspy_rw_lck);
         
         struct stailq_entry *entry, *tmp;
 

@@ -958,6 +958,40 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
             }),
             3, allproc_finder_13, "__TEXT_EXEC"),
     },
+    {
+        PF_DECL32("misc. lock stuff finder iOS 13",
+            LISTIZE({
+                0x94000000,     /* bl _lck_rw_lock_shared */
+                0xf9404288,     /* ldr x8, [x20, 0x80] */
+                0xb4000008,     /* cbz x8, n */
+                0xf9400000,     /* ldr x0, [Xn, n] */
+                0x94000000,     /* bl _lck_rw_lock_shared_to_exclusive */
+            }),
+            LISTIZE({
+                0xfc000000,     /* ignore immediate */
+                0xffffffff,     /* match exactly */
+                0xff00001f,     /* ignore immediate */
+                0xffc0001f,     /* ignore all but Rt */
+                0xfc000000,     /* ignore immediate */
+            }),
+            5, misc_lck_stuff_finder_13, "__TEXT_EXEC"),
+        PF_DECL32("misc. lock stuff finder iOS 13",
+            LISTIZE({
+                0x94000000,     /* bl _lck_rw_lock_shared */
+                0xf9404288,     /* ldr x8, [x20, 0x80] */
+                0xb4000008,     /* cbz x8, n */
+                0xf9400000,     /* ldr x0, [Xn, n] */
+                0x94000000,     /* bl _lck_rw_lock_shared_to_exclusive */
+            }),
+            LISTIZE({
+                0xfc000000,     /* ignore immediate */
+                0xffffffff,     /* match exactly */
+                0xff00001f,     /* ignore immediate */
+                0xffc0001f,     /* ignore all but Rt */
+                0xfc000000,     /* ignore immediate */
+            }),
+            5, misc_lck_stuff_finder_13, "__TEXT_EXEC"),
+    },
     { PF_END, PF_END },
 };
 

@@ -142,7 +142,9 @@ static struct xnuspy_ctl_kernel_symbol {
     { "_lck_mtx_unlock", &g_lck_mtx_unlock_addr },
     { "_lck_rw_alloc_init", &g_lck_rw_alloc_init_addr },
     { "_lck_rw_done", &g_lck_rw_done_addr },
+    { "_lck_rw_lock_exclusive", &g_lck_rw_lock_exclusive_addr },
     { "_lck_rw_lock_shared", &g_lck_rw_lock_shared_addr },
+    { "_lck_rw_lock_shared_to_exclusive", &g_lck_rw_lock_shared_to_exclusive_addr },
     { "__mach_make_memory_entry_64", &g_mach_make_memory_entry_64_addr },
     { "_offsetof_struct_thread_map", &g_offsetof_struct_thread_map },
     { "_phystokv", &g_phystokv_addr },
@@ -199,7 +201,6 @@ static void anything_missing(void){
     chk(!g_sysctl_handle_long_addr, "sysctl_handle_long not found\n");
     chk(!g_name2oid_addr, "name2oid not found\n");
     chk(!g_sysctl_geometry_lock_addr, "sysctl_geometry_lock not found\n");
-    chk(!g_lck_rw_lock_shared_addr, "lck_rw_lock_shared not found\n");
     chk(!g_lck_rw_done_addr, "lck_rw_done not found\n");
     chk(!g_h_s_c_sbn_branch_addr, "did not find hscsbn branch addr\n");
     chk(!g_h_s_c_sbn_epilogue_addr, "hscsbn epilogue not found\n");
@@ -228,6 +229,10 @@ static void anything_missing(void){
     chk(!g_proc_uniqueid_addr, "proc_uniqueid not found\n");
     chk(!g_proc_pid_addr, "proc_pid not found\n");
     chk(!g_allproc_addr, "address of allproc not found\n");
+    chk(!g_lck_rw_lock_shared_addr, "lck_rw_lock_shared not found\n");
+    chk(!g_lck_rw_lock_shared_to_exclusive_addr,
+            "lck_rw_lock_shared_to_exclusive not found\n");
+    chk(!g_lck_rw_lock_exclusive_addr, "lck_rw_lock_exclusive not found\n");
 
     /* if we printed the error header, something is missing */
     if(printed_err_hdr)
@@ -596,14 +601,14 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
         /*     *va = 0xFFFFFFF007FF85E0 + kernel_slide; */
         /*     return; */
         /* } */
-        else if(strcmp(ksym, "_lck_rw_lock_shared_to_exclusive") == 0){
-            *va = 0xFFFFFFF007D0A018 + kernel_slide;
-            return;
-        }
-        else if(strcmp(ksym, "_lck_rw_lock") == 0){
-            *va = 0xFFFFFFF007D098F4 + kernel_slide;
-            return;
-        }
+        /* else if(strcmp(ksym, "_lck_rw_lock_shared_to_exclusive") == 0){ */
+        /*     *va = 0xFFFFFFF007D0A018 + kernel_slide; */
+        /*     return; */
+        /* } */
+        /* else if(strcmp(ksym, "_lck_rw_lock") == 0){ */
+        /*     *va = 0xFFFFFFF007D098F4 + kernel_slide; */
+        /*     return; */
+        /* } */
         /* else if(strcmp(ksym, "_lck_rw_unlock") == 0){ */
         /*     *va = 0xFFFFFFF007D0A650 + kernel_slide; */
         /*     return; */

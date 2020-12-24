@@ -34,5 +34,6 @@ bool offsetof_struct_thread_map_finder_13(xnu_pf_patch_t *, void *);
 bool proc_stuff0_finder_13(xnu_pf_patch_t *, void *);
 bool proc_stuff1_finder_13(xnu_pf_patch_t *, void *);
 bool allproc_finder_13(xnu_pf_patch_t *, void *);
+bool misc_lck_stuff_finder_13(xnu_pf_patch_t *, void *);
 
 #endif
