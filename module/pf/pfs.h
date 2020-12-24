@@ -932,6 +932,32 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
             proc_stuff1_finder_13, "com.apple.security.sandbox", "__TEXT_EXEC",
             NULL),
     },
+    {
+        PF_DECL32("allproc finder iOS 13",
+            LISTIZE({
+                0xf900427f,     /* str xzr, [x19, 0x80] */
+                0xf9000293,     /* str x19, [x20] */
+                0xf9004674,     /* str x20, [x19, 0x88] */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+            }),
+            3, allproc_finder_13, "__TEXT_EXEC"),
+        PF_DECL32("allproc finder iOS 13",
+            LISTIZE({
+                0xf900427f,     /* str xzr, [x19, 0x80] */
+                0xf9000293,     /* str x19, [x20] */
+                0xf9004674,     /* str x20, [x19, 0x88] */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+            }),
+            3, allproc_finder_13, "__TEXT_EXEC"),
+    },
     { PF_END, PF_END },
 };
 

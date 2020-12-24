@@ -122,6 +122,7 @@ static struct xnuspy_ctl_kernel_symbol {
     const char *symbol;
     uint64_t *valp;
 } g_xnuspy_ctl_needed_symbols[] = {
+    { "_allprocp", &g_allproc_addr },
     { "_bcopy_phys", &g_bcopy_phys_addr },
     { "_copyin", &g_copyin_addr },
     { "_copyout", &g_copyout_addr },
@@ -226,6 +227,7 @@ static void anything_missing(void){
     chk(!g_proc_rele_locked_addr, "proc_rele_locked not found\n");
     chk(!g_proc_uniqueid_addr, "proc_uniqueid not found\n");
     chk(!g_proc_pid_addr, "proc_pid not found\n");
+    chk(!g_allproc_addr, "address of allproc not found\n");
 
     /* if we printed the error header, something is missing */
     if(printed_err_hdr)
@@ -618,10 +620,10 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
         /*     *va = 0xFFFFFFF009256DB0 + kernel_slide; */
         /*     return; */
         /* } */
-        else if(strcmp(ksym, "_allprocp") == 0){
-            *va = 0xFFFFFFF009257AB0 + kernel_slide;
-            return;
-        }
+        /* else if(strcmp(ksym, "_allprocp") == 0){ */
+        /*     *va = 0xFFFFFFF009257AB0 + kernel_slide; */
+        /*     return; */
+        /* } */
         /* else if(strcmp(ksym, "_proc_list_lock") == 0){ */
         /*     *va = 0xFFFFFFF007FF2C78 + kernel_slide; */
         /*     return; */

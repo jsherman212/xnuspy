@@ -33,5 +33,6 @@ bool mach_make_memory_entry_64_finder_13(xnu_pf_patch_t *, void *);
 bool offsetof_struct_thread_map_finder_13(xnu_pf_patch_t *, void *);
 bool proc_stuff0_finder_13(xnu_pf_patch_t *, void *);
 bool proc_stuff1_finder_13(xnu_pf_patch_t *, void *);
+bool allproc_finder_13(xnu_pf_patch_t *, void *);
 
 #endif

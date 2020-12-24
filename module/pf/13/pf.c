@@ -50,6 +50,7 @@ uint64_t g_lck_mtx_unlock_addr = 0;
 uint64_t g_proc_rele_locked_addr = 0;
 uint64_t g_proc_uniqueid_addr = 0;
 uint64_t g_proc_pid_addr = 0;
+uint64_t g_allproc_addr = 0;
 uint64_t g_xnuspy_sysctl_name_ptr = 0;
 uint64_t g_xnuspy_sysctl_descr_ptr = 0;
 uint64_t g_xnuspy_sysctl_fmt_ptr = 0;
@@ -964,9 +965,24 @@ bool proc_stuff1_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     puts("xnuspy: found proc_uniqueid");
     puts("xnuspy: found proc_pid");
 
-    printf("%s: proc_uniqueid @ %#llx, proc_pid @ %#llx\n", __func__,
-            g_proc_uniqueid_addr - kernel_slide,
-            g_proc_pid_addr - kernel_slide);
+    /* printf("%s: proc_uniqueid @ %#llx, proc_pid @ %#llx\n", __func__, */
+    /*         g_proc_uniqueid_addr - kernel_slide, */
+    /*         g_proc_pid_addr - kernel_slide); */
+
+    return true;
+}
+
+/* confirmed working on all kernels 13.0-14.3 */
+bool allproc_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
+    /* The ADRP three instructions past this point is for allproc */
+    xnu_pf_disable_patch(patch);
+
+    uint32_t *opcode_stream = cacheable_stream;
+
+    g_allproc_addr = get_pc_rel_va_target(opcode_stream + 3);
+
+    puts("xnuspy: found allproc");
+    printf("%s: &allproc @ %#llx\n", __func__, g_allproc_addr - kernel_slide);
 
     return true;
 }
