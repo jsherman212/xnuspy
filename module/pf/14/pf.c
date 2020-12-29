@@ -191,7 +191,7 @@ bool lck_rw_alloc_init_finder_14(xnu_pf_patch_t *patch,
 
 /* confirmed working on all KTRR kernels 14.0-14.3 */
 bool ktrr_lockdown_patcher_14(xnu_pf_patch_t *patch, void *cacheable_stream){
-    xnu_pf_disable_patch(patch);
+    static int count = 1;
 
     uint32_t *opcode_stream = cacheable_stream;
 
@@ -200,23 +200,12 @@ bool ktrr_lockdown_patcher_14(xnu_pf_patch_t *patch, void *cacheable_stream){
     opcode_stream[1] = 0xd503201f;
     opcode_stream[3] = 0xd503201f;
 
-    puts("xnuspy: disabled KTRR MMU lockdown");
+    printf("xnuspy: disabled KTRR MMU lockdown (%d)\n", count);
 
-    return true;
-}
+    if(count == 2)
+        xnu_pf_disable_patch(patch);
 
-/* confirmed working on all KTRR kernels 14.0-14.3 */
-bool amcc_lockdown_patcher_14(xnu_pf_patch_t *patch, void *cacheable_stream){
-    xnu_pf_disable_patch(patch);
-
-    uint32_t *opcode_stream = cacheable_stream;
-
-    /* all to NOP */
-    *opcode_stream = 0xd503201f;
-    opcode_stream[1] = 0xd503201f;
-    opcode_stream[3] = 0xd503201f;
-
-    puts("xnuspy: disabled AMCC MMU lockdown");
+    count++;
 
     return true;
 }

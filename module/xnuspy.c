@@ -335,6 +335,7 @@ static void add_kext_range(struct kextrange **ranges, const char *kext,
 }
 
 static void xnuspy_prep(const char *cmd, char *args){
+    //return;
     /* all the patchfinders in pf/pfs.h currently do 32 bit */
     xnu_pf_patchset_t *patchset = xnu_pf_patchset_create(XNU_PF_ACCESS_32BIT);
 

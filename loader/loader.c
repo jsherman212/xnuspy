@@ -206,7 +206,7 @@ int main(int argc, char **argv, const char **envp){
     
     munmap(module_data, module_size);
 
-    usleep(800 * 1000);
+    usleep(200 * 1000);
 
     /* If you edit this, you must make sure not to delete
      * 'use_contiguous_hint=0'
@@ -226,7 +226,7 @@ int main(int argc, char **argv, const char **envp){
     munmap(module_data, module_size);
 
 /* #if 0 */
-    usleep(200 * 1000);
+    //usleep(200 * 1000);
 
     err = pongo_send_command(pongo_device, "xnuspy-getkernelv\n");
 
@@ -239,7 +239,9 @@ int main(int argc, char **argv, const char **envp){
     }
 
     /* we may have had to pwn SEPROM, so wait a bit longer before we continue */
-    /* sleep(4); */
+    sleep(4);
+    //sleep(1);
+    //goto boot;
 
     /* send the compiled xnuspy_ctl image */
     err = pongo_init_bulk_upload(pongo_device);
@@ -253,7 +255,7 @@ int main(int argc, char **argv, const char **envp){
         return 1;
     }
 
-    usleep(800 * 1000);
+    //usleep(800 * 1000);
 
     err = pongo_do_bulk_upload(pongo_device, xnuspy_ctl_imgdata,
             xnuspy_ctl_imgsz);
@@ -267,7 +269,9 @@ int main(int argc, char **argv, const char **envp){
         return 1;
     }
 
-    sleep(2);
+    //sleep(2);
+    //usleep(800 * 1000);
+    
 /* #endif */
 
 /* #if 0 */
@@ -281,8 +285,10 @@ int main(int argc, char **argv, const char **envp){
         return 1;
     }
 
-#if 0
+boot:;
+#if 1
     usleep(800 * 1000);
+    //sleep(1);
 
     err = pongo_send_command(pongo_device, "bootx\n");
 

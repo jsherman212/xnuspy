@@ -1405,7 +1405,7 @@ static int xnuspy_get_function(uint64_t which, uint64_t /* __user */ outp){
             __func__, which, outp);
 
     if(which > MAX_FUNCTION)
-        return ENOENT;
+        return EINVAL;
 
     switch(which){
         case KPROTECT:
@@ -1438,6 +1438,23 @@ struct xnuspy_ctl_args {
 };
 
 int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
+    /* iphone 7 14.1 */
+    uint64_t *ctrr_beginp = 0xFFFFFFF0070E3B20 + kernel_slide;
+    uint64_t *ctrr_endp = 0xFFFFFFF0070E3B28 + kernel_slide;
+    uint64_t *rorgn_beginp = 0xFFFFFFF007814A00 + kernel_slide;
+    uint64_t *rorgn_endp = 0xFFFFFFF007814A08 + kernel_slide;
+    uint64_t ctrr_begin = phystokv(*ctrr_beginp);
+    uint64_t ctrr_end = phystokv(*ctrr_endp);
+    uint64_t rorgn_begin = phystokv(*rorgn_beginp);
+    uint64_t rorgn_end = phystokv(*rorgn_endp);
+    kprintf("%s: rorgn begin %#llx rorgn end %#llx ctrr begin %#llx"
+            " ctrr end %#llx\n", __func__, rorgn_begin, rorgn_end,
+            ctrr_begin, ctrr_end);
+    IOSleep(9999999);
+    //asm volatile("mov x0, 0x4141");
+    //asm volatile("mov x1, 0x4242");
+    asm volatile("brk 0x5555");
+
     uint64_t flavor = uap->flavor;
 
     if(flavor > XNUSPY_MAX_FLAVOR){

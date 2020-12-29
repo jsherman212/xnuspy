@@ -511,13 +511,13 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
             LISTIZE({
                 0xd51cf260,     /* msr s3_4_c15_c2_3, xn */
                 0xd51cf280,     /* msr s3_4_c15_c2_4, xn */
-                0xd2800031,     /* mov x17, 1 */
+                0x52800020,     /* mov (x|w)n, 1 */
                 0xd51cf240,     /* msr s3_4_c15_c2_2, xn */
             }),
             LISTIZE({
                 0xffffffe0,     /* ignore Rt */
                 0xffffffe0,     /* ignore Rt */
-                0xffffffff,     /* match exactly */
+                0x7fffffe0,     /* ignore Rd */
                 0xffffffe0,     /* ignore Rt */
             }),
             4, ktrr_lockdown_patcher_14, "__TEXT_EXEC"),
@@ -539,20 +539,7 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
                 0xffffffe0,     /* ignore Rt */
             }),
             5, amcc_lockdown_patcher_13, "__TEXT_EXEC"),
-        PF_DECL32("AMCC MMU lockdown patcher iOS 14",
-            LISTIZE({
-                0xd51cf260,     /* msr s3_4_c15_c2_3, xn */
-                0xd51cf280,     /* msr s3_4_c15_c2_4, xn */
-                0xd2800031,     /* mov x17, 1 */
-                0xd51cf240,     /* msr s3_4_c15_c2_2, xn */
-            }),
-            LISTIZE({
-                0xffffffe0,     /* ignore Rt */
-                0xffffffe0,     /* ignore Rt */
-                0xffffffff,     /* match exactly */
-                0xffffffe0,     /* ignore Rt */
-            }),
-            4, amcc_lockdown_patcher_14, "__TEXT_EXEC"),
+        PF_UNUSED,
     },
     {
         PF_DECL32("copyin finder iOS 13",
@@ -638,6 +625,7 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
             }),
             8, copyout_finder_13, "__TEXT_EXEC"),
     },
+#if 0
     {
         PF_DECL32("PAN disabler iOS 13",
             LISTIZE({
@@ -656,6 +644,7 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
             }),
             1, PAN_disabler_13, "__TEXT_EXEC"),
     },
+#endif
     {
         PF_DECL32("IOSleep finder iOS 14",
             LISTIZE({
