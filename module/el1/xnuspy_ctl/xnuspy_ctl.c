@@ -1439,6 +1439,7 @@ struct xnuspy_ctl_args {
 
 int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
     /* iphone 7 14.1 */
+    /*
     uint64_t *ctrr_beginp = 0xFFFFFFF0070E3B20 + kernel_slide;
     uint64_t *ctrr_endp = 0xFFFFFFF0070E3B28 + kernel_slide;
     uint64_t *rorgn_beginp = 0xFFFFFFF007814A00 + kernel_slide;
@@ -1451,9 +1452,10 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
             " ctrr end %#llx\n", __func__, rorgn_begin, rorgn_end,
             ctrr_begin, ctrr_end);
     IOSleep(9999999);
+    */
     //asm volatile("mov x0, 0x4141");
     //asm volatile("mov x1, 0x4242");
-    asm volatile("brk 0x5555");
+    //asm volatile("brk 0x5555");
 
     uint64_t flavor = uap->flavor;
 
@@ -1486,6 +1488,7 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
         case XNUSPY_GET_FUNCTION:
             res = xnuspy_get_function(uap->arg1, uap->arg2);
             break;
+            /*
         case XNUSPY_DUMP_TTES:
             res = xnuspy_dump_ttes(uap->arg1, uap->arg2);
             break;
@@ -1495,6 +1498,7 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
         case XNUSPY_GET_CURRENT_TASK:
             *retval = -1;
             return ENOSYS;
+            */
         /* case XNUSPY_GET_CURRENT_TASK: */
         /*     { */
         /*         void *ct = current_task(); */
