@@ -476,6 +476,22 @@ static struct _vm_map *current_map(void){
     return *(struct _vm_map **)(current_thread() + offsetof_struct_thread_map);
 }
 
+__attribute__ ((naked)) static void user_access_enable(void){
+    asm(""
+        ".long 0xd500409f\n"
+        "isb sy\n"
+        "ret\n"
+       );
+}
+
+__attribute__ ((naked)) static void user_access_disable(void){
+    asm(""
+        ".long 0xd500419f\n"
+        "isb sy\n"
+        "ret\n"
+       );
+}
+
 static int kern_return_to_errno(kern_return_t kret){
     switch(kret){
         case KERN_INVALID_ADDRESS:
@@ -776,6 +792,8 @@ map_caller_segments(struct mach_header_64 * /* __user */ umh,
 
     struct load_command *lc = (struct load_command *)(umh + 1);
 
+    user_access_enable();
+
     for(int i=0; i<umh->ncmds; i++){
         if(lc->cmd != LC_SEGMENT_64)
             goto nextcmd;
@@ -818,6 +836,8 @@ map_caller_segments(struct mach_header_64 * /* __user */ umh,
 nextcmd:
         lc = (struct load_command *)((uintptr_t)lc + lc->cmdsize);
     }
+
+    user_access_disable();
 
     kprintf("%s: ended with copystart %#llx copysz %#llx\n", __func__,
             copystart, copysz);
@@ -1101,7 +1121,7 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
 
     if(!tramp_entry){
         kprintf("%s: no free xnuspy_tramp structs\n", __func__);
-        res = ENOMEM;
+        res = ENOSPC;
         goto out_free_tramp_metadata;
     }
 
@@ -1115,13 +1135,15 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
     generate_original_tramp(target + 4, tramp->orig, &orig_tramp_len);
 
     /* copyout the original function trampoline before the replacement
-     * is called */
-    uint32_t *orig_tramp = tramp->orig;
-    res = copyout(&orig_tramp, origp, sizeof(origp));
+     * is called, if necessary */
+    if(origp){
+        uint32_t *orig_tramp = tramp->orig;
+        res = copyout(&orig_tramp, origp, sizeof(origp));
 
-    if(res){
-        kprintf("%s: copyout failed\n", __func__);
-        goto out_free_tramp_entry;
+        if(res){
+            kprintf("%s: copyout failed\n", __func__);
+            goto out_free_tramp_entry;
+        }
     }
 
     /* struct _vm_map *current_map = */
@@ -1223,7 +1245,9 @@ static void proc_list_unlock(void){
 /* Every second, this thread loops through the proc list, and checks
  * if the owner of a given xnuspy_mapping_metadata struct is no longer present.
  * If so, all the hooks associated with that metadata struct are uninstalled
- * and sent back to the freelist. */
+ * and sent back to the freelist.
+ *
+ * TODO: some sort of periodic mapping deallocation logic */
 static void xnuspy_gc_thread(void *param, int wait_result){
     for(;;){
         lck_rw_lock_shared(xnuspy_rw_lck);
@@ -1368,12 +1392,6 @@ static int xnuspy_init(void){
         kprotect((uint64_t)cur->page, PAGE_SIZE, prot);
         cur = cur->next;
     }
-
-    /* Zero out PAN in case no instruction did it before us. After our kernel
-     * patches, the PAN bit cannot be set to 1 again. MSR PAN, #0 */
-    // XXX XXX NEED TO CHECK IF THE HARDWARE SUPPORTS THIS BIT
-    asm volatile(".long 0xd500409f");
-    asm volatile("isb sy");
 
     xnuspy_init_flag = 1;
 

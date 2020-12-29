@@ -1009,12 +1009,14 @@ bool misc_lck_stuff_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     puts("xnuspy: found lck_rw_lock_shared_to_exclusive");
     puts("xnuspy: found lck_rw_lock_exclusive");
 
+    /*
     printf("%s: lck_rw_lock_shared @ %#llx, "
             "lck_rw_lock_shared_to_exclusive @ %#llx, "
             "lck_rw_lock_exclusive @ %#llx\n", __func__,
             g_lck_rw_lock_shared_addr - kernel_slide,
             g_lck_rw_lock_shared_to_exclusive_addr - kernel_slide,
             g_lck_rw_lock_exclusive_addr - kernel_slide);
+            */
 
     return true;
 }

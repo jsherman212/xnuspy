@@ -566,7 +566,7 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
         /*     return; */
         /* } */
         else if(strcmp(ksym, "_vm_map_wire_kernel") == 0){
-            //*va = 0xFFFFFFF007C94BC8 + kernel_slide;
+            *va = 0xFFFFFFF007C94BC8 + kernel_slide;
             return;
         }
         /* else if(strcmp(ksym, "__mach_make_memory_entry_64") == 0){ */
@@ -574,7 +574,9 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
         /*     return; */
         /* } */
         else if(strcmp(ksym, "_mach_vm_map_external") == 0){
-            //*va = 0xFFFFFFF007CD22DC + kernel_slide;
+            *va = 0xFFFFFFF007CD22DC + kernel_slide;
+            /* iphone 7 14.1 */
+            //*va = 0xFFFFFFF007245A38 + kernel_slide;
             return;
         }
         /* else if(strcmp(ksym, "_ml_static_protect") == 0){ */
@@ -650,7 +652,7 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
         /*     return; */
         /* } */
         else if(strcmp(ksym, "_ipc_port_release_send") == 0){
-            //*va = 0xFFFFFFF007BDE3D8 + kernel_slide;
+            *va = 0xFFFFFFF007BDE3D8 + kernel_slide;
             return;
         }
         /* else if(strcmp(ksym, "_mach_vm_deallocate") == 0){ */
@@ -662,11 +664,11 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
         /*     return; */
         /* } */
         else if(strcmp(ksym, "_lck_rw_free") == 0){
-            //*va = 0xFFFFFFF007D097F8 + kernel_slide;
+            *va = 0xFFFFFFF007D097F8 + kernel_slide;
             return;
         }
         else if(strcmp(ksym, "_lck_grp_free") == 0){
-            //*va = 0xFFFFFFF007C0682C + kernel_slide;
+            *va = 0xFFFFFFF007C0682C + kernel_slide;
             return;
         }
     }
@@ -941,11 +943,10 @@ void xnuspy_preboot_hook(void){
     printf("xnuspy: handing it off to checkra1n...\n");
 
     /* iphone 8 13.6.1 */
-    //uint32_t *doprnt_hide_pointers = xnu_va_to_ptr(0xFFFFFFF0090B0624 + kernel_slide);
-    //*doprnt_hide_pointers = 0;
+    uint32_t *doprnt_hide_pointers = xnu_va_to_ptr(0xFFFFFFF0090B0624 + kernel_slide);
 
     /* iphone 7 14.1 */
-    uint32_t *doprnt_hide_pointers = xnu_va_to_ptr(0xFFFFFFF00777C61C + kernel_slide);
+    //uint32_t *doprnt_hide_pointers = xnu_va_to_ptr(0xFFFFFFF00777C61C + kernel_slide);
     *doprnt_hide_pointers = 0;
 
     printf("%s: sysctl_handle_long @ %#llx\n", __func__,

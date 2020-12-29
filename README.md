@@ -52,8 +52,7 @@ I designed this flavor to match `MSHookFunction`'s API. `arg1` is the *UNSLID*
 address of the kernel function you wish to hook. If you supply a slid address,
 you will most likely panic. `arg2` is a pointer to your ABI-compatible replacement
 function. `arg3` is a pointer for `xnuspy_ctl` to `copyout` the address of a
-trampoline that represents the original kernel function. Unlike
-`MSHookFunction`, `arg3` cannot be NULL. (UNTIL I CHANGE THIS)
+trampoline that represents the original kernel function. This can be NULL if you don't intend to call the original.
 
 ## `XNUSPY_CACHE_READ`
 `arg1` is one of the constants defined in `xnuspy_ctl.h` and `arg2` is a
@@ -64,7 +63,7 @@ kernel slide so you don't have to look for them yourself.
 For `XNUSPY_INSTALL_HOOK` and `XNUSPY_CACHE_READ`, `0` is returned on success.
 
 ### Errors
-Upor error, `-1` is returned and `errno` is set. `XNUSPY_CHECK_IF_PATCHED`
+Upon error, `-1` is returned and `errno` is set. `XNUSPY_CHECK_IF_PATCHED`
 does not return any errors.
 
 #### Errors Pertaining to `XNUSPY_INSTALL_HOOK`
@@ -155,7 +154,7 @@ trampoline is assembled and is what replaces the first instruction of that
 function.
 
 # Device Security
-This module completely neuters KTRR/AMCC lockdown, KPP, and PAN. I don't
+This module completely neuters KTRR/AMCC lockdown and KPP. I don't
 recommend using this on a daily driver.
 
 # Other Notes
