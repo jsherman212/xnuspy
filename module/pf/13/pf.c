@@ -688,7 +688,7 @@ bool IOSleep_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     g_IOSleep_addr = xnu_ptr_to_va(cacheable_stream);
 
     puts("xnuspy: found IOSleep");
-    printf("%s: IOSleep @ %#llx\n", __func__, g_IOSleep_addr - kernel_slide);
+    //printf("%s: IOSleep @ %#llx\n", __func__, g_IOSleep_addr - kernel_slide);
 
     return true;
 }
@@ -791,9 +791,11 @@ bool kernel_thread_start_thread_deallocate_finder_13(xnu_pf_patch_t *patch,
     puts("xnuspy: found kernel_thread_start");
     puts("xnuspy: found thread_deallocate");
 
+    /*
      printf("%s: kernel_thread_start @ %#llx, thread_deallocate @ %#llx\n", __func__,
              g_kernel_thread_start_addr - kernel_slide,
              g_thread_deallocate_addr - kernel_slide);
+             */
 
     return true;
 }

@@ -539,7 +539,24 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
                 0xffffffe0,     /* ignore Rt */
             }),
             5, amcc_lockdown_patcher_13, "__TEXT_EXEC"),
-        PF_UNUSED,
+        PF_DECL32("AMCC CTRR MMU lockdown patcher iOS 14",
+            LISTIZE({
+                0xb94001d1,     /* ldr w17, [x14] */
+                0x1b0f7e31,     /* mul x17, w17, w15 */
+                0x8b110210,     /* add x16, x16, x17 */
+                0x0,            /* ignore this instruction */
+                0x0,            /* ignore this instruction */
+                0xb8316a00,     /* str w0, [x16, x17] */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0x0,            /* ignore this instruction */
+                0x0,            /* ignore this instruction */
+                0xffffffff,     /* match exactly */
+            }),
+            6, amcc_ctrr_lockdown_patcher_14, "__TEXT_EXEC"),
     },
     {
         PF_DECL32("copyin finder iOS 13",

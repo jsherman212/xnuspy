@@ -191,8 +191,10 @@ bool lck_rw_alloc_init_finder_14(xnu_pf_patch_t *patch,
 
 /* confirmed working on all KTRR kernels 14.0-14.3 */
 bool ktrr_lockdown_patcher_14(xnu_pf_patch_t *patch, void *cacheable_stream){
+    /* This also hits rorgn_lockdown, where the AMCC CTRR patches are,
+     * but it's easier for me to separate them since the instruction
+     * sequences are so different */
     static int count = 1;
-
     uint32_t *opcode_stream = cacheable_stream;
 
     /* all to NOP */
@@ -200,10 +202,37 @@ bool ktrr_lockdown_patcher_14(xnu_pf_patch_t *patch, void *cacheable_stream){
     opcode_stream[1] = 0xd503201f;
     opcode_stream[3] = 0xd503201f;
 
-    printf("xnuspy: disabled KTRR MMU lockdown (%d)\n", count);
+    //printf("xnuspy: disabled KTRR MMU lockdown (%d)\n", count);
 
-    if(count == 2)
+    if(count == 2){
         xnu_pf_disable_patch(patch);
+        puts("xnuspy: disabled KTRR MMU lockdown");
+    }
+
+    count++;
+
+    return true;
+}
+
+bool amcc_ctrr_lockdown_patcher_14(xnu_pf_patch_t *patch,
+        void *cacheable_stream){
+    /* On 14.x A10+ there doesn't seem to be a specific lock for
+     * RoRgn, instead we've got these AMCC CTRR registers. We are
+     * patching three of them: lock, enable, and write-disable. See
+     * find_lock_group_data and rorgn_lockdown for more info. */
+    static int count = 1;
+    uint32_t *opcode_stream = cacheable_stream;
+
+    //printf("%s: %d\n", __func__, count);
+
+    /* str w0, [x16, x17] --> str wzr, [x16, x17] */
+    opcode_stream[5] = 0xb8316a1f;
+
+    /* XXX there may be more on other kernels, verify with pfverify!! */
+    if(count == 3){
+        xnu_pf_disable_patch(patch);
+        puts("xnuspy: disabled AMCC CTRR MMU lockdown");
+    }
 
     count++;
 

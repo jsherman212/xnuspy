@@ -972,17 +972,19 @@ void xnuspy_preboot_hook(void){
 
     /* iphon 7, 14.1 */
     /* iphone does not boot with this patch */
-    uint32_t *ktrr_14_p0 = xnu_va_to_ptr(0xFFFFFFF0072717D0 + kernel_slide);
+    //uint32_t *ktrr_14_p0 = xnu_va_to_ptr(0xFFFFFFF0072717D0 + kernel_slide);
     /* str wzr, [x23, 0xa38] */
     //*ktrr_14_p0 = 0xb90a3aff;
 
+    /*
     uint32_t *ctrr_enablep = xnu_va_to_ptr(0xFFFFFFF007271E80 + kernel_slide);
     uint32_t *ctrr_write_disablep = xnu_va_to_ptr(0xFFFFFFF007271EA4 + kernel_slide);
     uint32_t *ctrr_lockp = xnu_va_to_ptr(0xFFFFFFF007271EC8 + kernel_slide);
+    */
     /* all str wzr, [x16, x17] */
-    *ctrr_enablep = 0xB8316A1F;
-    *ctrr_write_disablep = 0xB8316A1F;
-    *ctrr_lockp = 0xB8316A1F;
+    //*ctrr_enablep = 0xB8316A1F;
+    //*ctrr_write_disablep = 0xB8316A1F;
+    //*ctrr_lockp = 0xB8316A1F;
 
     /* iphone 8 13.6.1 */
     //uint32_t *copyio_zalloc_check = xnu_va_to_ptr(0xFFFFFFF00792E370 + kernel_slide);
@@ -1034,8 +1036,8 @@ void xnuspy_preboot_hook(void){
     /* nop */
     /* *sleh_p1 = 0xd503201f; */
 
-    printf("%s: IOSleep @ %#llx\n", __func__,
-            g_IOSleep_addr - kernel_slide);
+    //printf("%s: IOSleep @ %#llx\n", __func__,
+            //g_IOSleep_addr - kernel_slide);
 
     if(next_preboot_hook)
         next_preboot_hook();
