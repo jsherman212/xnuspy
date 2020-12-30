@@ -74,7 +74,8 @@ MARK_AS_KERNEL_OFFSET void *(*kalloc_canblock)(vm_size_t *sizep, bool canblock,
         void *site);
 MARK_AS_KERNEL_OFFSET void *(*kalloc_external)(vm_size_t sz);
 MARK_AS_KERNEL_OFFSET void (*kfree_addr)(void *addr);
-MARK_AS_KERNEL_OFFSET void (*kfree_ext)(void *addr, vm_size_t sz);
+MARK_AS_KERNEL_OFFSET void (*kfree_ext)(void *kheap, void *addr,
+        vm_size_t sz);
 MARK_AS_KERNEL_OFFSET void (*lck_rw_lock_exclusive)(void *lock);
 MARK_AS_KERNEL_OFFSET void (*lck_rw_lock_shared)(void *lock);
 
@@ -1261,9 +1262,11 @@ static void proc_list_unlock(void){
  * TODO: some sort of periodic mapping deallocation logic */
 static void xnuspy_gc_thread(void *param, int wait_result){
     for(;;){
+        /*
         kprintf("%s: hello there\n", __func__);
         IOSleep(1000);
         continue;
+        */
         lck_rw_lock_shared(xnuspy_rw_lck);
 
         if(STAILQ_EMPTY(&usedlist))

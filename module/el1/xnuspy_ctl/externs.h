@@ -12,7 +12,7 @@ extern void *(*kalloc_canblock)(vm_size_t *sizep, bool canblock,
         void *site);
 extern void *(*kalloc_external)(vm_size_t sz);
 extern void (*kfree_addr)(void *addr);
-extern void (*kfree_ext)(void *addr, vm_size_t sz);
+extern void (*kfree_ext)(void *kheap, void *addr, vm_size_t sz);
 extern void (*lck_rw_lock_shared)(void *lock);
 extern uint32_t (*lck_rw_done)(void *lock);
 extern void *(*lck_grp_alloc_init)(const char *grp_name,

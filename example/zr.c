@@ -80,9 +80,12 @@ int main(int argc, char **argv){
         return 1;
     }
 
-    syscall(SYS_xnuspy_ctl, XNUSPY_GET_FUNCTION, KPRINTF, &kprintf, 0);
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_GET_FUNCTION, KPRINTF, &kprintf, 0);
 
     printf("got kprintf @ %#llx\n", kprintf);
+
+    if(ret)
+        return 0;
 
     /* printf("NOT INSTALLING HOOK\n"); */
 
