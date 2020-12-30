@@ -957,6 +957,12 @@ int main(int argc, char **argv){
     ret = syscall(SYS_xnuspy_ctl, XNUSPY_GET_FUNCTION, KERNEL_SLIDE, &kernel_slide, 0);
     printf("got kernel slide @ %#llx\n", kernel_slide);
 
+    if(ret)
+        return 1;
+
+    printf("RETURNING\n");
+    return 0;
+
     /* kernel_log = (void (*)(int, const char *, ...))(0xFFFFFFF007BF71CC + kernel_slide); */
     /* /1* XXX NEED TO CHANGE EVERY TIME *1/ */
     /* kwrite_instr = (void (*)(uint64_t, uint32_t))(0xFFFFFFF00A040994 + kernel_slide); */
@@ -964,12 +970,20 @@ int main(int argc, char **argv){
 
     ret = syscall(SYS_xnuspy_ctl, XNUSPY_GET_FUNCTION, KPROTECT, &kprotect, 0);
     printf("got kprotect @ %#llx\n", kprotect);
+    if(ret)
+        return 1;
     ret = syscall(SYS_xnuspy_ctl, XNUSPY_GET_FUNCTION, COPYOUT, &copyout, 0);
     printf("got copyout @ %#llx\n", copyout);
+    if(ret)
+        return 1;
     ret = syscall(SYS_xnuspy_ctl, XNUSPY_GET_FUNCTION, KPRINTF, &kprintf, 0);
     printf("got kprintf @ %#llx\n", kprintf);
+    if(ret)
+        return 1;
     ret = syscall(SYS_xnuspy_ctl, XNUSPY_GET_FUNCTION, IOSLEEP, &IOSleep, 0);
     printf("got IOSleep @ %#llx\n", IOSleep);
+    if(ret)
+        return 1;
     /* printf("%llx\n", *kprotect); */
 
     /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, g_num_pointer, 0, 0); */

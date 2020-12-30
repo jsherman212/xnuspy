@@ -573,6 +573,9 @@ bool kpp_patcher_13(xnu_pf_patch_t *patch, void *cacheable_stream){
 bool ktrr_lockdown_patcher_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     xnu_pf_disable_patch(patch);
 
+    //printf("%s: SKIPPING\n",__func__);
+    //return true;
+
     uint32_t *opcode_stream = cacheable_stream;
 
     /* all to NOP */
@@ -588,6 +591,9 @@ bool ktrr_lockdown_patcher_13(xnu_pf_patch_t *patch, void *cacheable_stream){
 /* confirmed working on all KTRR kernels 13.0-13.7 */
 bool amcc_lockdown_patcher_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     xnu_pf_disable_patch(patch);
+
+    //printf("%s: SKIPPING\n", __func__);
+    //return true;
 
     uint32_t *opcode_stream = cacheable_stream;
 
@@ -665,6 +671,7 @@ bool copyout_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
+#if 0
 /* confirmed working on all kernels 13.0-14.3 */
 bool PAN_disabler_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     /* replaces all msr PAN, #1 with msr PAN, #0 */
@@ -672,6 +679,7 @@ bool PAN_disabler_13(xnu_pf_patch_t *patch, void *cacheable_stream){
 
     return true;
 }
+#endif
 
 /* confirmed working on all kernels 13.0-14.3 */
 bool IOSleep_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
@@ -680,7 +688,7 @@ bool IOSleep_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     g_IOSleep_addr = xnu_ptr_to_va(cacheable_stream);
 
     puts("xnuspy: found IOSleep");
-    /* printf("%s: IOSleep @ %#llx\n", __func__, g_IOSleep_addr - kernel_slide); */
+    printf("%s: IOSleep @ %#llx\n", __func__, g_IOSleep_addr - kernel_slide);
 
     return true;
 }
@@ -783,9 +791,9 @@ bool kernel_thread_start_thread_deallocate_finder_13(xnu_pf_patch_t *patch,
     puts("xnuspy: found kernel_thread_start");
     puts("xnuspy: found thread_deallocate");
 
-    /* printf("%s: kernel_thread_start @ %#llx, thread_deallocate @ %#llx\n", __func__, */
-    /*         g_kernel_thread_start_addr - kernel_slide, */
-    /*         g_thread_deallocate_addr - kernel_slide); */
+     printf("%s: kernel_thread_start @ %#llx, thread_deallocate @ %#llx\n", __func__,
+             g_kernel_thread_start_addr - kernel_slide,
+             g_thread_deallocate_addr - kernel_slide);
 
     return true;
 }

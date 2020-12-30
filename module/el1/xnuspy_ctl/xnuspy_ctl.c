@@ -140,8 +140,13 @@ MARK_AS_KERNEL_OFFSET uint64_t kernel_slide;
 /*         uint64_t *addrp, vm_size_t size, vm_offset_t mask, int flags, int tag); */
 
 
+/*
 MARK_AS_KERNEL_OFFSET kern_return_t (*vm_map_wire_kernel)(void *map,
         uint64_t start, uint64_t end, vm_prot_t prot, int tag, int user_wire);
+        */
+
+MARK_AS_KERNEL_OFFSET kern_return_t (*vm_map_wire_external)(void *map,
+        uint64_t start, uint64_t end, vm_prot_t prot, int user_wire);
 
 /* extra underscore so compiler stops complaining */
 MARK_AS_KERNEL_OFFSET kern_return_t (*_mach_make_memory_entry_64)(void *target_map,
@@ -943,11 +948,14 @@ nextcmd:
      * patched to not bail when VM_PROT_EXECUTE is given, so that's also one
      * less patchfinder for me to write :D We also set from_user to one because
      * we're dealing with a user map. */
-    kret = vm_map_wire_kernel(current_map, copystart, copysz, VM_PROT_READ,
-            VM_KERN_MEMORY_OSFMK, 1);
+    //kret = vm_map_wire_kernel(current_map, copystart, copysz, VM_PROT_READ,
+            //VM_KERN_MEMORY_OSFMK, 1);
+    kret = vm_map_wire_external(current_map, copystart, copysz, VM_PROT_READ, 1);
 
     if(kret){
-        kprintf("%s: vm_map_wire_kernel failed when wiring down "
+        //kprintf("%s: vm_map_wire_kernel failed when wiring down "
+                //"[copystart, copysz): %d\n", __func__, kret);
+        kprintf("%s: vm_map_wire_external failed when wiring down "
                 "[copystart, copysz): %d\n", __func__, kret);
         *retval = kern_return_to_errno(kret);
         goto failed;
@@ -1009,11 +1017,14 @@ nextcmd:
     /* } */
 
     /* Wire down the shared mapping */
-    kret = vm_map_wire_kernel(kernel_map, shm_addr, shm_addr + copysz,
-            shm_prot, VM_KERN_MEMORY_OSFMK, 0);
+    //kret = vm_map_wire_kernel(kernel_map, shm_addr, shm_addr + copysz,
+            //shm_prot, VM_KERN_MEMORY_OSFMK, 0);
+    kret = vm_map_wire_external(kernel_map, shm_addr, shm_addr + copysz,
+            shm_prot, 0);
 
     if(kret){
-        kprintf("%s: vm_map_wire_kernel failed: %d\n", __func__, kret);
+        //kprintf("%s: vm_map_wire_kernel failed: %d\n", __func__, kret);
+        kprintf("%s: vm_map_wire_external failed: %d\n", __func__, kret);
         *retval = kern_return_to_errno(kret);
         goto failed_dealloc_kernel_mapping;
     }
@@ -1250,6 +1261,9 @@ static void proc_list_unlock(void){
  * TODO: some sort of periodic mapping deallocation logic */
 static void xnuspy_gc_thread(void *param, int wait_result){
     for(;;){
+        kprintf("%s: hello there\n", __func__);
+        IOSleep(1000);
+        continue;
         lck_rw_lock_shared(xnuspy_rw_lck);
 
         if(STAILQ_EMPTY(&usedlist))
@@ -1493,10 +1507,8 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
     if(!xnuspy_init_flag){
         res = xnuspy_init();
 
-        if(res){
-            *retval = -1;
-            return res;
-        }
+        if(res)
+            goto out;
     }
 
     switch(flavor){
@@ -1528,6 +1540,7 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
             return EINVAL;
     };
 
+out:;
     if(res)
         *retval = -1;
 
