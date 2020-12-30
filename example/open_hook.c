@@ -649,10 +649,17 @@ struct IOUserClient_vtab {
     struct IOService *(*getProvider)(void *this);
 };
 
+struct IOUserClient_vtab_14_1 {
+    uint8_t pad0[0x118];
+    /* Found in is_io_service_open_extended */
+    void *(*getProperty)(void *this, const char *key);
+    uint8_t pad120[0x370 - 0x120];
+    struct IOService *(*getProvider)(void *this);
+};
+
 struct IOUserClient {
-    struct IOUserClient_vtab *vt;
-    /* uint8_t pad8[0xd0]; */
-    /* struct IOService *__provider; */
+    //struct IOUserClient_vtab *vt;
+    struct IOUserClient_vtab_14_1 *vt;
 };
 
 #define kIOUserClientClassKey       "IOUserClientClass"
@@ -758,16 +765,16 @@ kern_return_t mach_msg_trap_hook(struct mach_msg_overwrite_trap_args *args){
     uint8_t cpuid = mpidr_el1 & 0xff;
     uint64_t caller = (uint64_t)__builtin_return_address(0);
 
-    /* kprintf("(CPU %d, unslid caller %#llx): msg %#llx option %#x send size %#x" */
-    /*         " recv size %#x recv name %#x timeout %#x override %d recv msg %#llx\n", */
-    /*         cpuid, caller - kernel_slide, args->msg, args->option, args->send_size, */
-    /*         args->rcv_size, args->rcv_name, args->timeout, args->override, */
-    /*         args->rcv_msg); */
+    kprintf("(CPU %d, unslid caller %#llx): msg %#llx option %#x send size %#x"
+            " recv size %#x recv name %#x timeout %#x override %d recv msg %#llx\n",
+            cpuid, caller - kernel_slide, args->msg, args->option, args->send_size, 
+            args->rcv_size, args->rcv_name, args->timeout, args->override, 
+            args->rcv_msg); 
 
     kern_return_t kret = mach_msg_trap_orig(args);
 
-    /* kprintf("(CPU %d, unslid caller %#llx): mach_msg returned %d\n", cpuid, */
-    /*         caller - kernel_slide, kret); */
+    kprintf("(CPU %d, unslid caller %#llx): mach_msg returned %d\n", cpuid, 
+            caller - kernel_slide, kret);
 
     return kret;
 }
@@ -888,6 +895,7 @@ static struct hook {
     void *original;
 } g_hooks[] = {
     /* iphone 8 13.6.1 */
+    /*
     { 0xFFFFFFF0081994DC, is_io_service_open_extended,
         &is_io_service_open_extended_orig },
     { 0xFFFFFFF007C031E4, kalloc_canblock, &kalloc_canblock_orig },
@@ -899,30 +907,26 @@ static struct hook {
         &KeyDeliveryIOKitUserClient_getTargetAndMethodForIndex },
     { 0xFFFFFFF008A99048, _AppleKeyStoreUserClient_handleUserClientCommandGated,
         &AppleKeyStoreUserClient_handleUserClientCommandGated },
+        */
+    /* iphone 7 14.1 */
+    { 0xFFFFFFF00770D114, is_io_service_open_extended,
+        &is_io_service_open_extended_orig },
+    //{ 0xFFFFFFF007C031E4, kalloc_canblock, &kalloc_canblock_orig },
+    //{ 0xFFFFFFF007C4B420, zone_require, &zone_require_orig },
+    { 0xFFFFFFF00716579C, mach_msg_trap_hook, &mach_msg_trap_orig },
+    /*
+    { 0xFFFFFFF00878A31C, _FairPlayIOKitUserClient_getTargetAndMethodForIndex,
+        &FairPlayIOKitUserClient_getTargetAndMethodForIndex },
+    { 0xFFFFFFF0087E9954, _KeyDeliveryIOKitUserClient_getTargetAndMethodForIndex,
+        &KeyDeliveryIOKitUserClient_getTargetAndMethodForIndex },
+    { 0xFFFFFFF008A99048, _AppleKeyStoreUserClient_handleUserClientCommandGated,
+        &AppleKeyStoreUserClient_handleUserClientCommandGated },
+        */
 };
 
 const size_t g_nhooks = sizeof(g_hooks) / sizeof(*g_hooks);
 
-/* static void sig(int signum){ */
-/*     int ret; */
-
-/*     for(int i=0; i<g_nhooks; i++){ */
-/*         struct hook *h = &g_hooks[i]; */
-
-/*         ret = syscall(SYS_xnuspy_ctl, XNUSPY_UNINSTALL_HOOK, h->kva); */
-
-/*         if(ret){ */
-/*             printf("%s: could not uninstall hook for %#llx: %s\n", __func__, */
-/*                     h->kva, strerror(errno)); */
-/*         } */
-/*     } */
-
-/*     exit(0); */
-/* } */
-
 int main(int argc, char **argv){
-    /* signal(SIGINT, sig); */
-
     /* before we begin, figure out what system call was patched */
     size_t oldlen = sizeof(long);
     int ret = sysctlbyname("kern.xnuspy_ctl_callnum", &SYS_xnuspy_ctl,
@@ -960,8 +964,8 @@ int main(int argc, char **argv){
     if(ret)
         return 1;
 
-    printf("RETURNING\n");
-    return 0;
+    //printf("RETURNING\n");
+    //return 0;
 
     /* kernel_log = (void (*)(int, const char *, ...))(0xFFFFFFF007BF71CC + kernel_slide); */
     /* /1* XXX NEED TO CHANGE EVERY TIME *1/ */
@@ -997,7 +1001,9 @@ int main(int argc, char **argv){
     /* Found in _container_init */
     IOService_metaClass = (void *)(0xFFFFFFF00793DA88 + kernel_slide);
 
-    getClassName = (const char *(*)(const void *))(0xFFFFFFF0080EC9A8 + kernel_slide);
+    //getClassName = (const char *(*)(const void *))(0xFFFFFFF0080EC9A8 + kernel_slide);
+    /* iphone 7 14.1 */
+    getClassName = (const char *(*)(const void *))(0xFFFFFFF00765BE54 + kernel_slide);
 
     for(int i=0; i<g_nhooks; i++){
         struct hook *h = &g_hooks[i];
