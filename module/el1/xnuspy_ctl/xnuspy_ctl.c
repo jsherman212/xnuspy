@@ -22,21 +22,43 @@
 
 #define VM_KERN_MEMORY_OSFMK		(1)
 
+/* XXX THIS NEEDS TO STAY IN SYNC WITH example/xnuspy_ctl.h */
 #define XNUSPY_INSTALL_HOOK         (0)
 #define XNUSPY_CHECK_IF_PATCHED     (1)
-#define XNUSPY_GET_FUNCTION         (2)
+#define XNUSPY_CACHE_READ           (2)
+/*
 #define XNUSPY_DUMP_TTES            (3)
 #define XNUSPY_KREAD                (4)
 #define XNUSPY_GET_CURRENT_TASK     (5)
-#define XNUSPY_MAX_FLAVOR           XNUSPY_GET_CURRENT_TASK
+*/
+#define XNUSPY_MAX_FLAVOR           XNUSPY_CACHE_READ
 
-/* values for XNUSPY_GET_FUNCTION */
-#define KPROTECT                    (0)
-#define COPYOUT                     (1)
-#define KPRINTF                     (2)
-#define IOSLEEP                     (3)
-#define KERNEL_SLIDE                (4)
-#define MAX_FUNCTION                KERNEL_SLIDE
+/* values for XNUSPY_CACHE_READ */
+#define KERNEL_SLIDE                (0)
+#define KPRINTF                     (1)
+#define KALLOC_CANBLOCK             (2)
+#define KALLOC_EXTERNAL             (3)
+#define KFREE_ADDR                  (4)
+#define KFREE_EXT                   (5)
+#define BCOPY_PHYS                  (6)
+#define PHYSTOKV                    (7)
+#define COPYIN                      (8)
+#define COPYOUT                     (9)
+#define CURRENT_PROC                (10)
+#define PROC_PID                    (11)
+#define KERNEL_THREAD_START         (12)
+#define THREAD_DEALLOCATE           (13)
+#define KVTOPHYS                    (14)
+#define UVTOPHYS                    (15)
+#define KPROTECT                    (16)
+#define UPROTECT                    (17)
+#define KWRITE                      (18)
+#define KWRITE_INSTR                (19)
+#define EL0_PTEP                    (20)
+#define EL1_PTEP                    (21)
+#define COMMON_KALLOC               (22)
+#define COMMON_KFREE                (23)
+#define MAX_CACHE                   COMMON_KFREE
 
 typedef struct {
     uint64_t word;
@@ -80,12 +102,6 @@ MARK_AS_KERNEL_OFFSET void (*lck_rw_lock_exclusive)(void *lock);
 MARK_AS_KERNEL_OFFSET void (*lck_rw_lock_shared)(void *lock);
 
 MARK_AS_KERNEL_OFFSET int (*lck_rw_lock_shared_to_exclusive)(lck_rw_t *lck);
-
-/* XXX XXX these one has not had its offset found yet!! */
-/* MARK_AS_KERNEL_OFFSET int (*lck_rw_lock_exclusive_to_shared)(lck_rw_t *lck); */
-
-/* MARK_AS_KERNEL_OFFSET void (*lck_rw_lock)(lck_rw_t *lock, lck_rw_type_t lck_rw_type); */
-/* MARK_AS_KERNEL_OFFSET void (*lck_rw_unlock)(lck_rw_t *lock, lck_rw_type_t lck_rw_type); */
 
 /* the two below found by xrefing l2tp_udp_init: can't alloc mutex for iOS 13.x */
 MARK_AS_KERNEL_OFFSET void (*lck_rw_free)(lck_rw_t *lock, void *grp);
@@ -1496,35 +1512,90 @@ out:
     return res;
 }
 
-/* TODO: figure out a better way to do this */
-static int xnuspy_get_function(uint64_t which, uint64_t /* __user */ outp){
-    kprintf("%s: XNUSPY_GET_FUNCTION called with which %lld origp %#llx\n",
+static int xnuspy_cache_read(uint64_t which, uint64_t /* __user */ outp){
+    kprintf("%s: XNUSPY_CACHE_READ called with which %lld origp %#llx\n",
             __func__, which, outp);
 
-    if(which > MAX_FUNCTION)
-        return EINVAL;
+    void *what;
 
     switch(which){
-        case KPROTECT:
-            which = (uint64_t)kprotect;
-            break;
-        case COPYOUT:
-            which = (uint64_t)copyout;
+        case KERNEL_SLIDE:
+            what = (void *)kernel_slide;
             break;
         case KPRINTF:
-            which = (uint64_t)kprintf;
+            what = kprintf;
             break;
-        case IOSLEEP:
-            which = (uint64_t)IOSleep;
+        case KALLOC_CANBLOCK:
+            what = kalloc_canblock;
             break;
-        case KERNEL_SLIDE:
-            which = kernel_slide;
+        case KALLOC_EXTERNAL:
+            what = kalloc_external;
+            break;
+        case KFREE_ADDR:
+            what = kfree_addr;
+            break;
+        case KFREE_EXT:
+            what = kfree_ext;
+            break;
+        case BCOPY_PHYS:
+            what = bcopy_phys;
+            break;
+        case PHYSTOKV:
+            what = phystokv;
+            break;
+        case COPYIN:
+            what = copyin;
+            break;
+        case COPYOUT:
+            what = copyout;
+            break;
+        case CURRENT_PROC:
+            what = current_proc;
+            break;
+        case PROC_PID:
+            what = proc_pid;
+            break;
+        case KERNEL_THREAD_START:
+            what = kernel_thread_start;
+            break;
+        case THREAD_DEALLOCATE:
+            what = thread_deallocate;
+            break;
+        case KVTOPHYS:
+            what = kvtophys;
+            break;
+        case UVTOPHYS:
+            what = uvtophys;
+            break;
+        case KPROTECT:
+            what = kprotect;
+            break;
+        case UPROTECT:
+            what = uprotect;
+            break;
+        case KWRITE:
+            what = kwrite;
+            break;
+        case KWRITE_INSTR:
+            what = kwrite_instr;
+            break;
+        case EL0_PTEP:
+            what = el0_ptep;
+            break;
+        case EL1_PTEP:
+            what = el1_ptep;
+            break;
+        case COMMON_KALLOC:
+            what = common_kalloc;
+            break;
+        case COMMON_KFREE:
+            what = common_kfree;
             break;
         default:
-            break;
+            return EINVAL;
     };
 
-    return copyout(&which, outp, sizeof(outp));
+    return copyout(&what, outp, sizeof(outp));
 }
 
 struct xnuspy_ctl_args {
@@ -1561,8 +1632,8 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
         case XNUSPY_INSTALL_HOOK:
             res = xnuspy_install_hook(uap->arg1, uap->arg2, uap->arg3);
             break;
-        case XNUSPY_GET_FUNCTION:
-            res = xnuspy_get_function(uap->arg1, uap->arg2);
+        case XNUSPY_CACHE_READ:
+            res = xnuspy_cache_read(uap->arg1, uap->arg2);
             break;
             /*
         case XNUSPY_DUMP_TTES:

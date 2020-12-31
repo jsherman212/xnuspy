@@ -56,12 +56,7 @@ void kwrite(void *dst, void *buf, size_t sz){
     uint64_t dst_phys = kvtophys((uint64_t)dst);
     uint64_t buf_phys = kvtophys((uint64_t)buf);
 
-    /* kprintf("%s: dst %#llx dst_phys %#llx buf %#llx buf_phys %#llx\n", __func__, */
-    /*         dst, dst_phys, buf, buf_phys); */
-
     bcopy_phys(buf_phys, dst_phys, sz);
-
-    /* kprintf("%s: still here after bcopy_phys\n", __func__); */
 }
 
 static int protect_common(uint64_t vaddr, uint64_t size, vm_prot_t prot,
@@ -106,8 +101,6 @@ static int protect_common(uint64_t vaddr, uint64_t size, vm_prot_t prot,
         if(prot & VM_PROT_EXECUTE)
             new_pte &= ~(ARM_PTE_NX | ARM_PTE_PNX);
 
-        /* kprintf("%s: pte %#llx new_pte %#llx\n", __func__, *pte, new_pte); */
-
         kwrite(pte, &new_pte, sizeof(new_pte));
 
         target_region_cur += PAGE_SIZE;
@@ -133,9 +126,6 @@ static int protect_common(uint64_t vaddr, uint64_t size, vm_prot_t prot,
  *  zero if successful, non-zero otherwise
  */
 int kprotect(uint64_t kaddr, uint64_t size, vm_prot_t prot){
-    /* kprintf("%s: called with kaddr %#llx size %#llx prot %d\n", __func__, */
-    /*         kaddr, size, prot); */
-
     return protect_common(kaddr, size, prot, 1);
 }
 
@@ -150,9 +140,6 @@ int kprotect(uint64_t kaddr, uint64_t size, vm_prot_t prot){
  *  zero if successful, non-zero otherwise
  */
 int uprotect(uint64_t uaddr, uint64_t size, vm_prot_t prot){
-    /* kprintf("%s: called with uaddr %#llx size %#llx prot %d\n", __func__, */
-    /*         uaddr, size, prot); */
-
     return protect_common(uaddr, size, prot, 0);
 }
 
@@ -176,6 +163,9 @@ struct objhdr {
 
 void *common_kalloc(size_t sz){
     struct objhdr *mem;
+
+    /* Make space for the header */ 
+    sz += sizeof(struct objhdr);
 
     if(iOS_version == iOS_13_x)
         mem = kalloc_canblock(&sz, 0, NULL);

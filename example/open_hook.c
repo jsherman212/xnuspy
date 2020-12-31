@@ -778,8 +778,8 @@ kern_return_t mach_msg_trap_hook(struct mach_msg_overwrite_trap_args *args){
     uint8_t cpuid = mpidr_el1 & 0xff;
     uint64_t caller = (uint64_t)__builtin_return_address(0);
     if(kernel_log && kernel_printf && kern_asl_msg){
-        uint32_t *disableConsoleOutput = (uint32_t *)(0xFFFFFFF00925ABDC + kernel_slide);
-        *disableConsoleOutput = 1;
+        //uint32_t *disableConsoleOutput = (uint32_t *)(0xFFFFFFF00925ABDC + kernel_slide);
+        //*disableConsoleOutput = 1;
 
         /*
         kernel_log(6, "%s: called from mach_msg_trap on CPU %d\n", __func__,
@@ -991,7 +991,21 @@ int main(int argc, char **argv){
     /* getchar(); */
     /* return 0; */
 
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_GET_FUNCTION, KERNEL_SLIDE, &kernel_slide, 0);
+    for(int i=0; i<24; i++){
+        uint64_t thing = 0;
+        ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, i, &thing, 0);
+
+        if(ret == -1){
+            printf("XNUSPY_CACHE_READ failed @ %d\n", i);
+            continue;
+        }
+
+        printf("%d: %#llx\n", i, thing);
+    }
+
+    return 0;
+
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, KERNEL_SLIDE, &kernel_slide, 0);
     printf("got kernel slide @ %#llx\n", kernel_slide);
 
     if(ret)
@@ -1007,22 +1021,24 @@ int main(int argc, char **argv){
     kernel_printf = (int (*)(const char *, ...))(0xFFFFFFF007C0DEF8 + kernel_slide);
     kern_asl_msg = (int (*)(int, const char *, int, ...))(0xFFFFFFF007FF3608 + kernel_slide);
 
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_GET_FUNCTION, KPROTECT, &kprotect, 0);
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, KPROTECT, &kprotect, 0);
     printf("got kprotect @ %#llx\n", kprotect);
     if(ret)
         return 1;
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_GET_FUNCTION, COPYOUT, &copyout, 0);
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, COPYOUT, &copyout, 0);
     printf("got copyout @ %#llx\n", copyout);
     if(ret)
         return 1;
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_GET_FUNCTION, KPRINTF, &kprintf, 0);
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, KPRINTF, &kprintf, 0);
     printf("got kprintf @ %#llx\n", kprintf);
     if(ret)
         return 1;
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_GET_FUNCTION, IOSLEEP, &IOSleep, 0);
+    /*
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, IOSLEEP, &IOSleep, 0);
     printf("got IOSleep @ %#llx\n", IOSleep);
     if(ret)
         return 1;
+        */
     /* printf("%llx\n", *kprotect); */
 
     /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, g_num_pointer, 0, 0); */

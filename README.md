@@ -90,8 +90,8 @@ of the calling processes' `__TEXT` and `__DATA` segments.
 `kern_return_t` value that I haven't yet taken into account for.
 
 If this flavor returns an error, the target kernel function was not hooked.
-The pointer you passed for `arg3` may or may not have been initialized, but if
-it was, it's unsafe to use.
+If you passed a non-NULL pointer for `arg3`, it may or may not have been
+initialized. It's unsafe to use if it was.
 
 #### Errors Pertaining to `XNUSPY_CACHE_READ`
 `errno` is set to...
