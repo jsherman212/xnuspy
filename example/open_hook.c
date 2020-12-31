@@ -922,6 +922,82 @@ kern_return_t _AppleKeyStoreUserClient_handleUserClientCommandGated(void *this,
     return kret;
 }
 
+struct open_args {
+    char path_l_[PADL_(uint64_t)]; uint64_t path; char path_r_[PADR_(uint64_t)];
+    char flags_l_[PADL_(int)]; int flags; char flags_r_[PADR_(int)];
+    char mode_l_[PADL_(int)]; int mode; char mode_r_[PADR_(int)];
+};
+
+static int (*copyin)(const void *uaddr, void *kaddr, size_t len);
+static void *(*kalloc_canblock2)(size_t *sz, int canblock, void *site);
+static void (*kfree_addr)(void *ptr);
+
+static int (*open_orig)(void *p, struct open_args *uap, int *retval);
+
+static int _open(void *p, struct open_args *uap, int *retval){
+    uint64_t mpidr_el1;
+    asm volatile("mrs %0, mpidr_el1" : "=r" (mpidr_el1));
+    uint8_t cpuid = mpidr_el1 & 0xff;
+    uint64_t caller = (uint64_t)__builtin_return_address(0);
+    size_t sz = 50;
+    char *path = kalloc_canblock2(&sz, 1, NULL);
+
+    if(path && uap->path){
+        copyin(uap->path, path, sz);
+        path[sz-1] = '\0';
+
+        kprintf("%s: path '%s': ", __func__, path);
+        
+
+        kfree_addr(path);
+    }
+    //char path[PATH_MAX];
+    /*
+    char path[20];
+    for(int i=0; i<sizeof(path); i++)
+        path[i] = '\0';
+
+    int copyin_res = 1;
+
+    kprintf("%s: uap->path %#llx\n", __func__, uap->path);
+    */
+
+    /*
+    if(uap->path){
+        copyin_res = copyin(uap->path, path, sizeof(path));
+        path[sizeof(path) - 1] = '\0';
+    }
+    */
+
+    asm volatile(""
+        ".long 0xd500409f\n"
+        "isb sy\n"
+       );
+    //if(uap->path)
+        //kprintf("%s: (CPU %d): uap->path '%s' ", __func__, cpuid, uap->path);
+   // kprintf("%s: (CPU %d): ", __func__, cpuid);
+    asm volatile(""
+        ".long 0xd500419f\n"
+        "isb sy\n"
+       );
+
+    int res = open_orig(p, uap, retval);
+
+    if(*retval == -1)
+        kprintf("errno = %d\n", res);
+    else
+        kprintf("Got fd %d\n", *retval);
+
+    /*
+    if(!copyin_res){
+        kprintf("%s: (CPU %d, unslid caller %#llx): returned fd %d for path '%s'\n",
+                __func__, cpuid, caller - kernel_slide, fd, path);
+    }
+    */
+
+    return res;
+}
+
 static struct hook {
     uint64_t kva;
     void *replacement;
@@ -930,7 +1006,7 @@ static struct hook {
     /* iphone 8 13.6.1 */
     { 0xFFFFFFF0081994DC, is_io_service_open_extended,
         &is_io_service_open_extended_orig },
-    { 0xFFFFFFF007C031E4, kalloc_canblock, &kalloc_canblock_orig },
+    //{ 0xFFFFFFF007C031E4, kalloc_canblock, &kalloc_canblock_orig },
     { 0xFFFFFFF007C4B420, zone_require, &zone_require_orig },
     { 0xFFFFFFF007BEAFD0, mach_msg_trap_hook, &mach_msg_trap_orig },
     { 0xFFFFFFF00878A31C, _FairPlayIOKitUserClient_getTargetAndMethodForIndex,
@@ -939,6 +1015,7 @@ static struct hook {
         &KeyDeliveryIOKitUserClient_getTargetAndMethodForIndex },
     { 0xFFFFFFF008A99048, _AppleKeyStoreUserClient_handleUserClientCommandGated,
         &AppleKeyStoreUserClient_handleUserClientCommandGated },
+    { 0xFFFFFFF007D9A7DC, _open, &open_orig },
     /* iphone 7 14.1 */
     /*
     { 0xFFFFFFF00770D114, is_io_service_open_extended,
@@ -1003,8 +1080,6 @@ int main(int argc, char **argv){
         printf("%d: %#llx\n", i, thing);
     }
 
-    return 0;
-
     ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, KERNEL_SLIDE, &kernel_slide, 0);
     printf("got kernel slide @ %#llx\n", kernel_slide);
 
@@ -1031,6 +1106,18 @@ int main(int argc, char **argv){
         return 1;
     ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, KPRINTF, &kprintf, 0);
     printf("got kprintf @ %#llx\n", kprintf);
+    if(ret)
+        return 1;
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, COPYIN, &copyin, 0);
+    printf("got copyin @ %#llx\n", copyin);
+    if(ret)
+        return 1;
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, KALLOC_CANBLOCK, &kalloc_canblock2, 0);
+    printf("got kalloc_canblock @ %#llx\n", kalloc_canblock2);
+    if(ret)
+        return 1;
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, KFREE_ADDR, &kfree_addr, 0);
+    printf("got kfree_addr@ %#llx\n", kfree_addr);
     if(ret)
         return 1;
     /*
