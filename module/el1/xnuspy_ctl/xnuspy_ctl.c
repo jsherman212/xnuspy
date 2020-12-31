@@ -519,6 +519,14 @@ static int kern_return_to_errno(kern_return_t kret){
     return 10000;
 }
 
+/* void disable_preemption(void){ */
+/*     _disable_preemption(); */
+/* } */
+
+/* void enable_preemption(void){ */
+/*     _enable_preemption(); */
+/* } */
+
 static int xnuspy_reflector_page_free(struct xnuspy_reflector_page *p){
     return p->refcnt == 0;
 }
@@ -531,24 +539,6 @@ static void xnuspy_reflector_page_reference(struct xnuspy_reflector_page *p){
     p->refcnt++;
 }
 
-static void xnuspy_mapping_metadata_release(struct xnuspy_mapping_metadata *m){
-    if(--m->refcnt == 0){
-        m->first_reflector_page = NULL;
-        m->used_reflector_pages = 0;
-    }
-}
-
-static void xnuspy_mapping_metadata_reference(struct xnuspy_mapping_metadata *m){
-    m->refcnt++;
-}
-
-/* void disable_preemption(void){ */
-/*     _disable_preemption(); */
-/* } */
-
-/* void enable_preemption(void){ */
-/*     _enable_preemption(); */
-/* } */
 
 MARK_AS_KERNEL_OFFSET struct xnuspy_tramp *xnuspy_tramp_page;
 MARK_AS_KERNEL_OFFSET uint8_t *xnuspy_tramp_page_end;
@@ -570,21 +560,96 @@ struct stailq_entry {
  * executing on.
  *
  * Instead, I'm maximizing the time between the previous free and the next
- * allocation of a given xnuspy_tramp struct. When a hook is uninstalled, the
- * shared mapping won't be unmapped until another process takes ownership
- * of that struct. Freed structs will be pushed to the end of the freelist,
- * and we allocate from the front of the freelist.
+ * allocation of a given xnuspy_tramp struct. I do this in case we uninstall
+ * while some thread is currently, or will end up, executing on a trampoline.
+ * When a hook is uninstalled, its shared mapping won't be unmapped immediately.
+ * It may be unmapped when xnuspy_gc_thread notices that we're pushing our
+ * limit in regard to the number of pages we're currently leaking. 
  *
- * The usedlist is used as a normal linked list, but has to be an STAILQ
- * so I can insert objects from the freelist and into the usedlist and vice
- * versa.
+ * Freed structs will be pushed to the end of the freelist, and we allocate
+ * from the front of the freelist. The usedlist is used as a normal linked
+ * list, but has to be an STAILQ so I can insert objects from the freelist
+ * and into the usedlist and vice versa. The unmaplist contain shared mappings
+ * from recently freed xnuspy_tramp structs which are pending unmapping.
+ * Shared mappings from newly-freed xnuspy_tramp structs are pushed to the
+ * end of the unmaplist, and we unmap from the start of the unmaplist for
+ * garbage collection.
+ *
+ * freelist and usedlist are protected by xnuspy_rw_lck, unmaplist isn't
+ * because it's only touched by xnuspy_gc_thread.
  */
 static STAILQ_HEAD(, stailq_entry) freelist = STAILQ_HEAD_INITIALIZER(freelist);
 static STAILQ_HEAD(, stailq_entry) usedlist = STAILQ_HEAD_INITIALIZER(usedlist);
+static STAILQ_HEAD(, stailq_entry) unmaplist = STAILQ_HEAD_INITIALIZER(unmaplist);
+
+static uint64_t g_num_leaked_pages = 0;
+
+struct orphan_mapping {
+    struct objhdr hdr;
+    uint64_t mapping_addr;
+    uint64_t mapping_size;
+    void *memory_object;
+};
+
+static void desc_orphan_mapping(struct orphan_mapping *om){
+    if(!om){
+        kprintf("%s: NULL\n", __func__);
+        return;
+    }
+
+    kprintf("This orphan mapping is at %#llx\n", om);
+    kprintf("Mapping addr: %#llx\n", om->mapping_addr);
+    kprintf("Mapping size: %#llx\n", om->mapping_size);
+    kprintf("Mapping memory object: %#llx\n", om->memory_object);
+}
+
+static void xnuspy_mapping_metadata_release(struct xnuspy_mapping_metadata *mm){
+    if(--mm->refcnt == 0){
+        mm->first_reflector_page = NULL;
+        mm->used_reflector_pages = 0;
+
+        g_num_leaked_pages += mm->mapping_size / PAGE_SIZE;
+
+        struct orphan_mapping *om = common_kalloc(sizeof(*om));
+
+        /* I don't care for allocation failures here, we just won't be able to
+         * ever unmap this mapping. This shouldn't happen too often? */
+        if(!om){
+            kprintf("%s: om allocation failed\n", __func__);
+            return;
+        }
+
+        struct stailq_entry *stqe = common_kalloc(sizeof(*stqe));
+
+        if(!stqe){
+            kprintf("%s: stqe allocation failed\n", __func__);
+            return;
+        }
+
+        om->mapping_addr = mm->mapping_addr;
+        om->mapping_size = mm->mapping_size;
+        om->memory_object = mm->memory_object;
+
+        stqe->elem = om;
+
+        STAILQ_INSERT_TAIL(&unmaplist, stqe, link);
+
+        kprintf("%s: added mapping @ %#llx to the unmaplist\n", __func__,
+                om->mapping_addr);
+        desc_orphan_mapping(om);
+
+        common_kfree(mm);
+    }
+}
+
+static void xnuspy_mapping_metadata_reference(struct xnuspy_mapping_metadata *mm){
+    mm->refcnt++;
+}
 
 /* This function is expected to be called with an xnuspy_tramp that has
  * already been pulled off the usedlist, but not yet added to the freelist
- * (hence lack of locking here) */
+ * The xnuspy_rw_lck should be held exclusively before calling, because
+ * we are releasing more than one reflector page */
 static void xnuspy_tramp_teardown(struct xnuspy_tramp *t){
     struct xnuspy_mapping_metadata *mm = t->mapping_metadata;
 
@@ -603,9 +668,7 @@ static void xnuspy_tramp_teardown(struct xnuspy_tramp *t){
         if(mm->refcnt > 0)
             xnuspy_mapping_metadata_release(mm);
 
-        /* We do not NULL out the mapping metadata pointer so another process
-         * can unmap this shared mapping when it takes ownership of this
-         * xnuspy_tramp struct */
+        t->mapping_metadata = NULL;
     }
 
     if(t->tramp_metadata){
@@ -791,7 +854,7 @@ static uint64_t find_replacement_kva(struct mach_header_64 *kmh,
  */
 static struct xnuspy_mapping_metadata *
 map_caller_segments(struct mach_header_64 * /* __user */ umh,
-        struct xnuspy_tramp *alloced_tramp, void *current_map, int *retval){
+        void *current_map, int *retval){
     uint64_t aslr_slide = (uintptr_t)umh - 0x100000000;
     uint64_t copystart = 0, copysz = 0;
     int seen_text = 0, seen_data = 0;
@@ -856,102 +919,35 @@ nextcmd:
         goto failed;
     }
 
-    /* If some other process previously owned this hook, we may need to unmap
-     * its shared mapping. However, if there's other hooks referencing this
-     * mapping metadata, we don't unmap and instead create metadata from
-     * scratch.
-     *
-     * This is not a race; alloced_tramp has been pulled from the freelist
-     * but has not yet been committed to the usedlist, and once allocated,
-     * mapping metadata pointers won't be freed once attached to xnuspy_tramp
-     * structs.
-     */
-    metadata = alloced_tramp->mapping_metadata;
+    /* Create the metadata object for the calling process */
+    metadata = common_kalloc(sizeof(*metadata));
 
-    kprintf("%s: old metadata %#llx\n", __func__, metadata);
-
-    if(metadata){
-        kprintf("%s: OLD METADATA DESCRIPTION:\n", __func__);
-        desc_xnuspy_mapping_metadata(metadata);
+    if(!metadata){
+        kprintf("%s: common_kalloc returned NULL when allocating metadata\n",
+                __func__);
+        *retval = ENOMEM;
+        goto failed;
     }
 
-    void *kernel_map = *kernel_mapp;
-    kern_return_t kret;
+    need_free_on_error = 1;
 
-    if(!metadata || metadata->refcnt > 0){
-        metadata = common_kalloc(sizeof(*metadata));
-
-        if(!metadata){
-            kprintf("%s: common_kalloc returned NULL when allocating metadata\n",
-                    __func__);
-            *retval = ENOMEM;
-            goto failed;
-        }
-
-        need_free_on_error = 1;
-    }
-    else{
-        /* Only unmap if the shared mapping is no longer being used */
-        if(metadata->refcnt == 0){
-            /* In case we don't end up comitting alloced_tramp to the usedlist,
-             * we NULL out its metadata pointer. Assuming the functions below
-             * succeed, we don't want to interact with deallocated memory
-             * again if something else past this point fails. However, we do
-             * not free this pointer, because we can re-use its memory on
-             * success. */
-            alloced_tramp->mapping_metadata = NULL;
-
-            kprintf("%s: some other process previously owned this hook!! Need to"
-                    " unmap the previous shared mapping and the memory object\n",
-                    __func__); 
-
-            if(metadata->memory_object){
-                ipc_port_release_send(metadata->memory_object);
-                metadata->memory_object = NULL;
-            }
-
-            uint64_t mapping_addr = metadata->mapping_addr;
-            uint64_t mapping_size = metadata->mapping_size;
-
-            metadata->mapping_addr = 0;
-            metadata->mapping_size = 0;
-
-            if(mapping_addr){
-                kret = vm_map_unwire(kernel_map, mapping_addr,
-                        mapping_addr + mapping_size, 0);
-
-                if(kret){
-                    kprintf("%s: could not unwire the previous shared "
-                            "mapping: %d\n", __func__, kret);
-                    *retval = kern_return_to_errno(kret);
-                    goto failed;
-                }
-
-                kret = _vm_deallocate(kernel_map, mapping_addr, mapping_size);
-
-                if(kret){
-                    kprintf("%s: could not deallocate the previous shared "
-                            "mapping: %d\n", __func__, kret);
-                    *retval = kern_return_to_errno(kret);
-                    goto failed;
-                }
-            }
-        }
-    }
-
-    /* A reference for this will be taken if we end up committing alloced_tramp */
+    /* A reference for this will be taken if we end up committing the tramp
+     * struct we allocated */
     metadata->refcnt = 0;
     metadata->owner = proc_uniqueid(current_proc());
 
+    void *kernel_map = *kernel_mapp;
+
     /* Wire down __TEXT and __DATA of the calling process so they are not
      * swapped out. We only set VM_PROT_READ in case there were some segments
-     * in between __TEXT and __DATA. Also, vm_map_wire_kernel needs to be
+     * in between __TEXT and __DATA. Also, vm_map_wire_external needs to be
      * patched to not bail when VM_PROT_EXECUTE is given, so that's also one
      * less patchfinder for me to write :D We also set from_user to one because
      * we're dealing with a user map. */
     //kret = vm_map_wire_kernel(current_map, copystart, copysz, VM_PROT_READ,
             //VM_KERN_MEMORY_OSFMK, 1);
-    kret = vm_map_wire_external(current_map, copystart, copysz, VM_PROT_READ, 1);
+    kern_return_t kret = vm_map_wire_external(current_map, copystart, copysz,
+            VM_PROT_READ, 1);
 
     if(kret){
         //kprintf("%s: vm_map_wire_kernel failed when wiring down "
@@ -1080,7 +1076,7 @@ nextpage:
     *retval = 0;
 
     /* We return with the lock held because we may end up committing
-     * alloced_tramp to the usedlist */
+     * the tramp we allocated earlier to the usedlist */
 
     return metadata;
 
@@ -1158,8 +1154,6 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
         }
     }
 
-    /* struct _vm_map *current_map = */
-    /*     *(struct _vm_map **)(current_thread() + offsetof_struct_thread_map); */
     struct _vm_map *cm = current_map();
 
     /* User pointer to Mach header of the calling process */
@@ -1175,7 +1169,7 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
     else{
         kprintf("%s: need to map __TEXT and __DATA\n", __func__);
 
-        mm = map_caller_segments(umh, tramp, cm, &res);
+        mm = map_caller_segments(umh, cm, &res);
 
         if(!mm){
             kprintf("%s: failed to create mapping metadata for this hook\n",
@@ -1254,23 +1248,88 @@ static void proc_list_unlock(void){
     lck_mtx_unlock(*proc_list_mlockp);
 }
 
+/* Allow only 1 mb of kernel memory to be leaked by us at all times */
+static const uint64_t g_gc_leaked_page_hardcap = 64;
+
+/* We only deallocate just enough shared mappings to get us back down around
+ * the hardcap. */
+static void xnuspy_do_gc(void){
+    kprintf("%s: doing gc\n", __func__);
+
+    int64_t dealloc_pages = g_num_leaked_pages - g_gc_leaked_page_hardcap;
+
+    kprintf("%s: need to deallocate %lld pages to get back around hardcap\n",
+            __func__, dealloc_pages);
+
+    if(STAILQ_EMPTY(&unmaplist)){
+        kprintf("%s: unmap list is empty\n", __func__);
+        return;
+    }
+
+    struct stailq_entry *entry, *tmp;
+
+    STAILQ_FOREACH_SAFE(entry, &unmaplist, link, tmp){
+        if(g_num_leaked_pages <= g_gc_leaked_page_hardcap){
+            kprintf("%s: back to hardcap with %lld leaked pages\n", __func__,
+                    g_num_leaked_pages);
+            return;
+        }
+
+        struct orphan_mapping *om = entry->elem;
+
+        int didfail = 0;
+
+        /* If we fail from this point on, make sure we don't update
+         * g_num_leaked_pages */
+        ipc_port_release_send(om->memory_object);
+
+        kern_return_t kret = vm_map_unwire(*kernel_mapp, om->mapping_addr,
+                om->mapping_addr + om->mapping_size, 0);
+
+        if(kret)
+            didfail = 1;
+
+        kret = _vm_deallocate(*kernel_mapp, om->mapping_addr, om->mapping_size);
+
+        if(kret)
+            didfail = 1;
+
+        kprintf("%s: didfail: %d\n", __func__, didfail);
+
+        if(!didfail)
+            g_num_leaked_pages -= om->mapping_size / PAGE_SIZE;
+
+        STAILQ_REMOVE(&unmaplist, entry, stailq_entry, link);
+
+        common_kfree(entry);
+        common_kfree(om);
+    }
+}
+
+static void xnuspy_consider_gc(void){
+    kprintf("%s: Currently, there are %lld leaked pages\n", __func__,
+            g_num_leaked_pages);
+
+    if(g_num_leaked_pages <= g_gc_leaked_page_hardcap)
+        return;
+
+    xnuspy_do_gc();
+}
+
 /* Every second, this thread loops through the proc list, and checks
  * if the owner of a given xnuspy_mapping_metadata struct is no longer present.
  * If so, all the hooks associated with that metadata struct are uninstalled
  * and sent back to the freelist.
  *
- * TODO: some sort of periodic mapping deallocation logic */
+ * This thread also handles deallocation of shared mappings whose owners were
+ * freed a long time ago so we don't end up leaking a ridiculous amount of
+ * memory. */
 static void xnuspy_gc_thread(void *param, int wait_result){
     for(;;){
-        /*
-        kprintf("%s: hello there\n", __func__);
-        IOSleep(1000);
-        continue;
-        */
         lck_rw_lock_shared(xnuspy_rw_lck);
 
         if(STAILQ_EMPTY(&usedlist))
-            goto unlock_and_sleep;
+            goto unlock_and_consider_gc;
 
         if(!lck_rw_lock_shared_to_exclusive(xnuspy_rw_lck))
             lck_rw_lock_exclusive(xnuspy_rw_lck);
@@ -1331,8 +1390,9 @@ static void xnuspy_gc_thread(void *param, int wait_result){
             }
         }
 
-unlock_and_sleep:;
+unlock_and_consider_gc:;
         lck_rw_done(xnuspy_rw_lck);
+        xnuspy_consider_gc();
         IOSleep(1000);
     }
 }
@@ -1361,9 +1421,9 @@ static int xnuspy_init(void){
         goto out_dealloc_grp;
     }
 
-    /* Build the initial freelist/usedlist for xnuspy_tramp structs */
     STAILQ_INIT(&freelist);
     STAILQ_INIT(&usedlist);
+    STAILQ_INIT(&unmaplist);
 
     struct xnuspy_tramp *cursor = (struct xnuspy_tramp *)xnuspy_tramp_page;
 
@@ -1473,25 +1533,6 @@ struct xnuspy_ctl_args {
 };
 
 int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
-    /* iphone 7 14.1 */
-    /*
-    uint64_t *ctrr_beginp = 0xFFFFFFF0070E3B20 + kernel_slide;
-    uint64_t *ctrr_endp = 0xFFFFFFF0070E3B28 + kernel_slide;
-    uint64_t *rorgn_beginp = 0xFFFFFFF007814A00 + kernel_slide;
-    uint64_t *rorgn_endp = 0xFFFFFFF007814A08 + kernel_slide;
-    uint64_t ctrr_begin = phystokv(*ctrr_beginp);
-    uint64_t ctrr_end = phystokv(*ctrr_endp);
-    uint64_t rorgn_begin = phystokv(*rorgn_beginp);
-    uint64_t rorgn_end = phystokv(*rorgn_endp);
-    kprintf("%s: rorgn begin %#llx rorgn end %#llx ctrr begin %#llx"
-            " ctrr end %#llx\n", __func__, rorgn_begin, rorgn_end,
-            ctrr_begin, ctrr_end);
-    IOSleep(9999999);
-    */
-    //asm volatile("mov x0, 0x4141");
-    //asm volatile("mov x1, 0x4242");
-    //asm volatile("brk 0x5555");
-
     uint64_t flavor = uap->flavor;
 
     if(flavor > XNUSPY_MAX_FLAVOR){

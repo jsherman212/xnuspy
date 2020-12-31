@@ -442,8 +442,10 @@ static int KernelRead(vm_address_t kaddr, void *buffer, vm_size_t length){
         /*         (vm_address_t)((uint8_t *)buffer + bytes_read), &chunk); */
 
 
+        /*
         ret = syscall(SYS_xnuspy_ctl, XNUSPY_KREAD, current_loc,
                 (uint8_t *)buffer + bytes_read, chunk);
+                */
 
         if(ret)
             return ret;
@@ -545,7 +547,7 @@ static uint64_t kaddr_of_port(uint64_t task, mach_port_t port){
 #define EL1 1
 static void sideband_buffer_shmem_tests(void){
     uint64_t current_task = 0;
-    syscall(SYS_xnuspy_ctl, XNUSPY_GET_CURRENT_TASK, &current_task, 0, 0, 0);
+    //syscall(SYS_xnuspy_ctl, XNUSPY_GET_CURRENT_TASK, &current_task, 0, 0, 0);
 
     printf("%s: current task @ %#llx\n", __func__, current_task);
 
@@ -565,7 +567,7 @@ const int a = 42;
 
 static void address_space_tests(void){
     uint64_t current_task = 0;
-    syscall(SYS_xnuspy_ctl, XNUSPY_GET_CURRENT_TASK, &current_task, 0, 0, 0);
+    //syscall(SYS_xnuspy_ctl, XNUSPY_GET_CURRENT_TASK, &current_task, 0, 0, 0);
 
     printf("%s: current task @ %#llx\n", __func__, current_task);
 
@@ -765,16 +767,20 @@ kern_return_t mach_msg_trap_hook(struct mach_msg_overwrite_trap_args *args){
     uint8_t cpuid = mpidr_el1 & 0xff;
     uint64_t caller = (uint64_t)__builtin_return_address(0);
 
+    /*
     kprintf("(CPU %d, unslid caller %#llx): msg %#llx option %#x send size %#x"
             " recv size %#x recv name %#x timeout %#x override %d recv msg %#llx\n",
             cpuid, caller - kernel_slide, args->msg, args->option, args->send_size, 
             args->rcv_size, args->rcv_name, args->timeout, args->override, 
             args->rcv_msg); 
+            */
 
     kern_return_t kret = mach_msg_trap_orig(args);
 
+    /*
     kprintf("(CPU %d, unslid caller %#llx): mach_msg returned %d\n", cpuid, 
             caller - kernel_slide, kret);
+            */
 
     return kret;
 }
@@ -895,7 +901,6 @@ static struct hook {
     void *original;
 } g_hooks[] = {
     /* iphone 8 13.6.1 */
-    /*
     { 0xFFFFFFF0081994DC, is_io_service_open_extended,
         &is_io_service_open_extended_orig },
     { 0xFFFFFFF007C031E4, kalloc_canblock, &kalloc_canblock_orig },
@@ -907,13 +912,14 @@ static struct hook {
         &KeyDeliveryIOKitUserClient_getTargetAndMethodForIndex },
     { 0xFFFFFFF008A99048, _AppleKeyStoreUserClient_handleUserClientCommandGated,
         &AppleKeyStoreUserClient_handleUserClientCommandGated },
-        */
     /* iphone 7 14.1 */
+    /*
     { 0xFFFFFFF00770D114, is_io_service_open_extended,
         &is_io_service_open_extended_orig },
     //{ 0xFFFFFFF007C031E4, kalloc_canblock, &kalloc_canblock_orig },
     //{ 0xFFFFFFF007C4B420, zone_require, &zone_require_orig },
     { 0xFFFFFFF00716579C, mach_msg_trap_hook, &mach_msg_trap_orig },
+    */
     /*
     { 0xFFFFFFF00878A31C, _FairPlayIOKitUserClient_getTargetAndMethodForIndex,
         &FairPlayIOKitUserClient_getTargetAndMethodForIndex },
@@ -1001,9 +1007,9 @@ int main(int argc, char **argv){
     /* Found in _container_init */
     IOService_metaClass = (void *)(0xFFFFFFF00793DA88 + kernel_slide);
 
-    //getClassName = (const char *(*)(const void *))(0xFFFFFFF0080EC9A8 + kernel_slide);
+    getClassName = (const char *(*)(const void *))(0xFFFFFFF0080EC9A8 + kernel_slide);
     /* iphone 7 14.1 */
-    getClassName = (const char *(*)(const void *))(0xFFFFFFF00765BE54 + kernel_slide);
+    //getClassName = (const char *(*)(const void *))(0xFFFFFFF00765BE54 + kernel_slide);
 
     for(int i=0; i<g_nhooks; i++){
         struct hook *h = &g_hooks[i];

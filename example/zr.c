@@ -53,6 +53,12 @@ static void *(*kalloc_external_orig)(size_t sz);
 static void *kalloc_external(size_t sz){
     void *mem = kalloc_external_orig(sz);
 
+    uint8_t *memp = mem;
+    if(memp){
+        for(size_t i=0; i<sz; i++)
+            memp[i] = 0x41;
+    }
+
     //kprintf("%s: alloced %#llx for size %#llx\n", __func__, mem, sz);
 
     return mem;

@@ -5,9 +5,8 @@
 #define XNUSPY_INSTALL_HOOK         (0)
 #define XNUSPY_CHECK_IF_PATCHED     (1)
 #define XNUSPY_GET_FUNCTION         (2)
-#define XNUSPY_DUMP_TTES            (3)
-#define XNUSPY_KREAD                (4)
-#define XNUSPY_GET_CURRENT_TASK     (5)
+
+/* values for XNUSPY_CACHE_READ */
 
 /* values for XNUSPY_GET_FUNCTION */
 #define KPROTECT                                                    (0)

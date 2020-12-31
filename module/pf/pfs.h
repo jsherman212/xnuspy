@@ -473,24 +473,6 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
             1, phystokv_finder_13, "__TEXT_EXEC"),
     },
     {
-        PF_DECL32("KPP patcher iOS 13",
-            LISTIZE({
-                0xd4000223,     /* smc 0x11 */
-            }),
-            LISTIZE({
-                0xffffffff,     /* match exactly */
-            }),
-            1, kpp_patcher_13, "__TEXT_EXEC"),
-        PF_DECL32("KPP patcher iOS 14",
-            LISTIZE({
-                0xd4000223,     /* smc 0x11 */
-            }),
-            LISTIZE({
-                0xffffffff,     /* match exactly */
-            }),
-            1, kpp_patcher_13, "__TEXT_EXEC"),
-    },
-    {
         PF_DECL32("KTRR MMU lockdown patcher iOS 13",
             LISTIZE({
                 0xd51cf260,     /* msr s3_4_c15_c2_3, xn */
@@ -642,26 +624,6 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
             }),
             8, copyout_finder_13, "__TEXT_EXEC"),
     },
-#if 0
-    {
-        PF_DECL32("PAN disabler iOS 13",
-            LISTIZE({
-                0xd500419f,     /* msr PAN, #1 */
-            }),
-            LISTIZE({
-                0xffffffff,     /* match exactly */
-            }),
-            1, PAN_disabler_13, "__TEXT_EXEC"),
-        PF_DECL32("PAN disabler iOS 14",
-            LISTIZE({
-                0xd500419f,     /* msr PAN, #1 */
-            }),
-            LISTIZE({
-                0xffffffff,     /* match exactly */
-            }),
-            1, PAN_disabler_13, "__TEXT_EXEC"),
-    },
-#endif
     {
         PF_DECL32("IOSleep finder iOS 14",
             LISTIZE({

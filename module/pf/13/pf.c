@@ -531,50 +531,11 @@ bool phystokv_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
-/* confirmed working on all KPP kernels 13.0-14.3 */
-bool kpp_patcher_13(xnu_pf_patch_t *patch, void *cacheable_stream){
-    xnu_pf_disable_patch(patch);
-
-    uint32_t *opcode_stream = cacheable_stream;
-
-    /* We do not want the kernel telling KPP to enforce kernel integrity,
-     * so we patch monitor_call's smc 0x11 to NOP.
-     */
-    /* XXX 14.3 panics with this NOP patch */
-    /* *opcode_stream = 0xd503201f; */
-    /* *opcode_stream = 0xD2800000; */
-
-    /* if we don't lock down it panics with SError 0xbf575403 */
-    /* uint32_t *p = xnu_va_to_ptr(0xFFFFFFF00716798C + kernel_slide); */
-    /* *p = 0xd503201f; */
-
-    /* uint32_t *p = xnu_va_to_ptr(0xFFFFFFF00716797C + kernel_slide); */
-    /* mov w0, 0x802 */
-    /* *p = 0x52810040; */
-
-    /* uint32_t *p = xnu_va_to_ptr(0xFFFFFFF0072412F0 + kernel_slide); */
-    /* *p = 0xD2800001; */
-
-    /* asm volatile("mov w0, 0x800"); */
-    /* asm volatile("mov w1, 0"); */
-    /* asm volatile("mov w2, 0"); */
-    /* asm volatile("mov w3, 0"); */
-    /* asm volatile("smc 0x11"); */
-
-    /* printf("%s: %#llx\n", __func__, xnu_ptr_to_va(opcode_stream) - kernel_slide); */
-    puts("xnuspy: disabled KPP");
-
-    return true;
-}
-
 /* The KTRR & AMCC patchfinder for 13.0-13.7 is from KTRW, @bazad */
 
 /* confirmed working on all KTRR kernels 13.0-13.7 */
 bool ktrr_lockdown_patcher_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     xnu_pf_disable_patch(patch);
-
-    //printf("%s: SKIPPING\n",__func__);
-    //return true;
 
     uint32_t *opcode_stream = cacheable_stream;
 
@@ -591,9 +552,6 @@ bool ktrr_lockdown_patcher_13(xnu_pf_patch_t *patch, void *cacheable_stream){
 /* confirmed working on all KTRR kernels 13.0-13.7 */
 bool amcc_lockdown_patcher_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     xnu_pf_disable_patch(patch);
-
-    //printf("%s: SKIPPING\n", __func__);
-    //return true;
 
     uint32_t *opcode_stream = cacheable_stream;
 
@@ -670,16 +628,6 @@ bool copyout_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
 
     return true;
 }
-
-#if 0
-/* confirmed working on all kernels 13.0-14.3 */
-bool PAN_disabler_13(xnu_pf_patch_t *patch, void *cacheable_stream){
-    /* replaces all msr PAN, #1 with msr PAN, #0 */
-    *(uint32_t *)cacheable_stream = 0xd500409f;
-
-    return true;
-}
-#endif
 
 /* confirmed working on all kernels 13.0-14.3 */
 bool IOSleep_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){

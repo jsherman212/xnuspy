@@ -52,7 +52,8 @@ I designed this flavor to match `MSHookFunction`'s API. `arg1` is the *UNSLID*
 address of the kernel function you wish to hook. If you supply a slid address,
 you will most likely panic. `arg2` is a pointer to your ABI-compatible replacement
 function. `arg3` is a pointer for `xnuspy_ctl` to `copyout` the address of a
-trampoline that represents the original kernel function. This can be NULL if you don't intend to call the original.
+trampoline that represents the original kernel function. This can be NULL if
+you don't intend to call the original.
 
 ## `XNUSPY_CACHE_READ`
 `arg1` is one of the constants defined in `xnuspy_ctl.h` and `arg2` is a
@@ -148,10 +149,10 @@ the calling processes' `__TEXT` and `__DATA` segments. `__TEXT` is shared so
 you can call other functions from your hooks. `__DATA` is shared so changes to
 global variables are seen by both EL1 and EL0. This is done only once per
 process. The kernel virtual address of the replacement function on this mapping
-is figured out and is saved right before the replacement trampoline. Finally,
-an unconditional immediate branch from the kernel function to the replacement
-trampoline is assembled and is what replaces the first instruction of that
-function.
+is figured out and is saved right before the address of the replacement
+trampoline. Finally, an unconditional immediate branch from the kernel
+function to the replacement trampoline is assembled and is what replaces the
+first instruction of that function.
 
 # Device Security
 This module completely neuters KTRR/AMCC lockdown and KPP. I don't

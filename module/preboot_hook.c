@@ -573,9 +573,9 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
         */
         else if(strcmp(ksym, "_vm_map_wire_external") == 0){
             /* iphone 8 13.6.1 */
-            //*va = 0xFFFFFFF007C96CB4 + kernel_slide;
+            *va = 0xFFFFFFF007C96CB4 + kernel_slide;
             /* iphone 7 14.1 */
-            *va = 0xFFFFFFF00720D9C0 + kernel_slide;
+            //*va = 0xFFFFFFF00720D9C0 + kernel_slide;
             return;
         }
         /* else if(strcmp(ksym, "__mach_make_memory_entry_64") == 0){ */
@@ -583,9 +583,9 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
         /*     return; */
         /* } */
         else if(strcmp(ksym, "_mach_vm_map_external") == 0){
-            //*va = 0xFFFFFFF007CD22DC + kernel_slide;
+            *va = 0xFFFFFFF007CD22DC + kernel_slide;
             /* iphone 7 14.1 */
-            *va = 0xFFFFFFF007245A38 + kernel_slide;
+            //*va = 0xFFFFFFF007245A38 + kernel_slide;
             return;
         }
         /* else if(strcmp(ksym, "_ml_static_protect") == 0){ */
@@ -662,9 +662,9 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
         /* } */
         else if(strcmp(ksym, "_ipc_port_release_send") == 0){
             /* iphone 8 13.6.1 */
-            //*va = 0xFFFFFFF007BDE3D8 + kernel_slide;
+            *va = 0xFFFFFFF007BDE3D8 + kernel_slide;
             /* iphone 7 14.1 */
-            *va = 0xFFFFFFF0071580D0 + kernel_slide;
+            //*va = 0xFFFFFFF0071580D0 + kernel_slide;
             return;
         }
         /* else if(strcmp(ksym, "_mach_vm_deallocate") == 0){ */
@@ -676,15 +676,15 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
         /*     return; */
         /* } */
         else if(strcmp(ksym, "_lck_rw_free") == 0){
-            //*va = 0xFFFFFFF007D097F8 + kernel_slide;
+            *va = 0xFFFFFFF007D097F8 + kernel_slide;
             /* iphone 7 14.1 */
-            *va = 0xFFFFFFF007279290 + kernel_slide;
+            //*va = 0xFFFFFFF007279290 + kernel_slide;
             return;
         }
         else if(strcmp(ksym, "_lck_grp_free") == 0){
-            //*va = 0xFFFFFFF007C0682C + kernel_slide;
+            *va = 0xFFFFFFF007C0682C + kernel_slide;
             /* iphone 7 14.1 */
-            *va = 0xFFFFFFF007180B10 + kernel_slide;
+            //*va = 0xFFFFFFF007180B10 + kernel_slide;
             return;
         }
     }
@@ -959,82 +959,16 @@ void xnuspy_preboot_hook(void){
     printf("xnuspy: handing it off to checkra1n...\n");
 
     /* iphone 8 13.6.1 */
-    //uint32_t *doprnt_hide_pointers = xnu_va_to_ptr(0xFFFFFFF0090B0624 + kernel_slide);
+    uint32_t *doprnt_hide_pointers = xnu_va_to_ptr(0xFFFFFFF0090B0624 + kernel_slide);
 
     /* iphone 7 14.1 */
-    uint32_t *doprnt_hide_pointers = xnu_va_to_ptr(0xFFFFFFF00777C61C + kernel_slide);
+    //uint32_t *doprnt_hide_pointers = xnu_va_to_ptr(0xFFFFFFF00777C61C + kernel_slide);
     *doprnt_hide_pointers = 0;
 
     //printf("%s: sysctl_handle_long @ %#llx\n", __func__,
             //g_sysctl_handle_long_addr - kernel_slide);
 
     printf("%s: KERNEL SLIDE %#llx\n", __func__, kernel_slide);
-
-    /* iphon 7, 14.1 */
-    /* iphone does not boot with this patch */
-    //uint32_t *ktrr_14_p0 = xnu_va_to_ptr(0xFFFFFFF0072717D0 + kernel_slide);
-    /* str wzr, [x23, 0xa38] */
-    //*ktrr_14_p0 = 0xb90a3aff;
-
-    /*
-    uint32_t *ctrr_enablep = xnu_va_to_ptr(0xFFFFFFF007271E80 + kernel_slide);
-    uint32_t *ctrr_write_disablep = xnu_va_to_ptr(0xFFFFFFF007271EA4 + kernel_slide);
-    uint32_t *ctrr_lockp = xnu_va_to_ptr(0xFFFFFFF007271EC8 + kernel_slide);
-    */
-    /* all str wzr, [x16, x17] */
-    //*ctrr_enablep = 0xB8316A1F;
-    //*ctrr_write_disablep = 0xB8316A1F;
-    //*ctrr_lockp = 0xB8316A1F;
-
-    /* iphone 8 13.6.1 */
-    //uint32_t *copyio_zalloc_check = xnu_va_to_ptr(0xFFFFFFF00792E370 + kernel_slide);
-    //*copyio_zalloc_check = 0;
-
-    /* iphone 8 13.6.1: Do not let XNU use the hardware breakpoint registers */
-    /* uint32_t *hwbp_reg_patch = xnu_va_to_ptr(0xFFFFFFF007D12714 + kernel_slide); */
-    /* mov x10, xzr */
-    /* *hwbp_reg_patch = 0xaa1f03ea; */
-
-    /* combat short read */
-    /* asm volatile(".align 14"); */
-
-    /* iphone 8 13.6.1: Patch out the VM_PROT_EXECUTE/perm checks in
-     * vm_map_wire_nested */
-    /*
-    uint32_t *exec_patch = xnu_va_to_ptr(0xFFFFFFF007C909F8 + kernel_slide);
-    *exec_patch = 0xd503201f;
-    uint32_t *exec_patch1 = xnu_va_to_ptr(0xFFFFFFF007C90C60 + kernel_slide);
-    *exec_patch1 = 0xd503201f;
-    */
-    /* /1* iphone 8 13.6.1: modifying vma_prot inside of kernel_memory_allocate *1/ */
-    /* uint32_t *vma_prot0 = xnu_va_to_ptr(0xFFFFFFF007C89854 + kernel_slide); */
-    /* /1* mov w3, 1 *1/ */
-    /* *vma_prot0 = 0x52800023; */
-    /* uint32_t *vma_prot1 = xnu_va_to_ptr(0xFFFFFFF007C89920 + kernel_slide); */
-    /* /1* mov w3, 1 *1/ */
-    /* *vma_prot1 = 0x52800023; */
-
-
-    /* iphone 8 13.6.1: pmap_enter always makes executable memory */
-    /* uint32_t *pe0 = xnu_va_to_ptr(0xFFFFFFF007CF5CD8 + kernel_slide); */
-    /* /1* orr w3, w3, 4 *1/ */
-    /* *pe0 = 0x321E0063; */
-    /* uint32_t *pe1 = xnu_va_to_ptr(0xFFFFFFF007CF5CDC + kernel_slide); */
-    /* /1* nop *1/ */
-    /* *pe1 = 0xd503201f; */
-    /* iphone 8 13.6.1: patch out WX request on kernel pmap panic */
-    //uint32_t *pe2 = xnu_va_to_ptr(0xFFFFFFF007CF5CF8 + kernel_slide);
-    /* nop */
-    //*pe2 = 0xd503201f;
-
-    /* iphone 8 13.6.1: do not allow XNU to write to syscall counters inside
-     * sleh_synchronous */
-    /* uint32_t *sleh_p0 = xnu_va_to_ptr(0xFFFFFFF007D0C0B4 + kernel_slide); */
-    /* nop */
-    /* *sleh_p0 = 0xd503201f; */
-    /* uint32_t *sleh_p1 = xnu_va_to_ptr(0xFFFFFFF007D0C274 + kernel_slide); */
-    /* nop */
-    /* *sleh_p1 = 0xd503201f; */
 
     //printf("%s: IOSleep @ %#llx\n", __func__,
             //g_IOSleep_addr - kernel_slide);

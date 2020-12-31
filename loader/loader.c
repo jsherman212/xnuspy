@@ -136,6 +136,7 @@ int main(int argc, char **argv, const char **envp){
     }
 
     const char *xnuspy_ctl_path = "./module/el1/xnuspy_ctl/xnuspy_ctl";
+    //const char *xnuspy_ctl_path = "./module/el3/image.bin";
 
     memset(&st, 0, sizeof(st));
 
@@ -209,8 +210,7 @@ int main(int argc, char **argv, const char **envp){
     usleep(200 * 1000);
 
     /* If you edit this, you must make sure not to delete
-     * 'use_contiguous_hint=0'
-     */
+     * 'use_contiguous_hint=0' */
     err = pongo_send_command(pongo_device, "xargs rootdev=md0"
             " use_contiguous_hint=0 msgbuf=0x3c000 -show_pointers\n");
 
@@ -238,9 +238,11 @@ int main(int argc, char **argv, const char **envp){
         return 1;
     }
 
+    //goto done;
+    //goto boot;
+
     /* we may have had to pwn SEPROM, so wait a bit longer before we continue */
-    sleep(4);
-    //sleep(1);
+    sleep(2);
     //goto boot;
 
     /* send the compiled xnuspy_ctl image */
@@ -269,28 +271,14 @@ int main(int argc, char **argv, const char **envp){
         return 1;
     }
 
-    //sleep(2);
+    sleep(2);
     //usleep(800 * 1000);
     
 /* #endif */
 
 /* #if 0 */
-    err = pongo_send_command(pongo_device, "xnuspy-prep\n");
-
-    if(err < 0){
-        printf("pongo_send_command: %s\n", libusb_error_name(err));
-        libusb_release_interface(pongo_device, 0);
-        libusb_close(pongo_device);
-        libusb_exit(NULL);
-        return 1;
-    }
-
-boot:;
 #if 1
-    usleep(800 * 1000);
-    //sleep(1);
-
-    err = pongo_send_command(pongo_device, "bootx\n");
+    err = pongo_send_command(pongo_device, "xnuspy-prep\n");
 
     if(err < 0){
         printf("pongo_send_command: %s\n", libusb_error_name(err));
@@ -301,6 +289,24 @@ boot:;
     }
 #endif
 
+boot:;
+#if 1
+    usleep(800 * 1000);
+    //sleep(1);
+
+    err = pongo_send_command(pongo_device, "bootx\n");
+    //err = pongo_send_command(pongo_device, "bootr\n");
+
+    if(err < 0){
+        printf("pongo_send_command: %s\n", libusb_error_name(err));
+        libusb_release_interface(pongo_device, 0);
+        libusb_close(pongo_device);
+        libusb_exit(NULL);
+        return 1;
+    }
+#endif
+
+done:;
     libusb_release_interface(pongo_device, 0);
     libusb_close(pongo_device);
     libusb_exit(NULL);

@@ -13,10 +13,7 @@ struct xnuspy_reflector_page {
 };
 
 /* This structure represents a shared __TEXT and __DATA mapping. There is
- * one xnuspy_mapping_metadata struct per-process. When an xnuspy_tramp
- * struct is freed, this structure is kept intact so the next process who
- * takes ownership of that struct can free the previous shared mapping
- * when there are no more references. */
+ * one xnuspy_mapping_metadata struct per-process. */
 struct xnuspy_mapping_metadata {
     struct objhdr hdr;
     /* Reference count for metadata, NOT the xnuspy_tramp */
