@@ -710,6 +710,7 @@ static void xnuspy_tramp_commit(struct stailq_entry *stqe){
 }
 
 /* Pull an xnuspy_tramp off of the usedlist, according to its target */
+#if 0
 static struct stailq_entry *xnuspy_tramp_disconnect(uint64_t target){
     lck_rw_lock_exclusive(xnuspy_rw_lck);
 
@@ -734,6 +735,7 @@ static struct stailq_entry *xnuspy_tramp_disconnect(uint64_t target){
 
     return NULL;
 }
+#endif
 
 static struct xnuspy_mapping_metadata *find_mapping_metadata(void){
     uint64_t cuniqueid = proc_uniqueid(current_proc());

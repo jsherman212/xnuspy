@@ -759,6 +759,17 @@ struct mach_msg_overwrite_trap_args {
     PAD_ARG_(user_addr_t, rcv_msg);  /* Unused on mach_msg_trap */
 };
 
+static void (*kernel_log)(int level, const char *fmt, ...) =
+     (void (*)(int, const char *, ...))NULL;
+
+ static void (*kwrite_instr)(uint64_t dst, uint32_t instr) = 
+     (void (*)(uint64_t, uint32_t))NULL; 
+static int (*kernel_printf)(const char *fmt, ...) =
+    (int (*)(const char *, ...))NULL;
+
+static int (*kern_asl_msg)(int level, const char *facility, int num_pairs, ...) =
+    (int (*)(int, const char *, int, ...))NULL;
+
 kern_return_t (*mach_msg_trap_orig)(struct mach_msg_overwrite_trap_args *args);
 
 kern_return_t mach_msg_trap_hook(struct mach_msg_overwrite_trap_args *args){
@@ -766,6 +777,26 @@ kern_return_t mach_msg_trap_hook(struct mach_msg_overwrite_trap_args *args){
     asm volatile("mrs %0, mpidr_el1" : "=r" (mpidr_el1));
     uint8_t cpuid = mpidr_el1 & 0xff;
     uint64_t caller = (uint64_t)__builtin_return_address(0);
+    if(kernel_log && kernel_printf && kern_asl_msg){
+        uint32_t *disableConsoleOutput = (uint32_t *)(0xFFFFFFF00925ABDC + kernel_slide);
+        *disableConsoleOutput = 1;
+
+        /*
+        kernel_log(6, "%s: called from mach_msg_trap on CPU %d\n", __func__,
+                cpuid);
+                */
+        /*
+        kernel_log(0, "%s: called from mach_msg_trap on CPU %d\n", __func__,
+                cpuid);
+        kernel_printf("%s: called from mach_msg_trap on CPU %d\n", __func__,
+                cpuid);
+                */
+        //kernel_log(6, "%s: called from mach_msg_trap on CPU %d\n", __func__,
+                //cpuid);
+        //kernel_printf("%s: called from mach_msg_trap on CPU %d\n", __func__,
+                //cpuid);
+        //kern_asl_msg(6, "com.justin.xnuspy", 1, "", "Called from CPU %d", cpuid);
+    }
 
     /*
     kprintf("(CPU %d, unslid caller %#llx): msg %#llx option %#x send size %#x"
@@ -793,10 +824,6 @@ struct IOExternalMethod {
     uint64_t count1;
 };
 
-/* static void (*kernel_log)(int level, const char *fmt, ...) = */
-/*     (void (*)(int, const char *, ...))NULL; */
-/* static void (*kwrite_instr)(uint64_t dst, uint32_t instr) = */
-/*     (void (*)(uint64_t, uint32_t))NULL; */
 /* static void (*IOLog)(const char *fmt, ...) = (void (*)(const char *, ...))NULL; */
 
 struct IOExternalMethod *(*FairPlayIOKitUserClient_getTargetAndMethodForIndex)(void *this, void **x1, uint32_t idx);
@@ -973,10 +1000,12 @@ int main(int argc, char **argv){
     //printf("RETURNING\n");
     //return 0;
 
-    /* kernel_log = (void (*)(int, const char *, ...))(0xFFFFFFF007BF71CC + kernel_slide); */
+    kernel_log = (void (*)(int, const char *, ...))(0xFFFFFFF007BF71CC + kernel_slide);
     /* /1* XXX NEED TO CHANGE EVERY TIME *1/ */
     /* kwrite_instr = (void (*)(uint64_t, uint32_t))(0xFFFFFFF00A040994 + kernel_slide); */
     /* IOLog = (void (*)(const char *, ...))(0xFFFFFFF008134654 + kernel_slide); */
+    kernel_printf = (int (*)(const char *, ...))(0xFFFFFFF007C0DEF8 + kernel_slide);
+    kern_asl_msg = (int (*)(int, const char *, int, ...))(0xFFFFFFF007FF3608 + kernel_slide);
 
     ret = syscall(SYS_xnuspy_ctl, XNUSPY_GET_FUNCTION, KPROTECT, &kprotect, 0);
     printf("got kprotect @ %#llx\n", kprotect);

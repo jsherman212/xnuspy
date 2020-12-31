@@ -209,10 +209,10 @@ int main(int argc, char **argv, const char **envp){
 
     usleep(200 * 1000);
 
-    /* If you edit this, you must make sure not to delete
-     * 'use_contiguous_hint=0' */
+    /* Don't remove any of these boot args if you modify this string */
     err = pongo_send_command(pongo_device, "xargs rootdev=md0"
-            " use_contiguous_hint=0 msgbuf=0x3c000 -show_pointers\n");
+            " use_contiguous_hint=0 msgbuf=0x3c000 -show_pointers"
+            " atm_diagnostic_config=0x20000000\n");// debug=0x8\n");
 
     if(err < 0){
         printf("pongo_send_command: %s\n", libusb_error_name(err));
@@ -226,7 +226,7 @@ int main(int argc, char **argv, const char **envp){
     munmap(module_data, module_size);
 
 /* #if 0 */
-    //usleep(200 * 1000);
+    usleep(200 * 1000);
 
     err = pongo_send_command(pongo_device, "xnuspy-getkernelv\n");
 

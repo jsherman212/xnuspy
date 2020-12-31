@@ -10,4 +10,5 @@ pf/
 - patchfinder code
 
 preboot_hook.c
-- patches the first `_enosys` sysent to point to the code in `el1/ctramp.s`
+- patches the first `_enosys` sysent to point to the code in
+`el1/xnuspy_ctl_tramp.s`
