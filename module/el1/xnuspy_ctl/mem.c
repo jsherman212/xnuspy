@@ -164,9 +164,6 @@ struct objhdr {
 void *common_kalloc(size_t sz){
     struct objhdr *mem;
 
-    /* Make space for the header */ 
-    sz += sizeof(struct objhdr);
-
     if(iOS_version == iOS_13_x)
         mem = kalloc_canblock(&sz, 0, NULL);
     else

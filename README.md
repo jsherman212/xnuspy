@@ -23,11 +23,12 @@ couple more seconds after issuing `xnuspy-getkernelv` in case SEPROM needs
 to be exploited.
 
 # xnuspy_ctl
-`xnuspy` will patch the first `enosys` system call to point to `xnuspy_ctl`.
-You can find its implementation at `module/el1/xnuspy_ctl/xnuspy_ctl.c` and
-examples in the `example` directory. That directory also contains
-`xnuspy_ctl.h`. This header defines constants for `xnuspy_ctl` and is meant
-to be included in all programs which call it.
+`xnuspy` will patch the first `enosys` system call to point to `xnuspy_ctl_tramp`.
+This is a small trampoline which marks the compiled `xnuspy_ctl` code as
+executable and branches to it. You can find `xnuspy_ctl`'s implementation at
+`module/el1/xnuspy_ctl/xnuspy_ctl.c` and examples in the `example` directory.
+That directory also contains `xnuspy_ctl.h`. This header defines constants for
+`xnuspy_ctl` and is meant to be included in all programs which call it.
 
 You can use `sysctlbyname` to figure out which system call was patched:
 
@@ -86,8 +87,9 @@ of the calling processes' `__TEXT` and `__DATA` segments.
 
 `errno` also depends on the return value of `vm_map_wire_kernel`,
 `vm_map_unwire`, `vm_deallocate`, `mach_make_memory_entry_64`,
-`mach_vm_map_external`, and `copyout`. An `errno` of `10000` represents a
-`kern_return_t` value that I haven't yet taken into account for.
+`mach_vm_map_external`, `copyout`, and if applicable, the one-time initialization
+function. An `errno` of `10000` represents a `kern_return_t` value that I
+haven't yet taken into account for.
 
 If this flavor returns an error, the target kernel function was not hooked.
 If you passed a non-NULL pointer for `arg3`, it may or may not have been
@@ -98,28 +100,28 @@ initialized. It's unsafe to use if it was.
 - `EINVAL` if:
   - The constant denoted by `arg1` does not represent anything in the cache.
 
-`errno` also depends on the return value of `copyout`.
+`errno` also depends on the return value of `copyout` and if applicable, the
+return value of the one-time initialization function.
 
 If this flavor returns an error, the pointer you passed for `arg2` was not
 initialized.
 
 # Debugging Panics
-When you write your replacement function, you are writing kernel code. You
-will panic if you cause any sort of memory corruption, dereference a bad
-pointer, etc. You need to make sure the functions you call/pointers you
-dereference from your replacement can be done safely in the context of your
-hooked function (do I need to take a lock before doing something with some
-object? should I really be calling `kprintf` inside of a `kalloc` hook?).
-You cannot execute any user code that lives outside of your program's `__TEXT`
-segment from your replacement. Many macros that are safe for userspace are
-unsafe for your replacement. Macros like `PAGE_SIZE` actually evaluate to a
-stub when I compile with clang. If you do panic, it may not be a bug with
-xnuspy. Before opening an issue, please make sure that you still panic when
-you do nothing but call the original function and return its value (if needed).
-If you still panic, then it's most likely a bug with xnuspy. If you don't panic,
-then there's a bug in your replacement code. In this case, I recommend double
-checking your replacement code and throwing the binary inside your favorite
-disassembler to figure out how clang compiled it.
+When you write your replacement function, you are writing kernel code.
+You need to make sure the functions you call/pointers you dereference from your
+replacement can be done safely in the context of your hooked function (do I
+need to take a lock before doing something with some object? should I really be
+calling `kprintf` inside of a `kalloc` hook?). You cannot execute any user code
+that lives outside of your program's `__TEXT` segment from your replacement.
+Many macros that are safe for userspace are unsafe for your replacement. Macros
+like `PAGE_SIZE` actually evaluate to a stub when I compile with clang. If you
+do panic, it may not be a bug with xnuspy. Before opening an issue, please make
+sure that you still panic when you do nothing but call the original function
+and return its value (if needed). If you still panic, then it's most likely a
+bug with xnuspy. If you don't panic, then there's a bug in your replacement
+code. In this case, I recommend double checking your replacement code and
+throwing the binary inside your favorite disassembler to figure out how it was
+compiled.
 
 # Important Information
 ### Hook Uninstallation
@@ -138,6 +140,10 @@ is no minimum length.
 after a fresh boot. This is the only part of xnuspy which is raceable since
 I can't statically initialize the read/write lock I use. After the first call
 returns, any future calls are guarenteed to be thread-safe.
+
+### Clobbered Registers
+xnuspy uses `X16` and `X17` for its trampolines, so kernel functions which
+expect those to persist across function calls cannot be hooked.
 
 # How It Works
 This is simplified, but it captures the main idea well. Check out `xnuspy_ctl`'s

@@ -87,25 +87,11 @@ uint64_t get_adrp_add_va_target(uint32_t *adrpp){
     int64_t addr_va = (int64_t)get_adrp_va_target(adrpp);
 
     return (uint64_t)(addr_va + (int64_t)bits(add, 10, 21));
-
-    /* uint32_t immlo = (uint32_t)bits(adrp, 29, 30); */
-    /* uint32_t immhi = (uint32_t)bits(adrp, 5, 23); */
-
-    /* return sign_extend(((immhi << 2) | immlo) << 12, 32) + */
-    /*     ((uintptr_t)adrpp & ~0xfffuLL) + bits(add, 10, 21); */
 }
 
 uint64_t get_adrp_ldr_va_target(uint32_t *adrpp){
     uint32_t adrp = *adrpp;
     uint32_t ldr = *(adrpp + 1);
-
-    /* uint32_t immlo = (uint32_t)bits(adrp, 29, 30); */
-    /* uint32_t immhi = (uint32_t)bits(adrp, 5, 23); */
-
-    /* takes care of ADRP */
-    /* int64_t addr_va = (ijV */
-    /*         gjksign_extend(((immhi << 2) | immlo) << 12, 33) + */
-    /*     (intptr_t)((uintptr_t)adrpp & ~0xfffuLL); */
 
     int64_t addr_va = (int64_t)get_adrp_va_target(adrpp);
 

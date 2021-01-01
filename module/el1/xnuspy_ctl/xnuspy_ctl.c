@@ -14,6 +14,14 @@
 
 #include "../../common/xnuspy_structs.h"
 
+#define XNUSPY_DEBUG
+
+#if defined(XNUSPY_DEBUG)
+#define KDBG(fmt, args...) do { kprintf(fmt, ##args); } while(0)
+#else
+#define KDBG(fmt, args...)
+#endif
+
 #undef current_task
 #undef current_thread
 #undef PAGE_SIZE
@@ -359,8 +367,8 @@ static int xnuspy_dump_ttes(uint64_t addr, uint64_t el){
     uint64_t l3_idx = (addr >> ARM_TT_L3_SHIFT) & 0x7ff;
     uint64_t *l3_ptep = (uint64_t *)(l3_table + (0x8 * l3_idx));
 
-    kprintf("%s: TTE dump for %#llx:\n", __func__, addr);
-    kprintf("\tL1 TTE @ %#llx (phys = %#llx): %#llx\n"
+    KDBG("%s: TTE dump for %#llx:\n", __func__, addr);
+    KDBG("\tL1 TTE @ %#llx (phys = %#llx): %#llx\n"
             "\tL2 TTE @ %#llx (phys = %#llx): %#llx\n"
             "\tL3 PTE @ %#llx (phys = %#llx): %#llx\n",
             l1_ttep, kvtophys((uint64_t)l1_ttep), *l1_ttep,
@@ -371,9 +379,9 @@ static int xnuspy_dump_ttes(uint64_t addr, uint64_t el){
 }
 
 static void desc_vm_map_entry(struct vm_map_entry *vme){
-    kprintf("This map entry represents [%#llx-%#llx]\n", vme->vme_start,
+    KDBG("This map entry represents [%#llx-%#llx]\n", vme->vme_start,
             vme->vme_end);
-    kprintf("\tShared:              %d\n"
+    KDBG("\tShared:              %d\n"
             "\tSubmap?              %d\n"
             "\tIn transition?       %d\n"
             "\tNeeds wakeup?        %d\n"
@@ -430,7 +438,7 @@ static struct vm_map_entry *vme_for_ptr(struct _vm_map *map, uint64_t ptr){
 
 static void _desc_xnuspy_reflector_page(const char *indent,
         struct xnuspy_reflector_page *p){
-    kprintf("%sThis reflector page is @ %#llx. "
+    KDBG("%sThis reflector page is @ %#llx. "
             "next: %#llx refcnt: %lld page %#llx\n", indent, (uint64_t)p, p->next,
             p->refcnt, p->page);
 }
@@ -440,10 +448,10 @@ static void desc_xnuspy_reflector_page(struct xnuspy_reflector_page *p){
 }
 
 static void desc_xnuspy_mapping_metadata(struct xnuspy_mapping_metadata *mm){
-    kprintf("Mapping metadata refcnt: %lld\n", mm->refcnt);
-    kprintf("Owner: %d\n", mm->owner);
-    kprintf("# of used reflector pages: %lld\n", mm->used_reflector_pages);
-    kprintf("Reflector pages:\n");
+    KDBG("Mapping metadata refcnt: %lld\n", mm->refcnt);
+    KDBG("Owner: %d\n", mm->owner);
+    KDBG("# of used reflector pages: %lld\n", mm->used_reflector_pages);
+    KDBG("Reflector pages:\n");
 
     struct xnuspy_reflector_page *cur = mm->first_reflector_page;
 
@@ -455,34 +463,34 @@ static void desc_xnuspy_mapping_metadata(struct xnuspy_mapping_metadata *mm){
         cur = cur->next;
     }
 
-    kprintf("Memory object: %#llx\n", mm->memory_object);
-    kprintf("Shared mapping addr/size: %#llx/%#llx\n", mm->mapping_addr,
+    KDBG("Memory object: %#llx\n", mm->memory_object);
+    KDBG("Shared mapping addr/size: %#llx/%#llx\n", mm->mapping_addr,
             mm->mapping_size);
 }
 
 static void desc_xnuspy_tramp(struct xnuspy_tramp *t, uint32_t orig_tramp_len){
-    kprintf("This xnuspy_tramp is @ %#llx\n", (uint64_t)t);
-    kprintf("Replacement: %#llx\n", t->replacement);
+    KDBG("This xnuspy_tramp is @ %#llx\n", (uint64_t)t);
+    KDBG("Replacement: %#llx\n", t->replacement);
     
-    kprintf("Replacement trampoline:\n");
+    KDBG("Replacement trampoline:\n");
     for(int i=0; i<sizeof(t->tramp)/sizeof(t->tramp[0]); i++)
-        kprintf("\ttramp[%d]    %#x\n", i, t->tramp[i]);
+        KDBG("\ttramp[%d]    %#x\n", i, t->tramp[i]);
 
-    kprintf("Original trampoline:\n");
+    KDBG("Original trampoline:\n");
     for(int i=0; i<orig_tramp_len; i++)
-        kprintf("\ttramp[%d]    %#x\n", i, t->orig[i]);
+        KDBG("\ttramp[%d]    %#x\n", i, t->orig[i]);
 
     if(!t->tramp_metadata)
-        kprintf("NULL tramp metadata\n");
+        KDBG("NULL tramp metadata\n");
     else{
-        kprintf("Hooked function: %#llx [unslid=%#llx]\n",
+        KDBG("Hooked function: %#llx [unslid=%#llx]\n",
                 t->tramp_metadata->hooked,
                 t->tramp_metadata->hooked - kernel_slide);
-        kprintf("Original instruction: %#x\n", t->tramp_metadata->orig_instr);
+        KDBG("Original instruction: %#x\n", t->tramp_metadata->orig_instr);
     }
 
     if(!t->mapping_metadata)
-        kprintf("NULL mapping metadata\n");
+        KDBG("NULL mapping metadata\n");
     else
         desc_xnuspy_mapping_metadata(t->mapping_metadata);
 }
@@ -609,14 +617,14 @@ struct orphan_mapping {
 
 static void desc_orphan_mapping(struct orphan_mapping *om){
     if(!om){
-        kprintf("%s: NULL\n", __func__);
+        KDBG("%s: NULL\n", __func__);
         return;
     }
 
-    kprintf("This orphan mapping is at %#llx\n", om);
-    kprintf("Mapping addr: %#llx\n", om->mapping_addr);
-    kprintf("Mapping size: %#llx\n", om->mapping_size);
-    kprintf("Mapping memory object: %#llx\n", om->memory_object);
+    KDBG("This orphan mapping is at %#llx\n", om);
+    KDBG("Mapping addr: %#llx\n", om->mapping_addr);
+    KDBG("Mapping size: %#llx\n", om->mapping_size);
+    KDBG("Mapping memory object: %#llx\n", om->memory_object);
 }
 
 static void xnuspy_mapping_metadata_release(struct xnuspy_mapping_metadata *mm){
@@ -631,14 +639,14 @@ static void xnuspy_mapping_metadata_release(struct xnuspy_mapping_metadata *mm){
         /* I don't care for allocation failures here, we just won't be able to
          * ever unmap this mapping. This shouldn't happen too often? */
         if(!om){
-            kprintf("%s: om allocation failed\n", __func__);
+            KDBG("%s: om allocation failed\n", __func__);
             return;
         }
 
         struct stailq_entry *stqe = common_kalloc(sizeof(*stqe));
 
         if(!stqe){
-            kprintf("%s: stqe allocation failed\n", __func__);
+            KDBG("%s: stqe allocation failed\n", __func__);
             return;
         }
 
@@ -650,7 +658,7 @@ static void xnuspy_mapping_metadata_release(struct xnuspy_mapping_metadata *mm){
 
         STAILQ_INSERT_TAIL(&unmaplist, stqe, link);
 
-        kprintf("%s: added mapping @ %#llx to the unmaplist\n", __func__,
+        KDBG("%s: added mapping @ %#llx to the unmaplist\n", __func__,
                 om->mapping_addr);
         desc_orphan_mapping(om);
 
@@ -808,38 +816,38 @@ static int hook_already_exists(uint64_t target){
 /*     return res; */
 /* } */
 
-/* XXX Not sure if I can kprintf while holding a rw lock in xnu so I won't */
+/* XXX Not sure if I can KDBG while holding a rw lock in xnu so I won't */
 static void desc_freelist(void){
-    kprintf("[Freelist] ");
+    KDBG("[Freelist] ");
 
     if(STAILQ_EMPTY(&freelist)){
-        kprintf("Empty\n");
+        KDBG("Empty\n");
         return;
     }
 
-    kprintf("FIRST: ");
+    KDBG("FIRST: ");
 
     struct stailq_entry *entry;
     STAILQ_FOREACH(entry, &freelist, link){
-        kprintf("%#llx <- ", entry->elem);
+        KDBG("%#llx <- ", entry->elem);
     }
-    kprintf("\n");
+    KDBG("\n");
 }
 
 static void desc_usedlist(void){
-    kprintf("[Usedlist] ");
+    KDBG("[Usedlist] ");
 
     if(STAILQ_EMPTY(&usedlist)){
-        kprintf("Empty\n");
+        KDBG("Empty\n");
         return;
     }
 
     struct stailq_entry *entry;
 
     STAILQ_FOREACH(entry, &usedlist, link){
-        kprintf("%#llx -> ", entry->elem);
+        KDBG("%#llx -> ", entry->elem);
     }
-    kprintf("\n");
+    KDBG("\n");
 }
 
 static void desc_lists(void){
@@ -851,7 +859,7 @@ static uint64_t find_replacement_kva(struct mach_header_64 *kmh,
         struct mach_header_64 * /* __user */ umh,
         uint64_t /* __user */ replacement){
     uint64_t dist = replacement - (uintptr_t)umh;
-    kprintf("%s: dist %#llx replacement %#llx umh %#llx kmh %#llx\n", __func__,
+    KDBG("%s: dist %#llx replacement %#llx umh %#llx kmh %#llx\n", __func__,
             dist, replacement, (uint64_t)umh, (uint64_t)kmh);
     return (uint64_t)((uintptr_t)kmh + dist);
 }
@@ -915,7 +923,7 @@ map_caller_segments(struct mach_header_64 * /* __user */ umh,
                 seen_data = 1;
 
             if(seen_text && seen_data){
-                kprintf("%s: we've seen text and data, breaking\n", __func__);
+                KDBG("%s: we've seen text and data, breaking\n", __func__);
                 break;
             }
         }
@@ -926,7 +934,7 @@ nextcmd:
 
     user_access_disable();
 
-    kprintf("%s: ended with copystart %#llx copysz %#llx\n", __func__,
+    KDBG("%s: ended with copystart %#llx copysz %#llx\n", __func__,
             copystart, copysz);
 
     int need_free_on_error = 0;
@@ -941,7 +949,7 @@ nextcmd:
     metadata = common_kalloc(sizeof(*metadata));
 
     if(!metadata){
-        kprintf("%s: common_kalloc returned NULL when allocating metadata\n",
+        KDBG("%s: common_kalloc returned NULL when allocating metadata\n",
                 __func__);
         *retval = ENOMEM;
         goto failed;
@@ -968,9 +976,9 @@ nextcmd:
             VM_PROT_READ, 1);
 
     if(kret){
-        //kprintf("%s: vm_map_wire_kernel failed when wiring down "
+        //KDBG("%s: vm_map_wire_kernel failed when wiring down "
                 //"[copystart, copysz): %d\n", __func__, kret);
-        kprintf("%s: vm_map_wire_external failed when wiring down "
+        KDBG("%s: vm_map_wire_external failed when wiring down "
                 "[copystart, copysz): %d\n", __func__, kret);
         *retval = kern_return_to_errno(kret);
         goto failed;
@@ -997,13 +1005,13 @@ nextcmd:
             MAP_MEM_VM_SHARE | shm_prot, &shm_object, NULL);
 
     if(kret){
-        kprintf("%s: mach_make_memory_entry_64 failed: %d\n", __func__, kret);
+        KDBG("%s: mach_make_memory_entry_64 failed: %d\n", __func__, kret);
         *retval = kern_return_to_errno(kret);
         goto failed_unwire_user_segments;
     }
 
     if(copysz_before != copysz){
-        kprintf("%s: did not map the entirety of copystart? got %#llx "
+        KDBG("%s: did not map the entirety of copystart? got %#llx "
                 "expected %#llx\n", __func__, copysz, copysz_before);
         /* Probably not the best option */
         *retval = EIO;
@@ -1018,16 +1026,16 @@ nextcmd:
             shm_prot, VM_INHERIT_NONE);
 
     if(kret){
-        kprintf("%s: mach_vm_map_external failed: %d\n", __func__, kret);
+        KDBG("%s: mach_vm_map_external failed: %d\n", __func__, kret);
         *retval = kern_return_to_errno(kret);
         goto failed_dealloc_memobj;
     }
 
-    kprintf("%s: shared mapping starts @ %#llx\n", __func__, shm_addr);
+    KDBG("%s: shared mapping starts @ %#llx\n", __func__, shm_addr);
 
     /* uint32_t *cursor = (uint32_t *)shm_addr; */
     /* for(int i=0; i<20; i++){ */
-    /*     kprintf("%s: %#llx:      %#x\n", __func__, (uint64_t)(cursor+i), */
+    /*     KDBG("%s: %#llx:      %#x\n", __func__, (uint64_t)(cursor+i), */
     /*             cursor[i]); */
     /* } */
 
@@ -1038,8 +1046,8 @@ nextcmd:
             shm_prot, 0);
 
     if(kret){
-        //kprintf("%s: vm_map_wire_kernel failed: %d\n", __func__, kret);
-        kprintf("%s: vm_map_wire_external failed: %d\n", __func__, kret);
+        //KDBG("%s: vm_map_wire_kernel failed: %d\n", __func__, kret);
+        KDBG("%s: vm_map_wire_external failed: %d\n", __func__, kret);
         *retval = kern_return_to_errno(kret);
         goto failed_dealloc_kernel_mapping;
     }
@@ -1083,7 +1091,7 @@ nextpage:
 
     if(!cur){
         lck_rw_done(xnuspy_rw_lck);
-        kprintf("%s: no free reflector pages\n", __func__);
+        KDBG("%s: no free reflector pages\n", __func__);
         *retval = ENOSPC;
         goto failed_unwire_kernel_mapping;
     }
@@ -1115,7 +1123,7 @@ failed:;
 
 static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
         uint64_t /* __user */ origp){
-    kprintf("%s: called with unslid target %#llx replacement %#llx origp %#llx\n",
+    KDBG("%s: called with unslid target %#llx replacement %#llx origp %#llx\n",
             __func__, target, replacement, origp);
 
     int res = 0;
@@ -1124,7 +1132,7 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
     target += kernel_slide;
 
     if(hook_already_exists(target)){
-        kprintf("%s: hook for %#llx already exists\n", __func__, target);
+        KDBG("%s: hook for %#llx already exists\n", __func__, target);
         res = EEXIST;
         goto out;
     }
@@ -1132,7 +1140,7 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
     struct xnuspy_tramp_metadata *tm = common_kalloc(sizeof(*tm));
 
     if(!tm){
-        kprintf("%s: failed allocating mem for tramp metadata\n", __func__);
+        KDBG("%s: failed allocating mem for tramp metadata\n", __func__);
         res = ENOMEM;
         goto out;
     }
@@ -1146,7 +1154,7 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
      * this entry to the usedlist and it no longer exists in the freelist */
 
     if(!tramp_entry){
-        kprintf("%s: no free xnuspy_tramp structs\n", __func__);
+        KDBG("%s: no free xnuspy_tramp structs\n", __func__);
         res = ENOSPC;
         goto out_free_tramp_metadata;
     }
@@ -1167,7 +1175,7 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
         res = copyout(&orig_tramp, origp, sizeof(origp));
 
         if(res){
-            kprintf("%s: copyout failed\n", __func__);
+            KDBG("%s: copyout failed\n", __func__);
             goto out_free_tramp_entry;
         }
     }
@@ -1185,12 +1193,12 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
     if(mm)
         lck_rw_lock_exclusive(xnuspy_rw_lck);
     else{
-        kprintf("%s: need to map __TEXT and __DATA\n", __func__);
+        KDBG("%s: need to map __TEXT and __DATA\n", __func__);
 
         mm = map_caller_segments(umh, cm, &res);
 
         if(!mm){
-            kprintf("%s: failed to create mapping metadata for this hook\n",
+            KDBG("%s: failed to create mapping metadata for this hook\n",
                     __func__);
             goto out_free_tramp_entry;
         }
@@ -1272,15 +1280,15 @@ static const uint64_t g_gc_leaked_page_hardcap = 64;
 /* We only deallocate just enough shared mappings to get us back down around
  * the hardcap. */
 static void xnuspy_do_gc(void){
-    kprintf("%s: doing gc\n", __func__);
+    KDBG("%s: doing gc\n", __func__);
 
     int64_t dealloc_pages = g_num_leaked_pages - g_gc_leaked_page_hardcap;
 
-    kprintf("%s: need to deallocate %lld pages to get back around hardcap\n",
+    KDBG("%s: need to deallocate %lld pages to get back around hardcap\n",
             __func__, dealloc_pages);
 
     if(STAILQ_EMPTY(&unmaplist)){
-        kprintf("%s: unmap list is empty\n", __func__);
+        KDBG("%s: unmap list is empty\n", __func__);
         return;
     }
 
@@ -1288,7 +1296,7 @@ static void xnuspy_do_gc(void){
 
     STAILQ_FOREACH_SAFE(entry, &unmaplist, link, tmp){
         if(g_num_leaked_pages <= g_gc_leaked_page_hardcap){
-            kprintf("%s: back to hardcap with %lld leaked pages\n", __func__,
+            KDBG("%s: back to hardcap with %lld leaked pages\n", __func__,
                     g_num_leaked_pages);
             return;
         }
@@ -1312,7 +1320,7 @@ static void xnuspy_do_gc(void){
         if(kret)
             didfail = 1;
 
-        kprintf("%s: didfail: %d\n", __func__, didfail);
+        KDBG("%s: didfail: %d\n", __func__, didfail);
 
         if(!didfail)
             g_num_leaked_pages -= om->mapping_size / PAGE_SIZE;
@@ -1325,7 +1333,7 @@ static void xnuspy_do_gc(void){
 }
 
 static void xnuspy_consider_gc(void){
-    kprintf("%s: Currently, there are %lld leaked pages\n", __func__,
+    KDBG("%s: Currently, there are %lld leaked pages\n", __func__,
             g_num_leaked_pages);
 
     if(g_num_leaked_pages <= g_gc_leaked_page_hardcap)
@@ -1375,7 +1383,7 @@ static void xnuspy_gc_thread(void *param, int wait_result){
                 pid = proc_pid(curproc);
                 uint64_t uniqueid = proc_uniqueid(curproc);
 
-                /* kprintf("%s: looking at %#llx with unique id %lld pid %d\n", */
+                /* KDBG("%s: looking at %#llx with unique id %lld pid %d\n", */
                 /*         __func__, curproc, uniqueid, pid); */
 
                 void *nextproc = *(void **)curproc;
@@ -1393,7 +1401,7 @@ static void xnuspy_gc_thread(void *param, int wait_result){
             proc_list_unlock();
 
             if(owner_dead){
-                kprintf("%s: Tramp %#llx's owner (%lld) is dead, freeing it\n",
+                KDBG("%s: Tramp %#llx's owner (%lld) is dead, freeing it\n",
                         __func__, tramp, mm->owner);
 
                 /* desc_xnuspy_tramp(tramp, 5); */
@@ -1426,7 +1434,7 @@ static int xnuspy_init(void){
     void *grp = lck_grp_alloc_init("xnuspy", NULL);
     
     if(!grp){
-        kprintf("%s: no mem for lck grp\n", __func__);
+        KDBG("%s: no mem for lck grp\n", __func__);
         res = ENOMEM;
         goto out;
     }
@@ -1434,7 +1442,7 @@ static int xnuspy_init(void){
     xnuspy_rw_lck = lck_rw_alloc_init(grp, NULL);
 
     if(!xnuspy_rw_lck){
-        kprintf("%s: no mem for xnuspy rw lck\n", __func__);
+        KDBG("%s: no mem for xnuspy rw lck\n", __func__);
         res = ENOMEM;
         goto out_dealloc_grp;
     }
@@ -1452,7 +1460,7 @@ static int xnuspy_init(void){
         struct stailq_entry *entry = common_kalloc(sizeof(*entry));
 
         if(!entry){
-            kprintf("%s: no mem for stailq_entry\n", __func__);
+            KDBG("%s: no mem for stailq_entry\n", __func__);
             res = ENOMEM;
             goto out_dealloc_xnuspy_lck;
         }
@@ -1467,7 +1475,7 @@ static int xnuspy_init(void){
     kern_return_t kret = kernel_thread_start(xnuspy_gc_thread, NULL, &gct);
 
     if(kret){
-        kprintf("%s: kernel_thread_start failed: %d\n", __func__, kret);
+        KDBG("%s: kernel_thread_start failed: %d\n", __func__, kret);
         res = kern_return_to_errno(kret);
         goto out_dealloc_xnuspy_lck;
     }
@@ -1490,7 +1498,7 @@ static int xnuspy_init(void){
 
     xnuspy_init_flag = 1;
 
-    kprintf("%s: xnuspy inited\n", __func__);
+    KDBG("%s: xnuspy inited\n", __func__);
 
     return 0;
 
@@ -1513,7 +1521,7 @@ out:
 }
 
 static int xnuspy_cache_read(uint64_t which, uint64_t /* __user */ outp){
-    kprintf("%s: XNUSPY_CACHE_READ called with which %lld origp %#llx\n",
+    KDBG("%s: XNUSPY_CACHE_READ called with which %lld origp %#llx\n",
             __func__, which, outp);
 
     void *what;
@@ -1609,7 +1617,7 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
     uint64_t flavor = uap->flavor;
 
     if(flavor > XNUSPY_MAX_FLAVOR){
-        kprintf("%s: bad flavor %d\n", __func__, flavor);
+        KDBG("%s: bad flavor %d\n", __func__, flavor);
         *retval = -1;
         return EINVAL;
     }

@@ -151,8 +151,6 @@ void generate_original_tramp(uint64_t addrof_second_instr,
         uint32_t *tramp, uint32_t *tramp_len_out){
     uint32_t orig_instr = *(uint32_t *)(addrof_second_instr - 4);
 
-    kprintf("%s: original instruction %#x\n", __func__, orig_instr);
-
     uint32_t tramp_len = 0;
 
     if((orig_instr & 0xff000010) == 0x54000000){
@@ -211,8 +209,6 @@ void generate_original_tramp(uint64_t addrof_second_instr,
                 get_adrp_va_target((uint32_t *)(addrof_second_instr - 4));
 
             uint64_t dist = (adrp_va_target & ~0xfff) - ((uintptr_t)tramp & ~0xfff);
-
-            kprintf("%s: dist %lld/%#llx\n", __func__, dist, dist);
 
             uint32_t Rd = orig_instr & 0x1f;
             uint32_t adrp = (1 << 31) | (1 << 28) | ((dist & 0x3000) << 17) |
