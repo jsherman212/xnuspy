@@ -163,7 +163,7 @@ static int gather_kernel_offsets(void){
     ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, KERNEL_SLIDE, &kernel_slide, 0);
 
     if(ret){
-        printf("Failed getting kernel_slide\n");
+        printf("Failed getting kernel slide\n");
         return ret;
     }
 
