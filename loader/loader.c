@@ -58,8 +58,19 @@ static int hotplug_callback(libusb_context *ctx, libusb_device *device,
 
 int main(int argc, char **argv, const char **envp){
     if(argc < 2){
-        printf("usage: loader <pongo module>\n");
+        printf("usage: loader <pongo module> [--kpp]\n");
         return 1;
+    }
+
+    int needs_el3_img = 0;
+
+    if(argc == 3){
+        if(strcmp(argv[2], "--kpp") != 0){
+            printf("did you mean '--kpp'?\n");
+            return 1;
+        }
+
+        needs_el3_img = 1;
     }
 
     int err = libusb_init(NULL);
@@ -94,10 +105,7 @@ int main(int argc, char **argv, const char **envp){
 
     if(err < 0){
         printf("libusb_claim_interface: %s\n", libusb_error_name(err));
-        libusb_release_interface(pongo_device, 0);
-        libusb_close(pongo_device);
-        libusb_exit(NULL);
-        return 1;
+        goto err0;
     }
 
     char *module_path = argv[1];
@@ -105,20 +113,14 @@ int main(int argc, char **argv, const char **envp){
     
     if(stat(module_path, &st)){
         printf("Problem stat'ing '%s': %s\n", module_path, strerror(errno));
-        libusb_release_interface(pongo_device, 0);
-        libusb_close(pongo_device);
-        libusb_exit(NULL);
-        return 1;
+        goto err0;
     }
 
     int module_fd = open(module_path, O_RDONLY);
 
     if(module_fd < 0){
         printf("Problem open'ing '%s': %s\n", module_path, strerror(errno));
-        libusb_release_interface(pongo_device, 0);
-        libusb_close(pongo_device);
-        libusb_exit(NULL);
-        return 1;
+        goto err0;
     }
 
     size_t module_size = st.st_size;
@@ -127,25 +129,20 @@ int main(int argc, char **argv, const char **envp){
     void *module_data = mmap(NULL, module_size, PROT_READ, MAP_PRIVATE,
             module_fd, 0);
 
+    close(module_fd);
+
     if(module_data == MAP_FAILED){
         printf("Problem mmap'ing '%s': %s\n", module_path, strerror(errno));
-        libusb_release_interface(pongo_device, 0);
-        libusb_close(pongo_device);
-        libusb_exit(NULL);
-        return 1;
+        goto err0;
     }
 
     const char *xnuspy_ctl_path = "./module/el1/xnuspy_ctl/xnuspy_ctl";
-    //const char *xnuspy_ctl_path = "./module/el3/image.bin";
 
     memset(&st, 0, sizeof(st));
 
     if(stat(xnuspy_ctl_path, &st)){
         printf("Problem stat'ing '%s': %s\n", xnuspy_ctl_path, strerror(errno));
-        libusb_release_interface(pongo_device, 0);
-        libusb_close(pongo_device);
-        libusb_exit(NULL);
-        return 1;
+        goto err1;
     }
 
     size_t xnuspy_ctl_imgsz = st.st_size;
@@ -155,76 +152,52 @@ int main(int argc, char **argv, const char **envp){
 
     if(xnuspy_ctl_fd == -1){
         printf("Problem open'ing '%s': %s\n", xnuspy_ctl_path, strerror(errno));
-        libusb_release_interface(pongo_device, 0);
-        libusb_close(pongo_device);
-        libusb_exit(NULL);
-        return 1;
+        goto err1;
     }
 
     void *xnuspy_ctl_imgdata = mmap(NULL, xnuspy_ctl_imgsz, PROT_READ,
             MAP_PRIVATE, xnuspy_ctl_fd, 0);
 
+    close(xnuspy_ctl_fd);
+
     if(xnuspy_ctl_imgdata == MAP_FAILED){
         printf("Problem mmap'ing '%s': %s\n", xnuspy_ctl_path, strerror(errno));
-        libusb_release_interface(pongo_device, 0);
-        libusb_close(pongo_device);
-        libusb_exit(NULL);
-        return 1;
+        goto err1;
     }
 
     err = pongo_init_bulk_upload(pongo_device);
 
     if(err < 0){
         printf("pongo_init_bulk_upload: %s\n", libusb_error_name(err));
-        munmap(module_data, module_size);
-        libusb_release_interface(pongo_device, 0);
-        libusb_close(pongo_device);
-        libusb_exit(NULL);
-        return 1;
+        goto err2;
     }
 
     err = pongo_do_bulk_upload(pongo_device, module_data, module_size);
 
     if(err < 0){
         printf("pongo_do_bulk_upload (module): %s\n", libusb_error_name(err));
-        munmap(module_data, module_size);
-        libusb_release_interface(pongo_device, 0);
-        libusb_close(pongo_device);
-        libusb_exit(NULL);
-        return 1;
+        goto err2;
     }
 
     err = pongo_send_command(pongo_device, "modload\n");
 
     if(err < 0){
         printf("pongo_send_command: %s\n", libusb_error_name(err));
-        munmap(module_data, module_size);
-        libusb_release_interface(pongo_device, 0);
-        libusb_close(pongo_device);
-        libusb_exit(NULL);
-        return 1;
+        goto err2;
     }
     
-    munmap(module_data, module_size);
-
     usleep(200 * 1000);
 
     /* Don't remove any of these boot args if you modify this string */
     err = pongo_send_command(pongo_device, "xargs rootdev=md0"
             " use_contiguous_hint=0 msgbuf=0x3c000 -show_pointers"
-            " atm_diagnostic_config=0x20000000\n");// debug=0x8\n");
+            " atm_diagnostic_config=0x20000000\n");
 
     if(err < 0){
         printf("pongo_send_command: %s\n", libusb_error_name(err));
-        munmap(module_data, module_size);
-        libusb_release_interface(pongo_device, 0);
-        libusb_close(pongo_device);
-        libusb_exit(NULL);
-        return 1;
+        goto err2;
     }
     
-    munmap(module_data, module_size);
-
 /* #if 0 */
     usleep(200 * 1000);
 
@@ -232,10 +205,7 @@ int main(int argc, char **argv, const char **envp){
 
     if(err < 0){
         printf("pongo_send_command: %s\n", libusb_error_name(err));
-        libusb_release_interface(pongo_device, 0);
-        libusb_close(pongo_device);
-        libusb_exit(NULL);
-        return 1;
+        goto err2;
     }
 
     //goto done;
@@ -250,25 +220,15 @@ int main(int argc, char **argv, const char **envp){
 
     if(err < 0){
         printf("pongo_init_bulk_upload: %s\n", libusb_error_name(err));
-        munmap(module_data, module_size);
-        libusb_release_interface(pongo_device, 0);
-        libusb_close(pongo_device);
-        libusb_exit(NULL);
-        return 1;
+        goto err2;
     }
-
-    //usleep(800 * 1000);
 
     err = pongo_do_bulk_upload(pongo_device, xnuspy_ctl_imgdata,
             xnuspy_ctl_imgsz);
 
     if(err < 0){
         printf("pongo_do_bulk_upload (xnuspy_ctl): %s\n", libusb_error_name(err));
-        munmap(module_data, module_size);
-        libusb_release_interface(pongo_device, 0);
-        libusb_close(pongo_device);
-        libusb_exit(NULL);
-        return 1;
+        goto err2;
     }
 
     sleep(2);
@@ -282,34 +242,37 @@ int main(int argc, char **argv, const char **envp){
 
     if(err < 0){
         printf("pongo_send_command: %s\n", libusb_error_name(err));
-        libusb_release_interface(pongo_device, 0);
-        libusb_close(pongo_device);
-        libusb_exit(NULL);
-        return 1;
+        goto err2;
     }
 #endif
 
-boot:;
+    if(!needs_el3_img){
+        /* If we aren't booting into EL3, boot normally */
+
 #if 1
-    usleep(800 * 1000);
-    //sleep(1);
+        usleep(800 * 1000);
 
-    err = pongo_send_command(pongo_device, "bootx\n");
-    //err = pongo_send_command(pongo_device, "bootr\n");
+        err = pongo_send_command(pongo_device, "bootx\n");
 
-    if(err < 0){
-        printf("pongo_send_command: %s\n", libusb_error_name(err));
-        libusb_release_interface(pongo_device, 0);
-        libusb_close(pongo_device);
-        libusb_exit(NULL);
-        return 1;
-    }
+        if(err < 0){
+            printf("pongo_send_command: %s\n", libusb_error_name(err));
+            goto err2;
+        }
 #endif
+    }
+    else{
+        /* Otherwise, run KPF, upload the EL3 image, and boot that */
 
-done:;
+        //err = pongo_send_command(pongo_device, "bootr\n");
+    }
+
+err2:
+    munmap(xnuspy_ctl_imgdata, xnuspy_ctl_imgsz);
+err1:
+    munmap(module_data, module_size);
+err0:;
     libusb_release_interface(pongo_device, 0);
     libusb_close(pongo_device);
     libusb_exit(NULL);
-
     return 0;
 }

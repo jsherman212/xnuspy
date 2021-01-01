@@ -17,10 +17,13 @@ After you've built everything, have checkra1n boot your device to a pongo
 shell: `/Applications/checkra1n.app/Contents/MacOS/checkra1n -p`
 
 In the same directory you built the loader and the module, do
-`loader/loader module/xnuspy`. xnuspy will run its patchfinders and install
-`xnuspy_ctl` and in a few seconds your device will boot. `loader` will wait a
-couple more seconds after issuing `xnuspy-getkernelv` in case SEPROM needs
-to be exploited.
+`loader/loader module/xnuspy` if your device is A10 or above. Do
+`loader/loader module/xnuspy --kpp` if your device is A9 or below. I boot a
+custom EL3 on KPP devices.
+
+After doing that, xnuspy will do its thing and in a few seconds your device
+will boot. `loader` will wait a couple more seconds after issuing
+`xnuspy-getkernelv` in case SEPROM needs to be exploited.
 
 # xnuspy_ctl
 `xnuspy` will patch the first `enosys` system call to point to `xnuspy_ctl_tramp`.
