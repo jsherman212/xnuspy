@@ -1028,6 +1028,40 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
             }),
             3, mach_vm_map_external_finder_13, "__TEXT_EXEC"),
     },
+    {
+        PF_DECL32("ipc_port_release_send finder iOS 13",
+            LISTIZE({
+                0xaa0003fa,     /* mov x26, x0 */
+                0xb4000018,     /* cbz x24, n */
+                0xaa1803e0,     /* mov x0, x24 */
+                0x94000000,     /* bl _ipc_port_release_send */
+                0xb4000019,     /* cbz x25, n */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+                0xff00001f,     /* ignore immediate */
+                0xffffffff,     /* match exactly */
+                0xfc000000,     /* ignore immediate */
+                0xff00001f,     /* ignore immediate */
+            }),
+            5, ipc_port_release_send_finder_13, "__TEXT_EXEC"),
+        PF_DECL32("ipc_port_release_send finder iOS 14",
+            LISTIZE({
+                0xaa0003fa,     /* mov x26, x0 */
+                0xb4000018,     /* cbz x24, n */
+                0xaa1803e0,     /* mov x0, x24 */
+                0x94000000,     /* bl _ipc_port_release_send */
+                0xb4000019,     /* cbz x25, n */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+                0xff00001f,     /* ignore immediate */
+                0xffffffff,     /* match exactly */
+                0xfc000000,     /* ignore immediate */
+                0xff00001f,     /* ignore immediate */
+            }),
+            5, ipc_port_release_send_finder_13, "__TEXT_EXEC"),
+    },
     { PF_END, PF_END },
 };
 

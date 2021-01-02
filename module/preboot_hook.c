@@ -120,6 +120,7 @@ static struct xnuspy_ctl_kernel_symbol {
     { "_first_reflector_page", &g_first_reflector_page },
     { "_iOS_version", &g_kern_version_major },
     { "_IOSleep", &g_IOSleep_addr },
+    { "_ipc_port_release_send", &g_ipc_port_release_send_addr },
     { "_kalloc_canblock", &g_kalloc_canblock_addr },
     { "_kalloc_external", &g_kalloc_external_addr },
     { "_kernel_mapp", &g_kernel_map_addr },
@@ -227,6 +228,7 @@ static void anything_missing(void){
     chk(!g_lck_rw_lock_exclusive_addr, "lck_rw_lock_exclusive not found\n");
     chk(!g_vm_map_wire_external_addr, "vm_map_wire_external not found\n");
     chk(!g_mach_vm_map_external_addr, "mach_vm_map_external not found\n");
+    chk(!g_ipc_port_release_send_addr, "ipc_port_release_send not found\n");
 
     /* if we printed the error header, something is missing */
     if(printed_err_hdr)
@@ -609,13 +611,13 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
         /*     *va = 0xFFFFFFF007FF852C + kernel_slide; */
         /*     return; */
         /* } */
-        else if(strcmp(ksym, "_ipc_port_release_send") == 0){
-            /* iphone 8 13.6.1 */
-            *va = 0xFFFFFFF007BDE3D8 + kernel_slide;
-            /* iphone 7 14.1 */
-            /* *va = 0xFFFFFFF0071580D0 + kernel_slide; */
-            return;
-        }
+        /* else if(strcmp(ksym, "_ipc_port_release_send") == 0){ */
+        /*     /1* iphone 8 13.6.1 *1/ */
+        /*     *va = 0xFFFFFFF007BDE3D8 + kernel_slide; */
+        /*     /1* iphone 7 14.1 *1/ */
+        /*     /1* *va = 0xFFFFFFF0071580D0 + kernel_slide; *1/ */
+        /*     return; */
+        /* } */
         /* else if(strcmp(ksym, "_mach_vm_deallocate") == 0){ */
         /*     *va = 0xFFFFFFF007CD1B1C + kernel_slide; */
         /*     return; */

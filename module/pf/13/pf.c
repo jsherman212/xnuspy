@@ -55,6 +55,7 @@ uint64_t g_lck_rw_lock_shared_to_exclusive_addr = 0;
 uint64_t g_lck_rw_lock_exclusive_addr = 0;
 uint64_t g_vm_map_wire_external_addr = 0;
 uint64_t g_mach_vm_map_external_addr = 0;
+uint64_t g_ipc_port_release_send_addr = 0;
 uint64_t g_xnuspy_sysctl_name_ptr = 0;
 uint64_t g_xnuspy_sysctl_descr_ptr = 0;
 uint64_t g_xnuspy_sysctl_fmt_ptr = 0;
@@ -990,8 +991,27 @@ bool mach_vm_map_external_finder_13(xnu_pf_patch_t *patch,
 
     puts("xnuspy: found mach_vm_map_external");
 
-    printf("%s: mach_vm_map_external @ %#llx\n", __func__,
-            g_mach_vm_map_external_addr - kernel_slide);
+    return true;
+}
+
+/* confirmed working on all kernels 13.0-14.3 */
+bool ipc_port_release_send_finder_13(xnu_pf_patch_t *patch,
+        void *cacheable_stream){
+    /* We've landed inside exception_deliver, the 4th instruction from
+     * this point is a BL to ipc_port_release_send */
+    xnu_pf_disable_patch(patch);
+
+    uint32_t *opcode_stream = cacheable_stream;
+
+    uint32_t *ipc_port_release_send = get_branch_dst_ptr(opcode_stream[3],
+            opcode_stream + 3);
+
+    g_ipc_port_release_send_addr = xnu_ptr_to_va(ipc_port_release_send);
+
+    puts("xnuspy: found ipc_port_release_send");
+
+    printf("%s: ipc_port_release_send @ %#llx\n", __func__,
+            g_ipc_port_release_send_addr - kernel_slide);
 
     return true;
 }
