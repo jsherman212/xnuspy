@@ -54,6 +54,7 @@ uint64_t g_lck_rw_lock_shared_addr = 0;
 uint64_t g_lck_rw_lock_shared_to_exclusive_addr = 0;
 uint64_t g_lck_rw_lock_exclusive_addr = 0;
 uint64_t g_vm_map_wire_external_addr = 0;
+uint64_t g_mach_vm_map_external_addr = 0;
 uint64_t g_xnuspy_sysctl_name_ptr = 0;
 uint64_t g_xnuspy_sysctl_descr_ptr = 0;
 uint64_t g_xnuspy_sysctl_fmt_ptr = 0;
@@ -941,7 +942,9 @@ bool vm_map_wire_external_finder_13(xnu_pf_patch_t *patch,
     uint32_t *opcode_stream = cacheable_stream;
 
     if(opcode_stream[14] != 0xd2800006 && opcode_stream[15] != 0xd2800007)
-        return 0;
+        return false;
+
+    xnu_pf_disable_patch(patch);
 
     /* We're inside vm_map_wire_external, find the beginning. Looking for
      * sub sp, sp, n */
@@ -958,8 +961,37 @@ bool vm_map_wire_external_finder_13(xnu_pf_patch_t *patch,
 
     puts("xnuspy: found vm_map_wire_external");
 
-    printf("%s: vm_map_wire_external @ %#llx\n", __func__,
-            g_vm_map_wire_external_addr - kernel_slide);
+    return true;
+}
+
+/* confirmed working on all kernels 13.0-14.3 */
+bool mach_vm_map_external_finder_13(xnu_pf_patch_t *patch,
+        void *cacheable_stream){
+    /* We've matched a couple places, we are in mach_vm_map_external if the
+     * 6th instruction from this point is mov x8, x5 */
+    uint32_t *opcode_stream = cacheable_stream;
+
+    if(opcode_stream[6] != 0xaa0503e8)
+        return false;
+
+    xnu_pf_disable_patch(patch);
+
+    /* Find mach_vm_map_external's start. Searching for sub sp, sp, n */
+    uint32_t instr_limit = 50;
+
+    while((*opcode_stream & 0xffc003ff) != 0xd10003ff){
+        if(instr_limit-- == 0)
+            return false;
+
+        opcode_stream--;
+    }
+
+    g_mach_vm_map_external_addr = xnu_ptr_to_va(opcode_stream);
+
+    puts("xnuspy: found mach_vm_map_external");
+
+    printf("%s: mach_vm_map_external @ %#llx\n", __func__,
+            g_mach_vm_map_external_addr - kernel_slide);
 
     return true;
 }

@@ -1002,6 +1002,32 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
             }),
             7, vm_map_wire_external_finder_13, "__TEXT_EXEC"),
     },
+    {
+        PF_DECL32("mach_vm_map_external finder iOS 13",
+            LISTIZE({
+                0x5297fc09,     /* mov w9, 0xbfe0 */
+                0x72a00d09,     /* movk w9, 0x68, lsl 16 */
+                0x6a09009f,     /* tst w4, w9 */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+            }),
+            3, mach_vm_map_external_finder_13, "__TEXT_EXEC"),
+        PF_DECL32("mach_vm_map_external finder iOS 14",
+            LISTIZE({
+                0x5297fc09,     /* mov w9, 0xbfe0 */
+                0x72a00d09,     /* movk w9, 0x68, lsl 16 */
+                0x6a09009f,     /* tst w4, w9 */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+            }),
+            3, mach_vm_map_external_finder_13, "__TEXT_EXEC"),
+    },
     { PF_END, PF_END },
 };
 

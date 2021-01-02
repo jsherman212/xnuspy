@@ -34,5 +34,6 @@ bool proc_stuff1_finder_13(xnu_pf_patch_t *, void *);
 bool allproc_finder_13(xnu_pf_patch_t *, void *);
 bool misc_lck_stuff_finder_13(xnu_pf_patch_t *, void *);
 bool vm_map_wire_external_finder_13(xnu_pf_patch_t *, void *);
+bool mach_vm_map_external_finder_13(xnu_pf_patch_t *, void *);
 
 #endif

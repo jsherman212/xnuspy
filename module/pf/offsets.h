@@ -60,6 +60,7 @@ extern uint64_t g_lck_rw_lock_shared_addr;
 extern uint64_t g_lck_rw_lock_shared_to_exclusive_addr;
 extern uint64_t g_lck_rw_lock_exclusive_addr;
 extern uint64_t g_vm_map_wire_external_addr;
+extern uint64_t g_mach_vm_map_external_addr;
 extern uint64_t g_xnuspy_sysctl_name_ptr;
 extern uint64_t g_xnuspy_sysctl_descr_ptr;
 extern uint64_t g_xnuspy_sysctl_fmt_ptr;

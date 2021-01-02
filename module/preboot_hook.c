@@ -136,6 +136,7 @@ static struct xnuspy_ctl_kernel_symbol {
     { "_lck_rw_lock_shared", &g_lck_rw_lock_shared_addr },
     { "_lck_rw_lock_shared_to_exclusive", &g_lck_rw_lock_shared_to_exclusive_addr },
     { "__mach_make_memory_entry_64", &g_mach_make_memory_entry_64_addr },
+    { "_mach_vm_map_external", &g_mach_vm_map_external_addr },
     { "_offsetof_struct_thread_map", &g_offsetof_struct_thread_map },
     { "_phystokv", &g_phystokv_addr },
     { "_proc_list_lock", &g_proc_list_lock_addr },
@@ -225,6 +226,7 @@ static void anything_missing(void){
             "lck_rw_lock_shared_to_exclusive not found\n");
     chk(!g_lck_rw_lock_exclusive_addr, "lck_rw_lock_exclusive not found\n");
     chk(!g_vm_map_wire_external_addr, "vm_map_wire_external not found\n");
+    chk(!g_mach_vm_map_external_addr, "mach_vm_map_external not found\n");
 
     /* if we printed the error header, something is missing */
     if(printed_err_hdr)
@@ -431,7 +433,6 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
             /*         *g_xnuspy_ctl_needed_symbols[i].val - kernel_slide); */
             
             *va = *g_xnuspy_ctl_needed_symbols[i].valp;
-
             return;
         }
         /* else if(strcmp(ksym, "_kprintf") == 0){ */
@@ -530,12 +531,12 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
         /*     *va = 0xFFFFFFF007CD3424 + kernel_slide; */
         /*     return; */
         /* } */
-        else if(strcmp(ksym, "_mach_vm_map_external") == 0){
-            *va = 0xFFFFFFF007CD22DC + kernel_slide;
-            /* iphone 7 14.1 */
-            //*va = 0xFFFFFFF007245A38 + kernel_slide;
-            return;
-        }
+        /* else if(strcmp(ksym, "_mach_vm_map_external") == 0){ */
+        /*     *va = 0xFFFFFFF007CD22DC + kernel_slide; */
+        /*     /1* iphone 7 14.1 *1/ */
+        /*     /1* *va = 0xFFFFFFF007245A38 + kernel_slide; *1/ */
+        /*     return; */
+        /* } */
         /* else if(strcmp(ksym, "_ml_static_protect") == 0){ */
         /*     *va = 0xFFFFFFF007D0F7C8 + kernel_slide; */
         /*     return; */
@@ -612,7 +613,7 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
             /* iphone 8 13.6.1 */
             *va = 0xFFFFFFF007BDE3D8 + kernel_slide;
             /* iphone 7 14.1 */
-            //*va = 0xFFFFFFF0071580D0 + kernel_slide;
+            /* *va = 0xFFFFFFF0071580D0 + kernel_slide; */
             return;
         }
         /* else if(strcmp(ksym, "_mach_vm_deallocate") == 0){ */
@@ -626,13 +627,13 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
         else if(strcmp(ksym, "_lck_rw_free") == 0){
             *va = 0xFFFFFFF007D097F8 + kernel_slide;
             /* iphone 7 14.1 */
-            //*va = 0xFFFFFFF007279290 + kernel_slide;
+            /* *va = 0xFFFFFFF007279290 + kernel_slide; */
             return;
         }
         else if(strcmp(ksym, "_lck_grp_free") == 0){
             *va = 0xFFFFFFF007C0682C + kernel_slide;
             /* iphone 7 14.1 */
-            //*va = 0xFFFFFFF007180B10 + kernel_slide;
+            /* *va = 0xFFFFFFF007180B10 + kernel_slide; */
             return;
         }
     }
@@ -689,8 +690,6 @@ static void process_xnuspy_ctl_image(void *xnuspy_ctl_image){
             g_xnuspy_ctl_addr = xnu_ptr_to_va(va);
         else
             initialize_xnuspy_ctl_image_koff(sym, va);
-
-        /* printf("%s: got symbol '%s' @ %#llx\n", __func__, sym, va); */
     }
 
     printf("%s: g_xnuspy_ctl_addr @ %#llx, code start @ %#llx, code size %#llx\n",
@@ -714,7 +713,7 @@ void xnuspy_preboot_hook(void){
      * we hit the limit and panic. From the output in checkra1n's KPF, the
      * ramdisk is 0x110000 bytes, so we need to make sure there's space for
      * that.  Unfortunately alloc_static_current and alloc_static_end aren't
-     * exported so we need to calculate them outselves. These calculations are
+     * exported so we need to calculate them ourselves. These calculations are
      * the ones done inside src/kernel/std.c. I don't think anything before
      * us has called alloc_static so these calculations are fine here. */
     uint64_t alloc_static_current =
@@ -907,11 +906,11 @@ void xnuspy_preboot_hook(void){
     printf("xnuspy: handing it off to checkra1n...\n");
 
     /* iphone 8 13.6.1 */
-    uint32_t *doprnt_hide_pointers = xnu_va_to_ptr(0xFFFFFFF0090B0624 + kernel_slide);
+    //uint32_t *doprnt_hide_pointers = xnu_va_to_ptr(0xFFFFFFF0090B0624 + kernel_slide);
 
     /* iphone 7 14.1 */
     //uint32_t *doprnt_hide_pointers = xnu_va_to_ptr(0xFFFFFFF00777C61C + kernel_slide);
-    *doprnt_hide_pointers = 0;
+    //*doprnt_hide_pointers = 0;
 
     //printf("%s: sysctl_handle_long @ %#llx\n", __func__,
             //g_sysctl_handle_long_addr - kernel_slide);
