@@ -1062,6 +1062,48 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
             }),
             5, ipc_port_release_send_finder_13, "__TEXT_EXEC"),
     },
+    {
+        PF_DECL32("lck_rw_free finder iOS 13",
+            LISTIZE({
+                0x10000008,     /* adrp x8, n or adr x8, n */
+                0x0,            /* ignore this instruction */
+                0x14000000,     /* b n */
+                0xd65f03c0,     /* ret */
+                0x10000008,     /* adrp x8, n or adr x8, n */
+                0x0,            /* ignore this instruction */
+                0xd2800001,     /* mov x1, 0 */
+            }),
+            LISTIZE({
+                0x1f00001f,     /* ignore immediate */
+                0x0,            /* ignore this instruction */
+                0xfc000000,     /* ignore immediate */
+                0xffffffff,     /* match exactly */
+                0x1f00001f,     /* ignore immediate */
+                0x0,            /* ignore this instruction */
+                0xffffffff,     /* match exactly */
+            }),
+            7, lck_rw_free_finder_13, "__TEXT_EXEC"),
+        PF_DECL32("lck_rw_free finder iOS 14",
+            LISTIZE({
+                0x10000008,     /* adrp x8, n or adr x8, n */
+                0x0,            /* ignore this instruction */
+                0x14000000,     /* b n */
+                0xd65f03c0,     /* ret */
+                0x10000008,     /* adrp x8, n or adr x8, n */
+                0x0,            /* ignore this instruction */
+                0xd2800001,     /* mov x1, 0 */
+            }),
+            LISTIZE({
+                0x1f00001f,     /* ignore immediate */
+                0x0,            /* ignore this instruction */
+                0xfc000000,     /* ignore immediate */
+                0xffffffff,     /* match exactly */
+                0x1f00001f,     /* ignore immediate */
+                0x0,            /* ignore this instruction */
+                0xffffffff,     /* match exactly */
+            }),
+            7, lck_rw_free_finder_13, "__TEXT_EXEC"),
+    },
     { PF_END, PF_END },
 };
 

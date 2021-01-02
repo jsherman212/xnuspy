@@ -133,6 +133,7 @@ static struct xnuspy_ctl_kernel_symbol {
     { "_lck_mtx_unlock", &g_lck_mtx_unlock_addr },
     { "_lck_rw_alloc_init", &g_lck_rw_alloc_init_addr },
     { "_lck_rw_done", &g_lck_rw_done_addr },
+    { "_lck_rw_free", &g_lck_rw_free_addr },
     { "_lck_rw_lock_exclusive", &g_lck_rw_lock_exclusive_addr },
     { "_lck_rw_lock_shared", &g_lck_rw_lock_shared_addr },
     { "_lck_rw_lock_shared_to_exclusive", &g_lck_rw_lock_shared_to_exclusive_addr },
@@ -229,6 +230,7 @@ static void anything_missing(void){
     chk(!g_vm_map_wire_external_addr, "vm_map_wire_external not found\n");
     chk(!g_mach_vm_map_external_addr, "mach_vm_map_external not found\n");
     chk(!g_ipc_port_release_send_addr, "ipc_port_release_send not found\n");
+    chk(!g_lck_rw_free_addr, "lck_rw_free not found\n");
 
     /* if we printed the error header, something is missing */
     if(printed_err_hdr)
@@ -626,12 +628,12 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
         /*     *va = 0xFFFFFFF007C96E34 + kernel_slide; */
         /*     return; */
         /* } */
-        else if(strcmp(ksym, "_lck_rw_free") == 0){
-            *va = 0xFFFFFFF007D097F8 + kernel_slide;
-            /* iphone 7 14.1 */
-            /* *va = 0xFFFFFFF007279290 + kernel_slide; */
-            return;
-        }
+        /* else if(strcmp(ksym, "_lck_rw_free") == 0){ */
+        /*     *va = 0xFFFFFFF007D097F8 + kernel_slide; */
+        /*     /1* iphone 7 14.1 *1/ */
+        /*     /1* *va = 0xFFFFFFF007279290 + kernel_slide; *1/ */
+        /*     return; */
+        /* } */
         else if(strcmp(ksym, "_lck_grp_free") == 0){
             *va = 0xFFFFFFF007C0682C + kernel_slide;
             /* iphone 7 14.1 */

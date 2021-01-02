@@ -111,7 +111,6 @@ MARK_AS_KERNEL_OFFSET void (*lck_rw_lock_shared)(void *lock);
 
 MARK_AS_KERNEL_OFFSET int (*lck_rw_lock_shared_to_exclusive)(lck_rw_t *lck);
 
-/* the two below found by xrefing l2tp_udp_init: can't alloc mutex for iOS 13.x */
 MARK_AS_KERNEL_OFFSET void (*lck_rw_free)(lck_rw_t *lock, void *grp);
 MARK_AS_KERNEL_OFFSET void (*lck_grp_free)(void *grp);
 

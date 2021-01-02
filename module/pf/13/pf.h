@@ -5,7 +5,6 @@
 
 typedef struct xnu_pf_patch xnu_pf_patch_t;
 
-/* all patchfinder functions, so we can build the list of pfs */
 bool sysent_finder_13(xnu_pf_patch_t *, void *);
 bool kalloc_canblock_finder_13(xnu_pf_patch_t *, void *);
 bool kfree_addr_finder_13(xnu_pf_patch_t *, void *);
@@ -36,5 +35,6 @@ bool misc_lck_stuff_finder_13(xnu_pf_patch_t *, void *);
 bool vm_map_wire_external_finder_13(xnu_pf_patch_t *, void *);
 bool mach_vm_map_external_finder_13(xnu_pf_patch_t *, void *);
 bool ipc_port_release_send_finder_13(xnu_pf_patch_t *, void *);
+bool lck_rw_free_finder_13(xnu_pf_patch_t *, void *);
 
 #endif
