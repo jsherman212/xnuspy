@@ -960,6 +960,48 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
             }),
             5, misc_lck_stuff_finder_13, "__TEXT_EXEC"),
     },
+    {
+        PF_DECL32("vm_map_wire_external finder iOS 13",
+            LISTIZE({
+                0x910003fd,     /* add x29, sp, n */
+                0xaa0403f3,     /* mov x19, x4 */
+                0xaa0303f4,     /* mov x20, x3 */
+                0xaa0203f5,     /* mov x21, x2 */
+                0xaa0103f6,     /* mov x22, x1 */
+                0xaa0003f7,     /* mov x23, x0 */
+                0x94000000,     /* bl n */
+            }),
+            LISTIZE({
+                0xffc003ff,     /* ignore immediate */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xfc000000,     /* ignore immediate */
+            }),
+            7, vm_map_wire_external_finder_13, "__TEXT_EXEC"),
+        PF_DECL32("vm_map_wire_external finder iOS 14",
+            LISTIZE({
+                0x910003fd,     /* add x29, sp, n */
+                0xaa0403f3,     /* mov x19, x4 */
+                0xaa0303f4,     /* mov x20, x3 */
+                0xaa0203f5,     /* mov x21, x2 */
+                0xaa0103f6,     /* mov x22, x1 */
+                0xaa0003f7,     /* mov x23, x0 */
+                0x94000000,     /* bl n */
+            }),
+            LISTIZE({
+                0xffc003ff,     /* ignore immediate */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xfc000000,     /* ignore immediate */
+            }),
+            7, vm_map_wire_external_finder_13, "__TEXT_EXEC"),
+    },
     { PF_END, PF_END },
 };
 

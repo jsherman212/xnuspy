@@ -19,12 +19,10 @@ bool lck_grp_alloc_init_finder_13(xnu_pf_patch_t *, void *);
 bool lck_rw_alloc_init_finder_13(xnu_pf_patch_t *, void *);
 bool bcopy_phys_finder_13(xnu_pf_patch_t *, void *);
 bool phystokv_finder_13(xnu_pf_patch_t *, void *);
-bool kpp_patcher_13(xnu_pf_patch_t *, void *);
 bool ktrr_lockdown_patcher_13(xnu_pf_patch_t *, void *);
 bool amcc_lockdown_patcher_13(xnu_pf_patch_t *, void *);
 bool copyin_finder_13(xnu_pf_patch_t *, void *);
 bool copyout_finder_13(xnu_pf_patch_t *, void *);
-bool PAN_disabler_13(xnu_pf_patch_t *, void *);
 bool IOSleep_finder_13(xnu_pf_patch_t *, void *);
 bool kprintf_finder_13(xnu_pf_patch_t *, void *);
 bool kernel_map_vm_deallocate_vm_map_unwire_finder_13(xnu_pf_patch_t *, void *);
@@ -35,5 +33,6 @@ bool proc_stuff0_finder_13(xnu_pf_patch_t *, void *);
 bool proc_stuff1_finder_13(xnu_pf_patch_t *, void *);
 bool allproc_finder_13(xnu_pf_patch_t *, void *);
 bool misc_lck_stuff_finder_13(xnu_pf_patch_t *, void *);
+bool vm_map_wire_external_finder_13(xnu_pf_patch_t *, void *);
 
 #endif

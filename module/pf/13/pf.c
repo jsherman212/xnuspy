@@ -53,6 +53,7 @@ uint64_t g_allproc_addr = 0;
 uint64_t g_lck_rw_lock_shared_addr = 0;
 uint64_t g_lck_rw_lock_shared_to_exclusive_addr = 0;
 uint64_t g_lck_rw_lock_exclusive_addr = 0;
+uint64_t g_vm_map_wire_external_addr = 0;
 uint64_t g_xnuspy_sysctl_name_ptr = 0;
 uint64_t g_xnuspy_sysctl_descr_ptr = 0;
 uint64_t g_xnuspy_sysctl_fmt_ptr = 0;
@@ -318,8 +319,6 @@ bool sysctl_handle_long_finder_13(xnu_pf_patch_t *patch,
     g_sysctl_handle_long_addr = xnu_ptr_to_va(opcode_stream);
 
     puts("xnuspy: found sysctl_handle_long");
-    /* printf("%s: sysctl_handle_long @ %#llx\n", __func__, */
-    /*         g_sysctl_handle_long_addr - kernel_slide); */
 
     return true;
 }
@@ -428,8 +427,6 @@ bool lck_grp_alloc_init_finder_13(xnu_pf_patch_t *patch,
     g_lck_grp_alloc_init_addr = xnu_ptr_to_va(lck_grp_alloc_init);
 
     puts("xnuspy: found lck_grp_alloc_init");
-    /* printf("%s: lck_grp_alloc_init @ %#llx [unslid %#llx]\n", __func__, */
-    /*         g_lck_grp_alloc_init_addr, g_lck_grp_alloc_init_addr - kernel_slide); */
 
     return true;
 }
@@ -507,7 +504,6 @@ bool bcopy_phys_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     g_bcopy_phys_addr = xnu_ptr_to_va(opcode_stream);
     
     puts("xnuspy: found bcopy_phys");
-    /* printf("%s: bcopy_phys @ %#llx\n", __func__, g_bcopy_phys_addr - kernel_slide); */
 
     return true;
 }
@@ -526,7 +522,6 @@ bool phystokv_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     g_phystokv_addr = xnu_ptr_to_va(phystokv);
 
     puts("xnuspy: found phystokv");
-    /* printf("%s: phystokv @ %#llx\n", __func__, g_phystokv_addr - kernel_slide); */
 
     return true;
 }
@@ -588,7 +583,6 @@ bool copyin_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     g_copyin_addr = xnu_ptr_to_va(opcode_stream);
 
     puts("xnuspy: found copyin");
-    /* printf("%s: copyin @ %#llx\n", __func__, g_copyin_addr - kernel_slide); */
 
     return true;
 }
@@ -624,7 +618,6 @@ bool copyout_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     g_copyout_addr = xnu_ptr_to_va(opcode_stream);
 
     puts("xnuspy: found copyout");
-    /* printf("%s: copyout @ %#llx\n", __func__, g_copyout_addr - kernel_slide); */
 
     return true;
 }
@@ -636,7 +629,6 @@ bool IOSleep_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     g_IOSleep_addr = xnu_ptr_to_va(cacheable_stream);
 
     puts("xnuspy: found IOSleep");
-    //printf("%s: IOSleep @ %#llx\n", __func__, g_IOSleep_addr - kernel_slide);
 
     return true;
 }
@@ -660,7 +652,7 @@ bool kprintf_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     g_kprintf_addr = xnu_ptr_to_va(opcode_stream);
 
     puts("xnuspy: found kprintf");
-    /* printf("%s: kprintf @ %#llx\n", __func__, g_kprintf_addr - kernel_slide); */
+
     return true;
 }
 
@@ -714,10 +706,6 @@ bool kernel_map_vm_deallocate_vm_map_unwire_finder_13(xnu_pf_patch_t *patch,
     puts("xnuspy: found vm_deallocate");
     puts("xnuspy: found kernel_map");
 
-    /* printf("%s: vm_map_unwire @ %#llx, vm_deallocate @ %#llx, kernel_map @ %#llx\n", */
-    /*         __func__, g_vm_map_unwire_addr - kernel_slide, */
-    /*         g_vm_deallocate_addr - kernel_slide, g_kernel_map_addr - kernel_slide); */
-
     return true;
 }
 
@@ -739,12 +727,6 @@ bool kernel_thread_start_thread_deallocate_finder_13(xnu_pf_patch_t *patch,
     puts("xnuspy: found kernel_thread_start");
     puts("xnuspy: found thread_deallocate");
 
-    /*
-     printf("%s: kernel_thread_start @ %#llx, thread_deallocate @ %#llx\n", __func__,
-             g_kernel_thread_start_addr - kernel_slide,
-             g_thread_deallocate_addr - kernel_slide);
-             */
-
     return true;
 }
 
@@ -756,9 +738,6 @@ bool mach_make_memory_entry_64_finder_13(xnu_pf_patch_t *patch,
     g_mach_make_memory_entry_64_addr = xnu_ptr_to_va(cacheable_stream);
 
     puts("xnuspy: found mach_make_memory_entry_64");
-
-    /* printf("%s: mach_make_memory_entry_64 @ %#llx\n", __func__, */
-    /*         g_mach_make_memory_entry_64_addr - kernel_slide); */
 
     return true;
 }
@@ -779,7 +758,6 @@ bool offsetof_struct_thread_map_finder_13(xnu_pf_patch_t *patch,
     g_offsetof_struct_thread_map = (uint64_t)(imm12 << size);
 
     puts("xnuspy: found offsetof(struct thread, map)");
-    /* printf("%s: offsetof(struct thread, map) = %#llx\n", __func__, */
     /*         g_offsetof_struct_thread_map); */
 
     return true;
@@ -865,16 +843,6 @@ bool proc_stuff0_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     puts("xnuspy: found lck_mtx_unlock");
     puts("xnuspy: found proc_rele_locked");
 
-    /* printf("%s: current_proc @ %#llx, proc_list_lock @ %#llx" */
-    /*         ", proc_ref_locked @ %#llx, &proc_list_mlock @ %#llx" */
-    /*         ", lck_mtx_unlock @ %#llx, proc_rele_locked @ %#llx\n", __func__, */
-    /*         g_current_proc_addr - kernel_slide, */
-    /*         g_proc_list_lock_addr - kernel_slide, */
-    /*         g_proc_ref_locked_addr - kernel_slide, */
-    /*         g_proc_list_mlock_addr - kernel_slide, */
-    /*         g_lck_mtx_unlock_addr - kernel_slide, */
-    /*         g_proc_rele_locked_addr - kernel_slide); */
-
     return true;
 }
 
@@ -918,10 +886,6 @@ bool proc_stuff1_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     puts("xnuspy: found proc_uniqueid");
     puts("xnuspy: found proc_pid");
 
-    /* printf("%s: proc_uniqueid @ %#llx, proc_pid @ %#llx\n", __func__, */
-    /*         g_proc_uniqueid_addr - kernel_slide, */
-    /*         g_proc_pid_addr - kernel_slide); */
-
     return true;
 }
 
@@ -935,7 +899,6 @@ bool allproc_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     g_allproc_addr = get_pc_rel_va_target(opcode_stream + 3);
 
     puts("xnuspy: found allproc");
-    /* printf("%s: &allproc @ %#llx\n", __func__, g_allproc_addr - kernel_slide); */
 
     return true;
 }
@@ -967,14 +930,36 @@ bool misc_lck_stuff_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     puts("xnuspy: found lck_rw_lock_shared_to_exclusive");
     puts("xnuspy: found lck_rw_lock_exclusive");
 
-    /*
-    printf("%s: lck_rw_lock_shared @ %#llx, "
-            "lck_rw_lock_shared_to_exclusive @ %#llx, "
-            "lck_rw_lock_exclusive @ %#llx\n", __func__,
-            g_lck_rw_lock_shared_addr - kernel_slide,
-            g_lck_rw_lock_shared_to_exclusive_addr - kernel_slide,
-            g_lck_rw_lock_exclusive_addr - kernel_slide);
-            */
+    return true;
+}
+
+/* confirmed working on all kernels 13.0-14.3 */
+bool vm_map_wire_external_finder_13(xnu_pf_patch_t *patch,
+        void *cacheable_stream){
+    /* We've matched a ton of places, we're in vm_map_wire_external if
+     * the 14th/15th instrs from this point are mov x6, 0 and mov x7, 0 */
+    uint32_t *opcode_stream = cacheable_stream;
+
+    if(opcode_stream[14] != 0xd2800006 && opcode_stream[15] != 0xd2800007)
+        return 0;
+
+    /* We're inside vm_map_wire_external, find the beginning. Looking for
+     * sub sp, sp, n */
+    uint32_t instr_limit = 50;
+
+    while((*opcode_stream & 0xffc003ff) != 0xd10003ff){
+        if(instr_limit-- == 0)
+            return false;
+
+        opcode_stream--;
+    }
+    
+    g_vm_map_wire_external_addr = xnu_ptr_to_va(opcode_stream);
+
+    puts("xnuspy: found vm_map_wire_external");
+
+    printf("%s: vm_map_wire_external @ %#llx\n", __func__,
+            g_vm_map_wire_external_addr - kernel_slide);
 
     return true;
 }

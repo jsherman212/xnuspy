@@ -202,8 +202,6 @@ bool ktrr_lockdown_patcher_14(xnu_pf_patch_t *patch, void *cacheable_stream){
     opcode_stream[1] = 0xd503201f;
     opcode_stream[3] = 0xd503201f;
 
-    //printf("xnuspy: disabled KTRR MMU lockdown (%d)\n", count);
-
     if(count == 2){
         xnu_pf_disable_patch(patch);
         puts("xnuspy: disabled KTRR MMU lockdown");
@@ -214,6 +212,7 @@ bool ktrr_lockdown_patcher_14(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
+/* confirmed working on all KTRR kernels 14.0-14.3 */
 bool amcc_ctrr_lockdown_patcher_14(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     /* On 14.x A10+ there doesn't seem to be a specific lock for
@@ -223,12 +222,9 @@ bool amcc_ctrr_lockdown_patcher_14(xnu_pf_patch_t *patch,
     static int count = 1;
     uint32_t *opcode_stream = cacheable_stream;
 
-    //printf("%s: %d\n", __func__, count);
-
     /* str w0, [x16, x17] --> str wzr, [x16, x17] */
     opcode_stream[5] = 0xb8316a1f;
 
-    /* XXX there may be more on other kernels, verify with pfverify!! */
     if(count == 3){
         xnu_pf_disable_patch(patch);
         puts("xnuspy: disabled AMCC CTRR MMU lockdown");

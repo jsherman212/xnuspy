@@ -1075,16 +1075,11 @@ nextcmd:
     while(cur){
         if(cur->used)
             goto nextpage;
-        /*
-        if(!xnuspy_reflector_page_free(cur))
-            goto nextpage;
-            */
 
         /* Got one free page, check the ones after it */
         struct xnuspy_reflector_page *leftoff = cur;
 
         for(int i=1; i<npages; i++){
-            //if(!cur || !xnuspy_reflector_page_free(cur)){
             if(!cur || cur->used){
                 cur = leftoff;
                 goto nextpage;
@@ -1251,7 +1246,6 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
         asm volatile("dsb sy");
         asm volatile("isb");
 
-        //xnuspy_reflector_page_reference(cur);
         cur->used = 1;
 
         cur = cur->next;
@@ -1322,11 +1316,16 @@ static void xnuspy_do_gc(void){
 
         lck_rw_lock_exclusive(xnuspy_rw_lck);
 
+        KDBG("%s: marking the following reflector pages as unused:\n", __func__);
+
         for(uint64_t i=0; i<used_reflector_pages; i++){
             if(!cur)
                 break;
 
             cur->used = 0;
+
+            desc_xnuspy_reflector_page(cur);
+
             cur = cur->next;
         }
 

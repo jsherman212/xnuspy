@@ -246,6 +246,8 @@ int main(int argc, char **argv, const char **envp){
     }
 #endif
 
+    goto err2;
+
     if(!needs_el3_img){
         /* If we aren't booting into EL3, boot normally */
 

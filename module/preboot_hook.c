@@ -66,16 +66,6 @@ static uint64_t g_xnuspy_ctl_img_codestart = 0;
 /* how many bytes to we need to mark as executable inside xnuspy_ctl_tramp? */
 static uint64_t g_xnuspy_ctl_img_codesz = 0;
 
-/* XXX for debugging */
-/* iphone 8 13.6.1 */
-/* static uint64_t g_IOLog_addr = 0xFFFFFFF008134654; */
-/* iphone 8 13.6.1 */
-/* static uint64_t g_IOSleep_addr = 0xFFFFFFF00813462C; */
-/* iphone 8 13.6.1 */
-/* static uint64_t g_kprintf_addr = 0xFFFFFFF0081D28E0; */
-/* iphone x 13.3.1 */
-/* static uint64_t g_kprintf_addr = 0xFFFFFFF0081A08F4; */
-
 static uint64_t g_xnuspy_tramp_page_addr = 0;
 
 /* needed for when we are too far away for an immediate branch */
@@ -156,6 +146,7 @@ static struct xnuspy_ctl_kernel_symbol {
     { "_proc_uniqueid", &g_proc_uniqueid_addr },
     { "_thread_deallocate", &g_thread_deallocate_addr },
     { "__vm_deallocate", &g_vm_deallocate_addr },
+    { "_vm_map_wire_external", &g_vm_map_wire_external_addr },
     { "_vm_map_unwire", &g_vm_map_unwire_addr },
     { "_xnuspy_tramp_page", &g_xnuspy_tramp_page_addr },
     { "_xnuspy_tramp_page_end", &g_xnuspy_tramp_page_end },
@@ -233,6 +224,7 @@ static void anything_missing(void){
     chk(!g_lck_rw_lock_shared_to_exclusive_addr,
             "lck_rw_lock_shared_to_exclusive not found\n");
     chk(!g_lck_rw_lock_exclusive_addr, "lck_rw_lock_exclusive not found\n");
+    chk(!g_vm_map_wire_external_addr, "vm_map_wire_external not found\n");
 
     /* if we printed the error header, something is missing */
     if(printed_err_hdr)
@@ -284,48 +276,6 @@ static void initialize_xnuspy_cache(void){
     /* new PTE space, zero it out */
     XNUSPY_CACHE_WRITE(0);
 
-    /* ios 14.2 iphone 7 ktrr/amcc lockdown patches */
-    /* uint32_t *ktrr_p0 = xnu_va_to_ptr(0xFFFFFFF00727E468 + kernel_slide); */
-    /* uint32_t *ktrr_p1 = xnu_va_to_ptr(0xFFFFFFF00727E46C + kernel_slide); */
-    /* uint32_t *ktrr_p2 = xnu_va_to_ptr(0xFFFFFFF00727E474 + kernel_slide); */
-
-    /* all to NOP */
-    /* *ktrr_p0 = 0xd503201f; */
-    /* *ktrr_p1 = 0xd503201f; */
-    /* *ktrr_p2 = 0xd503201f; */
-
-    /* uint32_t *ktrr_p3 = xnu_va_to_ptr(0xFFFFFFF00714445C + kernel_slide); */
-    /* uint32_t *ktrr_p4 = xnu_va_to_ptr(0xFFFFFFF007144460 + kernel_slide); */
-    /* uint32_t *ktrr_p5 = xnu_va_to_ptr(0xFFFFFFF007144468 + kernel_slide); */
-
-    /* *ktrr_p3 = 0xd503201f; */
-    /* *ktrr_p4 = 0xd503201f; */
-    /* *ktrr_p5 = 0xd503201f; */
-
-    /* phone won't boot with these three patches below */
-    /* uint32_t *ctrr_p0 = xnu_va_to_ptr(0xFFFFFFF00727E408 + kernel_slide); */
-    /* uint32_t *ctrr_p1 = xnu_va_to_ptr(0xFFFFFFF00727E42C + kernel_slide); */
-    /* uint32_t *ctrr_p2 = xnu_va_to_ptr(0xFFFFFFF00727E450 + kernel_slide); */
-
-    /* *ctrr_p0 = 0xd503201f; */
-    /* *ctrr_p1 = 0xd503201f; */
-    /* *ctrr_p2 = 0xd503201f; */
-
-    /* phone won't boot with this patch */
-    /* uint32_t *ctrr_p3 = xnu_va_to_ptr(0xFFFFFFF00727E404 + kernel_slide); */
-    /* mov w0, 0 */
-    /* *ctrr_p3 = 0x52800000; */
-    
-    /* phone won't boot with this patch */
-    /* uint32_t *ctrr_p4 = xnu_va_to_ptr(0xFFFFFFF00727E38C + kernel_slide); */
-    /* mov w9, 0 */
-    /* *ctrr_p4 = 0x52800009; */
-
-    /* phone panicks with this patch */
-    /* uint32_t *ctrr_p5 = xnu_va_to_ptr(0xFFFFFFF00727DCC8 + kernel_slide); */
-    /* mov w8, 1 */
-    /* *ctrr_p5 = 0x52800028; */
-
     puts("xnuspy: initialized xnuspy cache");
 }
 
@@ -343,8 +293,7 @@ static uint32_t *install_h_s_c_sbn_hook(uint32_t *scratch_space,
 
     /* restore the five instructions we overwrote at the end of
      * system_check_sysctlbyname_hook to the end of `not_ours`
-     * in hook_system_check_sysctlbyname_hook.s
-     */
+     * in hook_system_check_sysctlbyname_hook.s */
     WRITE_INSTR_TO_SCRATCH_SPACE(h_s_c_sbn_branch_from[0]);
     WRITE_INSTR_TO_SCRATCH_SPACE(h_s_c_sbn_branch_from[1]);
     WRITE_INSTR_TO_SCRATCH_SPACE(h_s_c_sbn_branch_from[2]);
@@ -369,8 +318,7 @@ static uint32_t *write_xnuspy_ctl_tramp_instrs(uint32_t *scratch_space,
 
 /* This function will replace an _enosys sysent with the address of
  * xnuspy_ctl_tramp. For the reason we need a trampoline, see
- * module/el1/xnuspy_ctl_tramp.s
- */
+ * module/el1/xnuspy_ctl_tramp.s */
 static uint32_t *install_xnuspy_ctl_tramp(uint32_t *scratch_space,
         uint64_t *num_free_instrsp){
     uint64_t num_free_instrs = *num_free_instrsp;
@@ -571,13 +519,13 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
             return;
         }
         */
-        else if(strcmp(ksym, "_vm_map_wire_external") == 0){
-            /* iphone 8 13.6.1 */
-            *va = 0xFFFFFFF007C96CB4 + kernel_slide;
-            /* iphone 7 14.1 */
-            //*va = 0xFFFFFFF00720D9C0 + kernel_slide;
-            return;
-        }
+        /* else if(strcmp(ksym, "_vm_map_wire_external") == 0){ */
+        /*     /1* iphone 8 13.6.1 *1/ */
+        /*     *va = 0xFFFFFFF007C96CB4 + kernel_slide; */
+        /*     /1* iphone 7 14.1 *1/ */
+        /*     /1* *va = 0xFFFFFFF00720D9C0 + kernel_slide; *1/ */
+        /*     return; */
+        /* } */
         /* else if(strcmp(ksym, "__mach_make_memory_entry_64") == 0){ */
         /*     *va = 0xFFFFFFF007CD3424 + kernel_slide; */
         /*     return; */
