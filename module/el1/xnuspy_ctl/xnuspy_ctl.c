@@ -326,18 +326,6 @@ struct _vm_map {
     struct vm_map_header hdr;
 };
 
-/* MARK_AS_KERNEL_OFFSET struct pmap *(*get_task_pmap)(void *task); */
-/* MARK_AS_KERNEL_OFFSET queue_head_t *map_pmap_list; */
-
-/* shorter macros so I can stay under 80 column lines */
-/* #define DIST_FROM_REFCNT_TO(x) __builtin_offsetof(struct xnuspy_tramp, x) - \ */
-/*     __builtin_offsetof(struct xnuspy_tramp, refcnt) */
-
-/* #define DIST_TO_REFCNT(x) __builtin_offsetof(struct xnuspy_tramp, x) - \ */
-/*     __builtin_offsetof(struct xnuspy_tramp, refcnt) */
-
-/* #define OFFSETOF(x) __builtin_offsetof(struct xnuspy_tramp, x) */
-
 int strcmp(const char *s1, const char *s2){
     while(*s1 && (*s1 == *s2)){
         s1++;
@@ -439,8 +427,8 @@ static struct vm_map_entry *vme_for_ptr(struct _vm_map *map, uint64_t ptr){
 static void _desc_xnuspy_reflector_page(const char *indent,
         struct xnuspy_reflector_page *p){
     KDBG("%sThis reflector page is @ %#llx. "
-            "next: %#llx refcnt: %lld page %#llx\n", indent, (uint64_t)p, p->next,
-            p->refcnt, p->page);
+            "next: %#llx page %#llx used: %d\n", indent, (uint64_t)p, p->next,
+            p->page, p->used);
 }
 
 static void desc_xnuspy_reflector_page(struct xnuspy_reflector_page *p){
@@ -551,10 +539,13 @@ static int kern_return_to_errno(kern_return_t kret){
 /*     _enable_preemption(); */
 /* } */
 
+/*
 static int xnuspy_reflector_page_free(struct xnuspy_reflector_page *p){
     return p->refcnt == 0;
 }
+*/
 
+/*
 static void xnuspy_reflector_page_release(struct xnuspy_reflector_page *p){
     p->refcnt--;
 }
@@ -562,11 +553,10 @@ static void xnuspy_reflector_page_release(struct xnuspy_reflector_page *p){
 static void xnuspy_reflector_page_reference(struct xnuspy_reflector_page *p){
     p->refcnt++;
 }
-
+*/
 
 MARK_AS_KERNEL_OFFSET struct xnuspy_tramp *xnuspy_tramp_page;
 MARK_AS_KERNEL_OFFSET uint8_t *xnuspy_tramp_page_end;
-
 MARK_AS_KERNEL_OFFSET struct xnuspy_reflector_page *first_reflector_page;
 
 static lck_rw_t *xnuspy_rw_lck = NULL;
@@ -613,6 +603,8 @@ struct orphan_mapping {
     uint64_t mapping_addr;
     uint64_t mapping_size;
     void *memory_object;
+    struct xnuspy_reflector_page *first_reflector_page;
+    uint64_t used_reflector_pages;
 };
 
 static void desc_orphan_mapping(struct orphan_mapping *om){
@@ -625,13 +617,23 @@ static void desc_orphan_mapping(struct orphan_mapping *om){
     KDBG("Mapping addr: %#llx\n", om->mapping_addr);
     KDBG("Mapping size: %#llx\n", om->mapping_size);
     KDBG("Mapping memory object: %#llx\n", om->memory_object);
+    KDBG("# of used reflector pages: %lld\n", om->used_reflector_pages);
+    KDBG("Reflector pages:\n");
+
+    struct xnuspy_reflector_page *cur = om->first_reflector_page;
+
+    for(int i=0; i<om->used_reflector_pages; i++){
+        if(!cur)
+            break;
+
+        _desc_xnuspy_reflector_page("    ", cur);
+        cur = cur->next;
+    }
 }
 
 static void xnuspy_mapping_metadata_release(struct xnuspy_mapping_metadata *mm){
+    //_Atomic uint64_t old = mm->refcnt;
     if(--mm->refcnt == 0){
-        mm->first_reflector_page = NULL;
-        mm->used_reflector_pages = 0;
-
         g_num_leaked_pages += mm->mapping_size / PAGE_SIZE;
 
         struct orphan_mapping *om = common_kalloc(sizeof(*om));
@@ -653,6 +655,8 @@ static void xnuspy_mapping_metadata_release(struct xnuspy_mapping_metadata *mm){
         om->mapping_addr = mm->mapping_addr;
         om->mapping_size = mm->mapping_size;
         om->memory_object = mm->memory_object;
+        om->first_reflector_page = mm->first_reflector_page;
+        om->used_reflector_pages = mm->used_reflector_pages;
 
         stqe->elem = om;
 
@@ -674,10 +678,13 @@ static void xnuspy_mapping_metadata_reference(struct xnuspy_mapping_metadata *mm
  * already been pulled off the usedlist, but not yet added to the freelist
  * The xnuspy_rw_lck should be held exclusively before calling, because
  * we are releasing more than one reflector page */
+// XXX does the lock need to be held still? Because we no longer derefrence
+// the reflector pages for this mapping metadata
 static void xnuspy_tramp_teardown(struct xnuspy_tramp *t){
     struct xnuspy_mapping_metadata *mm = t->mapping_metadata;
 
     if(mm){
+        /*
         struct xnuspy_reflector_page *cur = mm->first_reflector_page;
 
         for(int i=0; i<mm->used_reflector_pages; i++){
@@ -688,6 +695,7 @@ static void xnuspy_tramp_teardown(struct xnuspy_tramp *t){
 
             cur = cur->next;
         }
+        */
 
         if(mm->refcnt > 0)
             xnuspy_mapping_metadata_release(mm);
@@ -1065,14 +1073,19 @@ nextcmd:
     lck_rw_lock_exclusive(xnuspy_rw_lck);
 
     while(cur){
+        if(cur->used)
+            goto nextpage;
+        /*
         if(!xnuspy_reflector_page_free(cur))
             goto nextpage;
+            */
 
         /* Got one free page, check the ones after it */
         struct xnuspy_reflector_page *leftoff = cur;
 
         for(int i=1; i<npages; i++){
-            if(!cur || !xnuspy_reflector_page_free(cur)){
+            //if(!cur || !xnuspy_reflector_page_free(cur)){
+            if(!cur || cur->used){
                 cur = leftoff;
                 goto nextpage;
             }
@@ -1238,7 +1251,8 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
         asm volatile("dsb sy");
         asm volatile("isb");
 
-        xnuspy_reflector_page_reference(cur);
+        //xnuspy_reflector_page_reference(cur);
+        cur->used = 1;
 
         cur = cur->next;
         mapping_addr += PAGE_SIZE;
@@ -1274,7 +1288,7 @@ static void proc_list_unlock(void){
     lck_mtx_unlock(*proc_list_mlockp);
 }
 
-/* Allow only 1 mb of kernel memory to be leaked by us at all times */
+/* Allow around 1 mb of kernel memory to be leaked by us */
 static const uint64_t g_gc_leaked_page_hardcap = 64;
 
 /* We only deallocate just enough shared mappings to get us back down around
@@ -1296,18 +1310,33 @@ static void xnuspy_do_gc(void){
 
     STAILQ_FOREACH_SAFE(entry, &unmaplist, link, tmp){
         if(g_num_leaked_pages <= g_gc_leaked_page_hardcap){
-            KDBG("%s: back to hardcap with %lld leaked pages\n", __func__,
+            KDBG("%s: back around hardcap with %lld leaked pages\n", __func__,
                     g_num_leaked_pages);
             return;
         }
 
         struct orphan_mapping *om = entry->elem;
 
-        int didfail = 0;
+        struct xnuspy_reflector_page *cur = om->first_reflector_page;
+        uint64_t used_reflector_pages = om->used_reflector_pages;
+
+        lck_rw_lock_exclusive(xnuspy_rw_lck);
+
+        for(uint64_t i=0; i<used_reflector_pages; i++){
+            if(!cur)
+                break;
+
+            cur->used = 0;
+            cur = cur->next;
+        }
+
+        lck_rw_done(xnuspy_rw_lck);
+
+        ipc_port_release_send(om->memory_object);
 
         /* If we fail from this point on, make sure we don't update
          * g_num_leaked_pages */
-        ipc_port_release_send(om->memory_object);
+        int didfail = 0;
 
         kern_return_t kret = vm_map_unwire(*kernel_mapp, om->mapping_addr,
                 om->mapping_addr + om->mapping_size, 0);
@@ -1315,7 +1344,8 @@ static void xnuspy_do_gc(void){
         if(kret)
             didfail = 1;
 
-        kret = _vm_deallocate(*kernel_mapp, om->mapping_addr, om->mapping_size);
+        kret = _vm_deallocate(*kernel_mapp, om->mapping_addr,
+                om->mapping_size);
 
         if(kret)
             didfail = 1;

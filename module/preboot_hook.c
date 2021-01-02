@@ -903,8 +903,8 @@ void xnuspy_preboot_hook(void){
     printf("%s: %lld pages for reflection\n", __func__, num_reflector_pages);
 
     while(num_reflector_pages > 0){
-        curpage->next = xnu_ptr_to_va(curpage + 1);
-        curpage->refcnt = 0;
+        curpage->next = (struct xnuspy_reflector_page *)xnu_ptr_to_va(curpage + 1);
+        curpage->used = 0;
         curpage->page = alloc_static(PAGE_SIZE);
 
         if(!curpage->page){
@@ -916,7 +916,7 @@ void xnuspy_preboot_hook(void){
             xnuspy_fatal_error();
         }
 
-        curpage->page = xnu_ptr_to_va(curpage->page);
+        curpage->page = (struct xnuspy_reflector_page *)xnu_ptr_to_va(curpage->page);
 
         curpage++;
         num_reflector_pages--;

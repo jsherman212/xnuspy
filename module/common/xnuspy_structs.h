@@ -8,8 +8,8 @@ struct objhdr {
 
 struct xnuspy_reflector_page {
     struct xnuspy_reflector_page *next;
-    _Atomic uint64_t refcnt;
     void *page;
+    int used;
 };
 
 /* This structure represents a shared __TEXT and __DATA mapping. There is
