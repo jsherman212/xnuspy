@@ -7,7 +7,7 @@ LDFLAGS = -Xlinker -kext
 export CC
 export CFLAGS
 
-TARGET_DIRS = common el1 pf
+TARGET_DIRS = common el1 el3 pf
 
 all : $(TARGET_DIRS) preboot_hook.o xnuspy
 

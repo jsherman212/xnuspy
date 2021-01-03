@@ -1,19 +1,13 @@
 #!/usr/bin/perl
 
-system("clang -O0 -arch arm64 -isysroot \$(xcrun --sdk iphoneos --show-sdk-path) $ARGV[0].s -o $ARGV[0]");
+open(DISFILE, "<xnuspy_el3_opcodes") or die("hookgen: fatal: couldn't open opcodes");
 
-if(system("../../opdump/opdump -t -i $ARGV[0] -o ./dis") != 0){
-    die("hookgen: fatal: opdump failed\n");
-}
+open(HEADER, ">$ARGV[0].h") or die("hookgen: fatal: couldn't open $ARGV[0].h");
 
-open(DISFILE, "<dis") or die("hookgen: fatal: couldn't open dis file");
+printf(HEADER "#ifndef $ARGV[0]\n");
+printf(HEADER "#define $ARGV[0]\n");
 
-open(HEADER, ">$ARGV[0]_instrs.h") or die("hookgen: fatal: couldn't open $ARGV[0]_instrs.h");
-
-printf(HEADER "#ifndef $ARGV[0]_instrs\n");
-printf(HEADER "#define $ARGV[0]_instrs\n");
-
-my $macroname = uc("WRITE_".$ARGV[0]."_INSTRS");
+my $macroname = uc("WRITE_".$ARGV[0]);
 
 printf(HEADER "#define $macroname \\\n");
 
@@ -31,7 +25,7 @@ while(my $line = <DISFILE>){
         push(@function_starts, ($num_instrs+1)*4);
     }
 
-    printf(HEADER "WRITE_INSTR_TO_SCRATCH_SPACE(%#x);", $cur_opcode);
+    printf(HEADER "WRITE_LOADER_XFER_RECV_DATA_INSTR(%#x);", $cur_opcode);
 
     if(eof){
         printf(HEADER " \n");
@@ -60,7 +54,3 @@ if($function_starts_length > 0){
 }
 
 printf(HEADER "#endif\n");
-
-# clean up
-system("rm ./dis");
-system("rm ./$ARGV[0]");
