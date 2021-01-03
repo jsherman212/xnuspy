@@ -58,6 +58,7 @@ uint64_t g_mach_vm_map_external_addr = 0;
 uint64_t g_ipc_port_release_send_addr = 0;
 uint64_t g_lck_rw_free_addr = 0;
 uint64_t g_lck_grp_free_addr = 0;
+int g_patched_doprnt_hide_pointers = 0;
 uint64_t g_xnuspy_sysctl_name_ptr = 0;
 uint64_t g_xnuspy_sysctl_descr_ptr = 0;
 uint64_t g_xnuspy_sysctl_fmt_ptr = 0;
@@ -1047,8 +1048,35 @@ bool lck_grp_free_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     g_lck_grp_free_addr = xnu_ptr_to_va(lck_grp_free);
 
     puts("xnuspy: found lck_grp_free");
-    printf("%s: lck_grp_free @ %#llx\n", __func__,
-            g_lck_grp_free_addr - kernel_slide);
+
+    return true;
+}
+
+/* confirmed working on all kernels 13.0-14.3 */
+bool doprnt_hide_pointers_patcher_13(xnu_pf_patch_t *patch,
+        void *cacheable_stream){
+    /* XNU only respects -show_pointers when debug_enabled is non-zero,
+     * so I need to patch doprnt_hide_pointers manually. We've landed in
+     * __doprnt, the next ADR/ADRP will be to doprnt_hide_pointers */
+    xnu_pf_disable_patch(patch);
+
+    uint32_t *opcode_stream = cacheable_stream;
+
+    uint32_t instr_limit = 40;
+
+    while((*opcode_stream & 0x1f000000) != 0x10000000){
+        if(instr_limit-- == 0)
+            return false;
+
+        opcode_stream++;
+    }
+
+    uint64_t doprnt_hide_pointers = get_pc_rel_va_target(opcode_stream);
+    *(uint32_t *)xnu_va_to_ptr(doprnt_hide_pointers) = 0;
+
+    g_patched_doprnt_hide_pointers = 1;
+
+    puts("xnuspy: unset doprnt_hide_pointers");
 
     return true;
 }

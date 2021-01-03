@@ -1150,6 +1150,32 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
             }),
             7, lck_grp_free_finder_13, "__TEXT_EXEC"),
     },
+    {
+        PF_DECL32("doprnt_hide_pointers patcher iOS 13",
+            LISTIZE({
+                0x93407c00,     /* sxtw Xn, Wn */
+                0x710001df,     /* cmp w14, 0 */
+                0x9a800000,     /* csel Xn, Xn, Xn, eq */
+            }),
+            LISTIZE({
+                0xfffffc00,     /* ignore Rn and Rd */
+                0xffffffff,     /* match exactly */
+                0xffe0fc00,     /* ignore Rm, Rn, and Rd */
+            }),
+            3, doprnt_hide_pointers_patcher_13, "__TEXT_EXEC"),
+        PF_DECL32("doprnt_hide_pointers patcher iOS 14",
+            LISTIZE({
+                0x93407c00,     /* sxtw Xn, Wn */
+                0x710001df,     /* cmp w14, 0 */
+                0x9a800000,     /* csel Xn, Xn, Xn, eq */
+            }),
+            LISTIZE({
+                0xfffffc00,     /* ignore Rn and Rd */
+                0xffffffff,     /* match exactly */
+                0xffe0fc00,     /* ignore Rm, Rn, and Rd */
+            }),
+            3, doprnt_hide_pointers_patcher_13, "__TEXT_EXEC"),
+    },
     { PF_END, PF_END },
 };
 

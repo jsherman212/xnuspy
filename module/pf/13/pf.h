@@ -37,5 +37,6 @@ bool mach_vm_map_external_finder_13(xnu_pf_patch_t *, void *);
 bool ipc_port_release_send_finder_13(xnu_pf_patch_t *, void *);
 bool lck_rw_free_finder_13(xnu_pf_patch_t *, void *);
 bool lck_grp_free_finder_13(xnu_pf_patch_t *, void *);
+bool doprnt_hide_pointers_patcher_13(xnu_pf_patch_t *, void *);
 
 #endif

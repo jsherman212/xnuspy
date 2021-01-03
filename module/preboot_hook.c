@@ -233,6 +233,7 @@ static void anything_missing(void){
     chk(!g_ipc_port_release_send_addr, "ipc_port_release_send not found\n");
     chk(!g_lck_rw_free_addr, "lck_rw_free not found\n");
     chk(!g_lck_grp_free_addr, "lck_grp_free not found\n");
+    chk(!g_patched_doprnt_hide_pointers, "doprnt_hide_pointers wasn't patched\n");
 
     /* if we printed the error header, something is missing */
     if(printed_err_hdr)
@@ -682,10 +683,6 @@ void xnuspy_preboot_hook(void){
 
     free_static_memory = 0;
 
-    /* printf("%s: reflector reflector pages start @ %#llx end @ %#llx\n", */
-    /*         __func__, g_reflector_pages_start - kernel_slide, */
-    /*         g_reflector_pages_end - kernel_slide); */
-
     process_xnuspy_ctl_image(xnuspy_ctl_image);
 
     /* install our hook for hook_system_check_sysctlbyname */
@@ -708,23 +705,11 @@ void xnuspy_preboot_hook(void){
 
     initialize_xnuspy_cache();
 
-    printf("xnuspy: handing it off to checkra1n...\n");
-
-    /* iphone 8 13.6.1 */
-    //uint32_t *doprnt_hide_pointers = xnu_va_to_ptr(0xFFFFFFF0090B0624 + kernel_slide);
-
-    /* iphone 7 14.1 */
-    //uint32_t *doprnt_hide_pointers = xnu_va_to_ptr(0xFFFFFFF00777C61C + kernel_slide);
-    //*doprnt_hide_pointers = 0;
-
-    //printf("%s: sysctl_handle_long @ %#llx\n", __func__,
-            //g_sysctl_handle_long_addr - kernel_slide);
-
     printf("%s: KERNEL SLIDE %#llx\n", __func__, kernel_slide);
-
-    //printf("%s: IOSleep @ %#llx\n", __func__,
-            //g_IOSleep_addr - kernel_slide);
 
     if(next_preboot_hook)
         next_preboot_hook();
+
+    /* combat short read */
+    asm volatile(".align 12");
 }
