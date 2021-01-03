@@ -8,8 +8,8 @@ all : xnuspy_el3
 # the second one is for the actual on device EL3
 # the lines below that are for pongo on qemu
 
-xnuspy_el3 : xnuspy_el3.c
-	$(CC) $(XNUSPY_EL3_FLAGS) xnuspy_el3.c -o xnuspy_el3
+xnuspy_el3 : int.s xnuspy_el3.c
+	$(CC) $(XNUSPY_EL3_FLAGS) int.s xnuspy_el3.c -o xnuspy_el3
 	#../../opdump/opdump -i ./xnuspy_el3 -o xnuspy_el3.bin -r
 	../../opdump/opdump -i ./xnuspy_el3 -o xnuspy_el3_opcodes -t
 	./hookgen.pl xnuspy_el3_opcodes
