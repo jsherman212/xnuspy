@@ -1104,6 +1104,52 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
             }),
             7, lck_rw_free_finder_13, "__TEXT_EXEC"),
     },
+    {
+        PF_DECL32("lck_grp_free finder iOS 13",
+            LISTIZE({
+                0x94000000,     /* bl n */
+                0x0,            /* ignore this instruction. It is either
+                                   mov w22, 0xc or orr w22, wzr, 0xc */
+                0x14000000,     /* b n */
+                0x0,            /* ignore this instruction. It is either
+                                   mov w22, 0xc or orr w22, wzr, 0xc */
+                0xaa1403e0,     /* mov x0, x20 */
+                0x94000000,     /* bl _lck_grp_free */
+                0x10000014,     /* adrp x20, n or adr x20, n */
+            }),
+            LISTIZE({
+                0xfc000000,     /* ignore immediate */
+                0x0,            /* ignore this instruction */
+                0xfc000000,     /* ignore immediate */
+                0x0,            /* ignore this instruction */
+                0xffffffff,     /* ignore immediate */
+                0xfc000000,     /* ignore immediate */
+                0x1f00001f,     /* ignore immediate */
+            }),
+            7, lck_grp_free_finder_13, "__TEXT_EXEC"),
+        PF_DECL32("lck_grp_free finder iOS 14",
+            LISTIZE({
+                0x94000000,     /* bl n */
+                0x0,            /* ignore this instruction. It is either
+                                   mov w22, 0xc or orr w22, wzr, 0xc */
+                0x14000000,     /* b n */
+                0x0,            /* ignore this instruction. It is either
+                                   mov w22, 0xc or orr w22, wzr, 0xc */
+                0xaa1403e0,     /* mov x0, x20 */
+                0x94000000,     /* bl _lck_grp_free */
+                0xa94006e0,     /* ldp x0, x1, [x23] */
+            }),
+            LISTIZE({
+                0xfc000000,     /* ignore immediate */
+                0x0,            /* ignore this instruction */
+                0xfc000000,     /* ignore immediate */
+                0x0,            /* ignore this instruction */
+                0xffffffff,     /* ignore immediate */
+                0xfc000000,     /* ignore immediate */
+                0xffffffff,     /* match exactly */
+            }),
+            7, lck_grp_free_finder_13, "__TEXT_EXEC"),
+    },
     { PF_END, PF_END },
 };
 

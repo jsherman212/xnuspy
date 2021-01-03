@@ -130,6 +130,7 @@ static struct xnuspy_ctl_kernel_symbol {
     { "_kfree_ext", &g_kfree_ext_addr },
     { "_kprintf", &g_kprintf_addr },
     { "_lck_grp_alloc_init", &g_lck_grp_alloc_init_addr },
+    { "_lck_grp_free", &g_lck_grp_free_addr },
     { "_lck_mtx_unlock", &g_lck_mtx_unlock_addr },
     { "_lck_rw_alloc_init", &g_lck_rw_alloc_init_addr },
     { "_lck_rw_done", &g_lck_rw_done_addr },
@@ -231,6 +232,7 @@ static void anything_missing(void){
     chk(!g_mach_vm_map_external_addr, "mach_vm_map_external not found\n");
     chk(!g_ipc_port_release_send_addr, "ipc_port_release_send not found\n");
     chk(!g_lck_rw_free_addr, "lck_rw_free not found\n");
+    chk(!g_lck_grp_free_addr, "lck_grp_free not found\n");
 
     /* if we printed the error header, something is missing */
     if(printed_err_hdr)
@@ -437,207 +439,6 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
             /*         *g_xnuspy_ctl_needed_symbols[i].val - kernel_slide); */
             
             *va = *g_xnuspy_ctl_needed_symbols[i].valp;
-            return;
-        }
-        /* else if(strcmp(ksym, "_kprintf") == 0){ */
-        /*     *va = g_kprintf_addr + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_IOSleep") == 0){ */
-        /*     *va = g_IOSleep_addr + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_ncpusp") == 0){ */
-        /*     /1* iphone 8 13.6.1 *1/ */
-        /*     *va = 0xFFFFFFF007932EFC + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_CpuDataEntriesp") == 0){ */
-        /*     /1* iphone 8 13.6.1 *1/ */
-        /*     *va = 0xFFFFFFF00923BA98 + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_ml_io_map") == 0){ */
-        /*     /1* iphone 8 13.6.1 *1/ */
-        /*     *va = 0xFFFFFFF007D0E5C8 + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_mh_execute_header") == 0){ */
-        /*     *va = xnu_ptr_to_va(mh_execute_header); */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_flush_mmu_tlb_region") == 0){ */
-        /*     *va = 0xFFFFFFF007CF85F0 + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_InvalidatePoU_IcacheRegion") == 0){ */
-        /*     *va = 0xFFFFFFF0081F40B8 + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_current_task") == 0){ */
-        /*     *va = 0xFFFFFFF007C2BE18 + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_get_task_pmap") == 0){ */
-        /*     *va = 0xFFFFFFF007C5103C + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_flush_mmu_tlb_region_asid_async") == 0){ */
-        /*     *va = 0xFFFFFFF007CF4014 + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_map_pmap_list") == 0){ */
-        /*     *va = 0xFFFFFFF00923B970 + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_pmap_map") == 0){ */
-        /*     *va = 0xFFFFFFF007CF5BF8 + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_kernel_pmap") == 0){ */
-        /*     *va = 0xFFFFFFF007932810 + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_pmap_expand") == 0){ */
-        /*     *va = 0xFFFFFFF007CF6BC8 + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "__disable_preemption") == 0){ */
-        /*     *va = 0xFFFFFFF007D091E0 + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "__enable_preemption") == 0){ */
-        /*     *va = 0xFFFFFFF007D09210 + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_kernel_memory_allocate") == 0){ */
-        /*     *va = 0xFFFFFFF007C89084 + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_kernel_mapp") == 0){ */
-        /*     *va = 0xFFFFFFF0079316C0 + kernel_slide; */
-        /*     return; */
-        /* } */
-        /*
-        else if(strcmp(ksym, "_vm_map_wire_kernel") == 0){
-            *va = 0xFFFFFFF007C94BC8 + kernel_slide;
-            return;
-        }
-        */
-        /* else if(strcmp(ksym, "_vm_map_wire_external") == 0){ */
-        /*     /1* iphone 8 13.6.1 *1/ */
-        /*     *va = 0xFFFFFFF007C96CB4 + kernel_slide; */
-        /*     /1* iphone 7 14.1 *1/ */
-        /*     /1* *va = 0xFFFFFFF00720D9C0 + kernel_slide; *1/ */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "__mach_make_memory_entry_64") == 0){ */
-        /*     *va = 0xFFFFFFF007CD3424 + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_mach_vm_map_external") == 0){ */
-        /*     *va = 0xFFFFFFF007CD22DC + kernel_slide; */
-        /*     /1* iphone 7 14.1 *1/ */
-        /*     /1* *va = 0xFFFFFFF007245A38 + kernel_slide; *1/ */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_ml_static_protect") == 0){ */
-        /*     *va = 0xFFFFFFF007D0F7C8 + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_pmap_protect_options") == 0){ */
-        /*     *va = 0xFFFFFFF007CFBB58 + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_vm_map_protect") == 0){ */
-        /*     *va = 0xFFFFFFF007C95288 + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_mach_vm_map_kernel") == 0){ */
-        /*     *va = 0xFFFFFFF007CD2360 + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_current_proc") == 0){ */
-        /*     *va = 0xFFFFFFF0080E933C + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_proc_pid") == 0){ */
-        /*     *va = 0xFFFFFFF007FF85E0 + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_lck_rw_lock_shared_to_exclusive") == 0){ */
-        /*     *va = 0xFFFFFFF007D0A018 + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_lck_rw_lock") == 0){ */
-        /*     *va = 0xFFFFFFF007D098F4 + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_lck_rw_unlock") == 0){ */
-        /*     *va = 0xFFFFFFF007D0A650 + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_kernel_thread_start") == 0){ */
-        /*     *va = 0xFFFFFFF007C3375C + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_thread_deallocate") == 0){ */
-        /*     *va = 0xFFFFFFF007C31E78 + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_kernprocp") == 0){ */
-        /*     *va = 0xFFFFFFF009256DB0 + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_allprocp") == 0){ */
-        /*     *va = 0xFFFFFFF009257AB0 + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_proc_list_lock") == 0){ */
-        /*     *va = 0xFFFFFFF007FF2C78 + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_proc_list_unlock") == 0){ */
-        /*     *va = 0xFFFFFFF007FF2CD8 + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_proc_uniqueid") == 0){ */
-        /*     *va = 0xFFFFFFF007FF952C + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_proc_ref_locked") == 0){ */
-        /*     *va = 0xFFFFFFF007FF8144 + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_proc_rele_locked") == 0){ */
-        /*     *va = 0xFFFFFFF007FF852C + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_ipc_port_release_send") == 0){ */
-        /*     /1* iphone 8 13.6.1 *1/ */
-        /*     *va = 0xFFFFFFF007BDE3D8 + kernel_slide; */
-        /*     /1* iphone 7 14.1 *1/ */
-        /*     /1* *va = 0xFFFFFFF0071580D0 + kernel_slide; *1/ */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_mach_vm_deallocate") == 0){ */
-        /*     *va = 0xFFFFFFF007CD1B1C + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_vm_map_unwire") == 0){ */
-        /*     *va = 0xFFFFFFF007C96E34 + kernel_slide; */
-        /*     return; */
-        /* } */
-        /* else if(strcmp(ksym, "_lck_rw_free") == 0){ */
-        /*     *va = 0xFFFFFFF007D097F8 + kernel_slide; */
-        /*     /1* iphone 7 14.1 *1/ */
-        /*     /1* *va = 0xFFFFFFF007279290 + kernel_slide; *1/ */
-        /*     return; */
-        /* } */
-        else if(strcmp(ksym, "_lck_grp_free") == 0){
-            *va = 0xFFFFFFF007C0682C + kernel_slide;
-            /* iphone 7 14.1 */
-            /* *va = 0xFFFFFFF007180B10 + kernel_slide; */
             return;
         }
     }

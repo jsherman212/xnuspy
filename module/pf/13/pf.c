@@ -57,6 +57,7 @@ uint64_t g_vm_map_wire_external_addr = 0;
 uint64_t g_mach_vm_map_external_addr = 0;
 uint64_t g_ipc_port_release_send_addr = 0;
 uint64_t g_lck_rw_free_addr = 0;
+uint64_t g_lck_grp_free_addr = 0;
 uint64_t g_xnuspy_sysctl_name_ptr = 0;
 uint64_t g_xnuspy_sysctl_descr_ptr = 0;
 uint64_t g_xnuspy_sysctl_fmt_ptr = 0;
@@ -1028,7 +1029,26 @@ bool lck_rw_free_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     g_lck_rw_free_addr = xnu_ptr_to_va(lck_rw_free);
 
     puts("xnuspy: found lck_rw_free");
-    printf("%s: lck_rw_free @ %#llx\n", __func__, g_lck_rw_free_addr - kernel_slide);
+
+    return true;
+}
+
+/* confirmed working on all kernels 13.0-14.3 */
+bool lck_grp_free_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
+    /* We've landed inside ipf_init, the 5th instruction from this point
+     * is branching to lck_grp_free */
+    xnu_pf_disable_patch(patch);
+
+    uint32_t *opcode_stream = cacheable_stream;
+
+    uint32_t *lck_grp_free = get_branch_dst_ptr(opcode_stream[5],
+            opcode_stream + 5);
+
+    g_lck_grp_free_addr = xnu_ptr_to_va(lck_grp_free);
+
+    puts("xnuspy: found lck_grp_free");
+    printf("%s: lck_grp_free @ %#llx\n", __func__,
+            g_lck_grp_free_addr - kernel_slide);
 
     return true;
 }
