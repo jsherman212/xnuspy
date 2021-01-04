@@ -232,11 +232,7 @@ int main(int argc, char **argv, const char **envp){
     }
 
     sleep(2);
-    //usleep(800 * 1000);
-    
-/* #endif */
 
-/* #if 0 */
 #if 1
     err = pongo_send_command(pongo_device, "xnuspy-prep\n");
 
@@ -246,28 +242,106 @@ int main(int argc, char **argv, const char **envp){
     }
 #endif
 
-    goto err2;
+    /* goto err2; */
+
+    sleep(2);
+
+    void *xnuspy_el3_imgdata = NULL;
+    size_t xnuspy_el3_imgsz = 0;
 
     if(!needs_el3_img){
         /* If we aren't booting into EL3, boot normally */
-
-#if 1
-        usleep(800 * 1000);
-
         err = pongo_send_command(pongo_device, "bootx\n");
 
         if(err < 0){
             printf("pongo_send_command: %s\n", libusb_error_name(err));
             goto err2;
         }
-#endif
     }
     else{
         /* Otherwise, run KPF, upload the EL3 image, and boot that */
+        printf("Booting into EL3\n");
 
-        //err = pongo_send_command(pongo_device, "bootr\n");
+        err = pongo_send_command(pongo_device, "kpf\n");
+
+        if(err < 0){
+            printf("pongo_send_command: %s\n", libusb_error_name(err));
+            goto err2;
+        }
+
+        sleep(1);
+
+        const char *xnuspy_el3_imgpath = "./module/el3/xnuspy_el3.bin";
+
+        if(stat(xnuspy_el3_imgpath, &st)){
+            printf("Problem stat'ing '%s': %s\n", xnuspy_el3_imgpath,
+                    strerror(errno));
+            goto err2;
+        }
+
+        int xnuspy_el3_imgfd = open(xnuspy_el3_imgpath, O_RDONLY);
+
+        if(xnuspy_el3_imgfd < 0){
+            printf("Problem open'ing '%s': %s\n", xnuspy_el3_imgpath,
+                    strerror(errno));
+            goto err2;
+        }
+
+        xnuspy_el3_imgsz = st.st_size;
+        printf("EL3 size %#lx\n", xnuspy_el3_imgsz);
+
+        void *xnuspy_el3_imgdata = mmap(NULL, xnuspy_el3_imgsz, PROT_READ,
+                MAP_PRIVATE, xnuspy_el3_imgfd, 0);
+
+        close(xnuspy_el3_imgfd);
+
+        if(xnuspy_el3_imgdata == MAP_FAILED){
+            printf("Problem mmap'ing '%s': %s\n", xnuspy_el3_imgpath,
+                    strerror(errno));
+            goto err2;
+        }
+
+        err = pongo_init_bulk_upload(pongo_device);
+
+        if(err < 0){
+            printf("pongo_init_bulk_upload: %s\n", libusb_error_name(err));
+            goto err3;
+        }
+
+        err = pongo_do_bulk_upload(pongo_device, xnuspy_el3_imgdata,
+                xnuspy_el3_imgsz);
+
+        if(err < 0){
+            printf("pongo_do_bulk_upload (xnuspy EL3): %s\n",
+                    libusb_error_name(err));
+            goto err3;
+        }
+
+        sleep(1);
+
+        err = pongo_send_command(pongo_device, "xnuspy-loadrd\n");
+
+        if(err < 0){
+            printf("pongo_send_command: %s\n", libusb_error_name(err));
+            goto err3;
+        }
+
+        sleep(1);
+
+        /* My preboot hook doesn't get ran with this command... need to
+         * separate the functionality */
+        /* err = pongo_send_command(pongo_device, "bootux\n"); */
+        err = pongo_send_command(pongo_device, "bootr\n");
+
+        if(err < 0){
+            printf("pongo_send_command: %s\n", libusb_error_name(err));
+            goto err3;
+        }
     }
 
+err3:;
+    if(xnuspy_el3_imgsz)
+        munmap(xnuspy_el3_imgdata, xnuspy_el3_imgsz);
 err2:
     munmap(xnuspy_ctl_imgdata, xnuspy_ctl_imgsz);
 err1:
