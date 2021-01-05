@@ -707,6 +707,37 @@ void xnuspy_preboot_hook(void){
 
     printf("%s: KERNEL SLIDE %#llx\n", __func__, kernel_slide);
 
+    /* iphone se 2016 14.3 */
+    /* volatile uint64_t *CPU0_IORVBar = (volatile uint64_t *)0x202050000; */
+    /* uint64_t kppphys = *CPU0_IORVBar & 0xfffffffff; */
+    /* printf("%s: kpp is @ %#llx (phys)\n", __func__, kppphys); */
+
+    /* map_range(0xc10000000, kppphys, 0xc000, 3, 0, true); */
+
+    /* uint8_t *kpp = (uint8_t *)0xc10000000; */
+    /* printf("%#x\n", *(uint32_t *)(kpp + 0x4428)); */
+    /* printf("%#x\n", *(uint32_t *)(kpp + 0x5988)); */
+    /* *(uint32_t *)(kpp + 0x4428) = 0xd503201f; */
+    /* *(uint32_t *)(kpp + 0x5988) = 0x52800028; */
+
+
+
+    /* memset(kpp, 0, 0xc000); */
+
+    /* volatile uint64_t *CPU0_IORVBar = (volatile uint64_t *)0x202050000; */
+    /* volatile uint64_t *CPU1_IORVBar = (volatile uint64_t *)0x202150000; */
+
+    /* uint64_t kppphys = *CPU0_IORVBar & 0xfffffffff; */
+    /* printf("%s: kpp is @ %#llx (phys)\n", __func__, kppphys); */
+
+    /* map_range(0xc10000000, kppphys, 0xc000, 3, 0, true); */
+
+    /* uint8_t *kpp = (uint8_t *)0xc10000000; */
+
+    /* for(int i=0; i<0xc000; i++){ */
+    /*     kpp[i] = '\0'; */
+    /* } */
+
     if(next_preboot_hook)
         next_preboot_hook();
 

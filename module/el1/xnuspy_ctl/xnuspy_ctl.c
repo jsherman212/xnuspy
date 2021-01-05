@@ -894,7 +894,7 @@ map_caller_segments(struct mach_header_64 * /* __user */ umh,
 
     struct load_command *lc = (struct load_command *)(umh + 1);
 
-    user_access_enable();
+    /* user_access_enable(); */
 
     for(int i=0; i<umh->ncmds; i++){
         if(lc->cmd != LC_SEGMENT_64)
@@ -939,7 +939,7 @@ nextcmd:
         lc = (struct load_command *)((uintptr_t)lc + lc->cmdsize);
     }
 
-    user_access_disable();
+    /* user_access_disable(); */
 
     KDBG("%s: ended with copystart %#llx copysz %#llx\n", __func__,
             copystart, copysz);

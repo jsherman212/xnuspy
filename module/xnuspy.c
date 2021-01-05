@@ -5,7 +5,9 @@
 #include "common/common.h"
 #include "common/pongo.h"
 
-#include "pf/disas.h" /* XXX for bits, remove when done */
+/* XXX after done move this logic to el3's pf directory */
+#include "el3/kpp_patches.h"
+
 #include "pf/offsets.h"
 #include "pf/pfs.h"
 
@@ -92,118 +94,55 @@ static bool getkernelv_callback(xnu_pf_patch_t *patch, void *cacheable_stream){
     g_kern_version_minor = atoi(minor_s);
     g_kern_version_revision = atoi(revision_s);
 
+    bool pwn_seprom = (g_kern_version_major == iOS_14_x) &&
+        (socnum == 0x8010 || socnum == 0x8011 || socnum == 0x8015);
+
     if(g_kern_version_major == iOS_13_x)
         printf("xnuspy: iOS 13.x detected\n");
-    else if(g_kern_version_major == iOS_14_x){
+    else if(g_kern_version_major == iOS_14_x)
         printf("xnuspy: iOS 14.x detected\n");
-
-        /*
-        uint32_t *fb = gBootArgs->Video.v_baseAddr;
-        uint64_t fboff = (uint64_t)fb & 0x3fffuLL;
-        fb = (uint32_t *)(0xfb0000000ULL + fboff);
-
-        uint64_t rowpixels = gBootArgs->Video.v_rowBytes >> 2;
-        uint16_t width = gBootArgs->Video.v_width;
-        uint16_t height = gBootArgs->Video.v_height;
-        uint64_t fbsize = height * rowpixels * 4;
-
-        for (int y = 0; y < height; y++) {
-            for (int x = 0; x < width; x++) {
-                fb[x + y * rowpixels] ^= 0xffffffff;
-            }
-        }
-        */
-
-        /* uint64_t cur_el = 0; */
-        /* asm volatile("mrs %0, CurrentEL" : "=r" (cur_el) : : ); */
-        /* cur_el >>= 2; */
-        /* printf("%s: current EL %lld\n", __func__, cur_el); */
-
-        /* printf("%s: %#llx %#llx\n", __func__, gBootArgs->virtBase, */
-        /*         gBootArgs->physBase); */
-
-        /* printf("%s: gEntryPoint is %#llx\n", __func__, gEntryPoint); */
-
-        /* void *entry = gEntryPoint; */
-        /* DumpMemory(entry, entry, 0x200); */
-
-        /* gEntryPoint  = (uint8_t *)gEntryPoint + 4; */
-        
-
-        /* uint64_t vbar_el1 = 0; */
-        /* asm volatile("mrs %0, VBAR_EL1" : "=r" (vbar_el1)); */
-        /* printf("%s: vbar_el1 %#llx\n", __func__, vbar_el1); */
-
-        /* DumpMemory((void*)vbar_el1, (void *)vbar_el1, 0x100); */
-        /* puts(""); */
-
-        /* asm volatile("mov w0, 0x802"); */
-        /* asm volatile("mov w1, 0"); */
-        /* asm volatile("mov w2, 0"); */
-        /* asm volatile("mov w3, 0"); */
-        /* asm volatile("smc #0"); */
-        /* asm volatile("mov x0, %0" : : "r" (getkernelv_callback) : ); */
-        /* asm volatile("msr ELR_EL3, x0"); */
-        /* asm volatile("mov x0, 0x41"); */
-        /* asm volatile("msr ELR_EL1, x0"); */
-
-        /* fast call, use smc64 calling conv */
-        /* asm volatile("mov w0, 0xc0000000"); */
-        /* asm volatile("smc #0"); */
-
-        /* asm volatile("isb"); */
-        /* asm volatile("dsb sy"); */
-        /* asm volatile("ic iallu"); */
-        /* asm volatile("dsb sy"); */
-        /* asm volatile("isb"); */
-
-        /* asm volatile("mov x0, 0x4100002804"); */
-        /* asm volatile("mov x0, 0x2804"); */
-        /* asm volatile("mov x0, 0x4978"); */
-        /* asm volatile("movk x0, 0x41, lsl #0x30"); */
-        /* asm volatile("mov x30, x0"); */
-        /* asm volatile("mov x1, xzr"); */
-        /* asm volatile("mov x2, xzr"); */
-        /* asm volatile("mov x3, xzr"); */
-        /* asm volatile("blr x0"); */
-        /* asm volatile("ret"); */
-
-
-        /* asm volatile("mov x0, 0x4141"); */
-        /* asm volatile("msr VBAR_EL3, x0"); */
-        /* asm volatile("ldr x1, [x0]"); */
-        /* asm volatile("mrs x8, SPSR_EL3"); */
-        /* asm volatile("and x8, x8, 0xffffffff"); */
-        /* asm volatile("msr SPSR_EL1, x8"); */
-        /* asm volatile("mrs x10, ELR_EL3"); */
-        /* asm volatile("msr ELR_EL1, x10"); */
-        /* asm volatile("orr x8, x8, 0xc0"); */
-        /* M[3:0] --> EL1h (5) */
-        /* asm volatile("and x8, x8, 0xfffffff0"); */
-        /* asm volatile("mov x10, 5"); */
-        /* asm volatile("orr x8, x8, x10"); */
-        /* asm volatile("msr SPSR_EL3, x8"); */
-        /* asm volatile("mov x8, 0x4141"); */
-        /* asm volatile("msr ESR_EL1, x8"); */
-        /* asm volatile("isb"); */
-        /* asm volatile("eret"); */
-
-        /* asm volatile("mrs %0, CurrentEL" : "=r" (cur_el) : : ); */
-        /* cur_el >>= 2; */
-        /* printf("%s: BACK: current EL %lld\n", __func__, cur_el); */
-
-        /* if(socnum == 0x8010 || socnum == 0x8011 || socnum == 0x8012 || */
-        /*         socnum == 0x8015){ */
-            /* printf("%s: NOT PWNING SEPROM FOR TESTING PURPOSES\n", __func__); */
-        queue_rx_string("sep auto\n");
-        /* } */
-    }
     else{
         printf("xnuspy: error: unknown\n"
                 "  major %lld\n",
                 g_kern_version_major);
 
         xnuspy_fatal_error();
+    }
+
+    if(pwn_seprom){
+        /* printf("%s: NOT PWNING SEPROM FOR TESTING PURPOSES\n", __func__); */
+        queue_rx_string("sep auto\n");
+    }
+    else{
+        /* Non-KTRR hardware, take this time to patch KPP. We've already
+         * uploaded the patches */
+
+        volatile uint64_t *iorvbar = (volatile uint64_t *)0x202050000;
+        uint64_t kppphys = *iorvbar & 0xfffffffff;
+        printf("%s: kpp is @ %#llx (phys)\n", __func__, kppphys);
+
+        map_range(0xc10000000, kppphys, 0xc000, 3, 0, true);
+
+        uint8_t *kppbase = (uint8_t *)0xc10000000;
+        uint32_t *kpppatch0 = (uint32_t *)(kppbase + 0x5954);
+
+        for(int i=0; i<kpp_patches_num_patches; i++){
+            *kpppatch0++ = kpp_patches[i];
+        }
+
+        kpppatch0 = (uint32_t *)(kppbase + 0x5954);
+        DumpMemory(kpppatch0, kpppatch0, kpp_patches_num_patches * sizeof(uint32_t));
+
+        /* uint64_t *kppKernEntry = (uint64_t *)(kppbase + 0x */
+
+        /* kpppatch0 = (uint32_t *)(kppbase + 0x6460); */
+        /* *kpppatch0 = 0xd503201f; */
+
+        queue_rx_string("xfb\n");
+
+        /* DumpMemory(loader_xfer_recv_data, loader_xfer_recv_data, */
+        /*         loader_xfer_recv_size); */
+        /* printf("%s: recv size %#x\n", __func__, loader_xfer_recv_size); */
     }
 
     return true;
@@ -257,40 +196,40 @@ static void xnuspy_loadrd(const char *cmd, char *args){
 
     printf("%s: entrypoint %p\n", __func__, gEntryPoint);
 
-    /* dt_node_t *memory_map = dt_find(gDeviceTree, "memory-map"); */
+    dt_node_t *memory_map = dt_find(gDeviceTree, "memory-map");
 
-    /* if(!memory_map){ */
-    /*     printf("xnuspy: no memory map?\n"); */
-    /*     xnuspy_fatal_error(); */
-    /* } */
+    if(!memory_map){
+        printf("xnuspy: no memory map?\n");
+        xnuspy_fatal_error();
+    }
 
-    /* struct memmap *map = dt_alloc_memmap(memory_map, "RAMDisk"); */
+    struct memmap *map = dt_alloc_memmap(memory_map, "RAMDisk");
 
-    /* if(!map){ */
-    /*     printf("xnuspy: dt_alloc_memmap failed\n"); */
-    /*     xnuspy_fatal_error(); */
-    /* } */
+    if(!map){
+        printf("xnuspy: dt_alloc_memmap failed\n");
+        xnuspy_fatal_error();
+    }
 
-    /* void *rd_static_buf = alloc_static(ramdisk_size); */
+    void *rd_static_buf = alloc_static(ramdisk_size);
 
-    /* if(!rd_static_buf){ */
-    /*     printf("xnuspy: alloc_static for\n" */
-    /*             "  ramdisk buf failed\n"); */
-    /*     xnuspy_fatal_error(); */
-    /* } */
+    if(!rd_static_buf){
+        printf("xnuspy: alloc_static for\n"
+                "  ramdisk buf failed\n");
+        xnuspy_fatal_error();
+    }
 
-    /* printf("allocated static region for rdsk: %p, sz: %#x\n", rd_static_buf, */
-    /*         ramdisk_size); */
+    printf("allocated static region for rdsk: %p, sz: %#x\n", rd_static_buf,
+            ramdisk_size);
 
-    /* memcpy(rd_static_buf, ramdisk_buf, ramdisk_size); */
+    memcpy(rd_static_buf, ramdisk_buf, ramdisk_size);
 
-    /* struct memmap md0map; */
-    /* md0map.addr = ((uint64_t)rd_static_buf) + 0x800000000 - kCacheableView; */
-    /* md0map.size = ramdisk_size; */
+    struct memmap md0map;
+    md0map.addr = ((uint64_t)rd_static_buf) + 0x800000000 - kCacheableView;
+    md0map.size = ramdisk_size;
 
-    /* memcpy(map, &md0map, sizeof(md0map)); */
+    memcpy(map, &md0map, sizeof(md0map));
 
-    printf("%#x\n", socnum);
+    /* printf("%#x\n", socnum); */
 
     /* dt_node_t *sep = dt_find(gDeviceTree, "sep"); */
     /* uint32_t *xnu_wants_booted = dt_prop(sep, "sepfw-booted", NULL); */
@@ -304,7 +243,6 @@ static void xnuspy_loadrd(const char *cmd, char *args){
 
     /* printf("%s: tz0 locked? %d\n", __func__, tz_regbase[4]); */
 
-    /* for(;;); */
     /* uint64_t addr = socnum == 0x8960 ? 0x200000910 : 0x200000490; */
 
     /* printf("%d\n", *(volatile uint32_t *)addr); */
@@ -331,25 +269,46 @@ static void xnuspy_loadrd(const char *cmd, char *args){
         xnuspy_fatal_error();
     }
 
-    memcpy(el3_imgdata, loader_xfer_recv_data, loader_xfer_recv_count);
-    loader_xfer_recv_data = el3_imgdata;
-    DumpMemory(loader_xfer_recv_data, loader_xfer_recv_data, 0x100);
+    volatile uint64_t *CPU0_IORVBar = (volatile uint64_t *)0x202050000;
+    uint64_t kppphys = *CPU0_IORVBar & 0xfffffffff;
+    printf("%s: kpp is @ %#llx (phys)\n", __func__, kppphys);
+
+    map_range(0xc10000000, kppphys, 0xc000, 3, 0, true);
+
+    uint8_t *kpp = (uint8_t *)0xc10000000;
+
+    for(int i=0; i<loader_xfer_recv_count; i++){
+        kpp[i] = loader_xfer_recv_data[i];
+    }
+
+    printf("%s: overwrote kpp\n", __func__);
+
+    /* memcpy(el3_imgdata, loader_xfer_recv_data, loader_xfer_recv_count); */
+    /* loader_xfer_recv_data = el3_imgdata; */
+    /* /1* XXX For iPhone SE 2016 14.3 kpp *1/ */
+    /* /1* loader_xfer_recv_data = (uint8_t *)((uintptr_t)el3_imgdata + 0x2804); *1/ */
+    /* DumpMemory(loader_xfer_recv_data, loader_xfer_recv_data, 0x100); */
+
+
+    /* volatile uint64_t *IORVBar = (volatile uint64_t *)(0x200000000uLL + 0x205000); */
+    /* printf("%s: IORVBar: %#llx %#llx\n", __func__, IORVBar, *IORVBar); */
 
     /* for(;;); */
 
     /* _bsd_init, doesn't seem to be getting called */
-    uint32_t *p = xnu_va_to_ptr(0xFFFFFFF0074F467C + kernel_slide);
+    /* uint32_t *p = xnu_va_to_ptr(0xFFFFFFF0074F467C + kernel_slide); */
     /* *p = 0xd4200000; */
 
     /* monitor_call smc */
     /* BRK 0 phone just doesn't do anything */
     /* NOP: ? */
-    p = xnu_va_to_ptr(0xFFFFFFF00710BD10 + kernel_slide);
+    /* p = xnu_va_to_ptr(0xFFFFFFF00710BD10 + kernel_slide); */
     /* *p = 0xd4200000; */
 
     /* ramdisk_size = 0; */
 
     queue_rx_string("xfb\n");
+    /* queue_rx_string("bootux\n"); */
 }
 
 #define MAXKEXTRANGE MAXPF

@@ -10,8 +10,9 @@
 
 static void usage(void){
     printf("Usage:\n"
-           "    -i              Input Mach-O file name\n"
-           "    -o              Output file name\n"
+           "    -a <name>       Create a C array from a raw image (serves as output)\n"
+           "    -i <name>       Input Mach-O file name\n"
+           "    -o <name>       Output file name\n"
            "    -r              Create a raw image (dump __TEXT and __DATA)\n"
            "    -t              Dump opcodes from __text, separated by newlines\n"
           );
@@ -21,6 +22,8 @@ static void usage(void){
 
 int main(int argc, char **argv){
     char *input = NULL, *output = NULL;
+    int c_array = 0;
+    char *c_array_name = NULL;
     int raw_image = 0;
     int opcode_dump = 0;
 
@@ -28,13 +31,18 @@ int main(int argc, char **argv){
 
     opterr = 0;
 
-    while((c = getopt(argc, argv, "i:o:rt")) != -1){
+    while((c = getopt(argc, argv, "a:i:o:rt")) != -1){
         switch(c){
+            case 'a':
+                c_array = 1;
+                c_array_name = strdup(optarg);
+                break;
             case 'i':
-                input = optarg;
+                input = strdup(optarg);
+                /* printf("i optarg %s\n", optarg); */
                 break;
             case 'o':
-                output = optarg;
+                output = strdup(optarg);
                 break;
             case 'r':
                 raw_image = 1;
@@ -52,7 +60,7 @@ int main(int argc, char **argv){
         return 1;
     }
 
-    if(!output){
+    if(!output && !c_array){
         printf("Expected output file name\n");
         return 1;
     }
@@ -66,6 +74,19 @@ int main(int argc, char **argv){
         printf("Cannot have both -r and -t\n");
         return 1;
     }
+
+    if(c_array && !raw_image){
+        printf("-a must be used with -r\n");
+        return 1;
+    }
+
+    if(c_array && !c_array_name){
+        printf("Need name for C array\n");
+        return 1;
+    }
+
+    if(c_array)
+        output = c_array_name;
 
     int fd = open(input, O_RDONLY);
 
@@ -151,6 +172,13 @@ nextcmd:
         return 1;
     }
 
+    if(c_array){
+        char buf[300];
+        snprintf(buf, sizeof(buf), "%s.h", output);
+        output = strdup(buf);
+        /* printf("out file %s\n", output); */
+    }
+
     FILE *outp = fopen(output, "wb");
 
     if(!outp){
@@ -167,11 +195,37 @@ nextcmd:
         }
     }
     else{
+        uint64_t num_patches = 0;
+
+        if(c_array){
+            fprintf(outp,
+                    "#ifndef %s_h\n"
+                    "#define %s_h\n"
+                    "static const uint32_t %s[] = {\n",
+                    c_array_name, c_array_name, c_array_name);
+        }
+
         while(raw_cursor < raw_end){
-            fwrite(raw_cursor, sizeof(uint64_t), 1, outp);
+            if(!c_array)
+                fwrite(raw_cursor, sizeof(uint64_t), 1, outp);
+            else{
+                uint32_t *a = (uint32_t *)raw_cursor;
+                fprintf(outp, "\t%#x,\n\t%#x,\n", a[0], a[1]);
+                num_patches += 2;
+            }
+
             raw_cursor++;
         }
+
+        if(c_array){
+            fprintf(outp, "};\n"
+                    "static const uint64_t %s_num_patches = %lld;\n"
+                    "#endif", c_array_name, num_patches);
+        }
     }
+
+    if(c_array)
+        free(output);
 
     fflush(outp);
     fclose(outp);

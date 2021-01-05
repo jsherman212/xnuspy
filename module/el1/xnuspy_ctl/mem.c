@@ -107,9 +107,9 @@ static int protect_common(uint64_t vaddr, uint64_t size, vm_prot_t prot,
     }
 
     asm volatile("isb");
-    asm volatile("dsb ish");
+    asm volatile("dsb sy");
     asm volatile("tlbi vmalle1");
-    asm volatile("dsb ish");
+    asm volatile("dsb sy");
     asm volatile("isb");
 
     return 0;

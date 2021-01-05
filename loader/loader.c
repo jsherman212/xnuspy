@@ -58,20 +58,11 @@ static int hotplug_callback(libusb_context *ctx, libusb_device *device,
 
 int main(int argc, char **argv, const char **envp){
     if(argc < 2){
-        printf("usage: loader <pongo module> [--kpp]\n");
+        printf("usage: loader <pongo module>\n");
         return 1;
     }
-
-    int needs_el3_img = 0;
-
-    if(argc == 3){
-        if(strcmp(argv[2], "--kpp") != 0){
-            printf("did you mean '--kpp'?\n");
-            return 1;
-        }
-
-        needs_el3_img = 1;
-    }
+    
+    printf("xnuspy loader\n");
 
     int err = libusb_init(NULL);
 
@@ -165,6 +156,32 @@ int main(int argc, char **argv, const char **envp){
         goto err1;
     }
 
+    /* const char *kpp = "./module/el3/kpp.bin"; */
+
+    /* if(stat(kpp, &st)){ */
+    /*     printf("Problem stat'ing '%s': %s\n", kpp, strerror(errno)); */
+    /*     goto err1; */
+    /* } */
+
+    /* size_t kpp_sz = st.st_size; */
+    /* printf("kpp patches size %#zx\n", kpp_sz); */
+
+    /* int kpp_fd = open(kpp, O_RDONLY); */
+
+    /* if(kpp_fd == -1){ */
+    /*     printf("Problem open'ing '%s': %s\n", kpp, strerror(errno)); */
+    /*     goto err1; */
+    /* } */
+
+    /* void *kpp_imgdata = mmap(NULL, kpp_sz, PROT_READ, MAP_PRIVATE, kpp_fd, 0); */
+
+    /* close(kpp_fd); */
+
+    /* if(kpp_imgdata == MAP_FAILED){ */
+    /*     printf("Problem mmap'ing '%s': %s\n", kpp, strerror(errno)); */
+    /*     goto err1; */
+    /* } */
+
     err = pongo_init_bulk_upload(pongo_device);
 
     if(err < 0){
@@ -201,6 +218,35 @@ int main(int argc, char **argv, const char **envp){
 /* #if 0 */
     usleep(200 * 1000);
 
+    /* err = pongo_discard_bulk_upload(pongo_device); */
+
+    /* if(err < 0){ */
+    /*     printf("pongo_discard_bulk_upload: %s\n", libusb_error_name(err)); */
+    /*     goto err2; */
+    /* } */
+
+    /* sleep(1); */
+
+    /* /1* The next command may have to patch KPP so we send the patches now *1/ */
+    /* err = pongo_init_bulk_upload(pongo_device); */
+
+    /* if(err < 0){ */
+    /*     printf("pongo_init_bulk_upload: %s\n", libusb_error_name(err)); */
+    /*     goto err2; */
+    /* } */
+
+    /* sleep(1); */
+
+    /* err = pongo_do_bulk_upload(pongo_device, kpp_imgdata, kpp_sz); */
+
+    /* if(err < 0){ */
+    /*     printf("pongo_do_bulk_upload (KPP patches): %s\n", */
+    /*             libusb_error_name(err)); */
+    /*     goto err2; */
+    /* } */
+
+    /* sleep(1); */
+
     err = pongo_send_command(pongo_device, "xnuspy-getkernelv\n");
 
     if(err < 0){
@@ -208,12 +254,11 @@ int main(int argc, char **argv, const char **envp){
         goto err2;
     }
 
-    //goto done;
-    //goto boot;
+    /* goto err2; */
 
-    /* we may have had to pwn SEPROM, so wait a bit longer before we continue */
-    sleep(2);
-    //goto boot;
+    /* we may have had to pwn SEPROM or patch KPP, so wait a bit longer
+     * before we continue */
+    sleep(3);
 
     /* send the compiled xnuspy_ctl image */
     err = pongo_init_bulk_upload(pongo_device);
@@ -246,104 +291,16 @@ int main(int argc, char **argv, const char **envp){
 
     sleep(2);
 
-    void *xnuspy_el3_imgdata = NULL;
-    size_t xnuspy_el3_imgsz = 0;
+    err = pongo_send_command(pongo_device, "bootx\n");
 
-    if(!needs_el3_img){
-        /* If we aren't booting into EL3, boot normally */
-        err = pongo_send_command(pongo_device, "bootx\n");
-
-        if(err < 0){
-            printf("pongo_send_command: %s\n", libusb_error_name(err));
-            goto err2;
-        }
-    }
-    else{
-        /* Otherwise, run KPF, upload the EL3 image, and boot that */
-        printf("Booting into EL3\n");
-
-        err = pongo_send_command(pongo_device, "kpf\n");
-
-        if(err < 0){
-            printf("pongo_send_command: %s\n", libusb_error_name(err));
-            goto err2;
-        }
-
-        sleep(1);
-
-        const char *xnuspy_el3_imgpath = "./module/el3/xnuspy_el3.bin";
-
-        if(stat(xnuspy_el3_imgpath, &st)){
-            printf("Problem stat'ing '%s': %s\n", xnuspy_el3_imgpath,
-                    strerror(errno));
-            goto err2;
-        }
-
-        int xnuspy_el3_imgfd = open(xnuspy_el3_imgpath, O_RDONLY);
-
-        if(xnuspy_el3_imgfd < 0){
-            printf("Problem open'ing '%s': %s\n", xnuspy_el3_imgpath,
-                    strerror(errno));
-            goto err2;
-        }
-
-        xnuspy_el3_imgsz = st.st_size;
-        printf("EL3 size %#lx\n", xnuspy_el3_imgsz);
-
-        void *xnuspy_el3_imgdata = mmap(NULL, xnuspy_el3_imgsz, PROT_READ,
-                MAP_PRIVATE, xnuspy_el3_imgfd, 0);
-
-        close(xnuspy_el3_imgfd);
-
-        if(xnuspy_el3_imgdata == MAP_FAILED){
-            printf("Problem mmap'ing '%s': %s\n", xnuspy_el3_imgpath,
-                    strerror(errno));
-            goto err2;
-        }
-
-        err = pongo_init_bulk_upload(pongo_device);
-
-        if(err < 0){
-            printf("pongo_init_bulk_upload: %s\n", libusb_error_name(err));
-            goto err3;
-        }
-
-        err = pongo_do_bulk_upload(pongo_device, xnuspy_el3_imgdata,
-                xnuspy_el3_imgsz);
-
-        if(err < 0){
-            printf("pongo_do_bulk_upload (xnuspy EL3): %s\n",
-                    libusb_error_name(err));
-            goto err3;
-        }
-
-        sleep(1);
-
-        err = pongo_send_command(pongo_device, "xnuspy-loadrd\n");
-
-        if(err < 0){
-            printf("pongo_send_command: %s\n", libusb_error_name(err));
-            goto err3;
-        }
-
-        sleep(1);
-
-        /* My preboot hook doesn't get ran with this command... need to
-         * separate the functionality */
-        /* err = pongo_send_command(pongo_device, "bootux\n"); */
-        err = pongo_send_command(pongo_device, "bootr\n");
-
-        if(err < 0){
-            printf("pongo_send_command: %s\n", libusb_error_name(err));
-            goto err3;
-        }
+    if(err < 0){
+        printf("pongo_send_command: %s\n", libusb_error_name(err));
+        goto err2;
     }
 
-err3:;
-    if(xnuspy_el3_imgsz)
-        munmap(xnuspy_el3_imgdata, xnuspy_el3_imgsz);
 err2:
     munmap(xnuspy_ctl_imgdata, xnuspy_ctl_imgsz);
+    /* munmap(kpp_imgdata, kpp_sz); */
 err1:
     munmap(module_data, module_size);
 err0:;

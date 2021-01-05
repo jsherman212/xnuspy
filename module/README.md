@@ -6,6 +6,9 @@ common/
 el1/
 - kernel code
 
+el3/
+- KPP patches for A9 and below
+
 pf/
 - patchfinder code
 
