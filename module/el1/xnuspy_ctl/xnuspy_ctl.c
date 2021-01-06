@@ -807,22 +807,6 @@ static int hook_already_exists(uint64_t target){
     return 0;
 }
 
-/* static int freelist_empty(void){ */
-/*     int res; */
-/*     lck_rw_lock_shared(xnuspy_rw_lck); */
-/*     res = STAILQ_EMPTY(&freelist); */
-/*     lck_rw_done(xnuspy_rw_lck); */
-/*     return res; */
-/* } */
-
-/* static int usedlist_empty(void){ */
-/*     int res; */
-/*     lck_rw_lock_shared(xnuspy_rw_lck); */
-/*     res = STAILQ_EMPTY(&usedlist); */
-/*     lck_rw_done(xnuspy_rw_lck); */
-/*     return res; */
-/* } */
-
 /* XXX Not sure if I can KDBG while holding a rw lock in xnu so I won't */
 static void desc_freelist(void){
     KDBG("[Freelist] ");
@@ -894,6 +878,7 @@ map_caller_segments(struct mach_header_64 * /* __user */ umh,
 
     struct load_command *lc = (struct load_command *)(umh + 1);
 
+    /* XXX CHECK IF HARDWARE SUPPORTS THIS BIT */
     /* user_access_enable(); */
 
     for(int i=0; i<umh->ncmds; i++){

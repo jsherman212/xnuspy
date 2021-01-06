@@ -13,9 +13,9 @@ _kpp0:
     stp x29, x30, [sp, 0x10]
     add x29, sp, 0x10
 
-    mrs x19, esr_el3
     /* Are we here because of monitor_call? If so, the only case we have to
     handle is MONITOR_SET_ENTRY */
+    mrs x19, esr_el3
     mov x20, 0x11
     movk x20, 0x5e00, lsl 16
     cmp x19, x20

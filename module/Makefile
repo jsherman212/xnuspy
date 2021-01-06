@@ -18,7 +18,7 @@ target_dirs : $(TARGET_DIRS)
 $(TARGET_DIRS) :
 	$(MAKE) -C $@
 
-OBJECT_FILES = $(shell find ./common ./pf -type f -name "*.o")
+OBJECT_FILES = $(shell find ./common ./pf ./el3 -type f -name "*.o")
 INSTR_FILES = $(shell find ./el1 -type f -name "*_instrs.h")
 
 preboot_hook.o : $(INSTR_FILES) preboot_hook.c preboot_hook.h \

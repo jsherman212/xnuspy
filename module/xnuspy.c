@@ -5,8 +5,10 @@
 #include "common/common.h"
 #include "common/pongo.h"
 
+#include "el3/kpp.h"
+
 /* XXX after done move this logic to el3's pf directory */
-#include "el3/kpp_patches.h"
+/* #include "el3/kpp_patches.h" */
 
 #include "pf/offsets.h"
 #include "pf/pfs.h"
@@ -114,24 +116,25 @@ static bool getkernelv_callback(xnu_pf_patch_t *patch, void *cacheable_stream){
         queue_rx_string("sep auto\n");
     }
     else{
-        /* Non-KTRR hardware, take this time to patch KPP. We've already
-         * uploaded the patches */
+        /* Non-KTRR hardware, take this time to patch KPP */
+        patch_kpp();
 
-        volatile uint64_t *iorvbar = (volatile uint64_t *)0x202050000;
-        uint64_t kppphys = *iorvbar & 0xfffffffff;
-        printf("%s: kpp is @ %#llx (phys)\n", __func__, kppphys);
+        /* s8000 */
+        /* volatile uint64_t *iorvbar = (volatile uint64_t *)0x202050000; */
+        /* uint64_t kppphys = *iorvbar & 0xfffffffff; */
+        /* printf("%s: kpp is @ %#llx (phys)\n", __func__, kppphys); */
 
-        map_range(0xc10000000, kppphys, 0xc000, 3, 0, true);
+        /* map_range(0xc10000000, kppphys, 0xc000, 3, 0, true); */
 
-        uint8_t *kppbase = (uint8_t *)0xc10000000;
-        uint32_t *kpppatch0 = (uint32_t *)(kppbase + 0x5954);
+        /* uint8_t *kppbase = (uint8_t *)0xc10000000; */
+        /* uint32_t *kpppatch0 = (uint32_t *)(kppbase + 0x5954); */
 
-        for(int i=0; i<kpp_patches_num_patches; i++){
-            *kpppatch0++ = kpp_patches[i];
-        }
+        /* for(int i=0; i<kpp_patches_num_patches; i++){ */
+        /*     *kpppatch0++ = kpp_patches[i]; */
+        /* } */
 
-        kpppatch0 = (uint32_t *)(kppbase + 0x5954);
-        DumpMemory(kpppatch0, kpppatch0, kpp_patches_num_patches * sizeof(uint32_t));
+        /* kpppatch0 = (uint32_t *)(kppbase + 0x5954); */
+        /* DumpMemory(kpppatch0, kpppatch0, kpp_patches_num_patches * sizeof(uint32_t)); */
 
         /* uint64_t *kppKernEntry = (uint64_t *)(kppbase + 0x */
 
@@ -139,10 +142,6 @@ static bool getkernelv_callback(xnu_pf_patch_t *patch, void *cacheable_stream){
         /* *kpppatch0 = 0xd503201f; */
 
         queue_rx_string("xfb\n");
-
-        /* DumpMemory(loader_xfer_recv_data, loader_xfer_recv_data, */
-        /*         loader_xfer_recv_size); */
-        /* printf("%s: recv size %#x\n", __func__, loader_xfer_recv_size); */
     }
 
     return true;

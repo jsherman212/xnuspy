@@ -1,22 +1,6 @@
-all : kpp
+kpp.o : ../common/common.h ../common/pongo.h kpp.c kpp.h
+	$(CC) $(CFLAGS) kpp.c -c
 
-kpp : kpp.s
-	clang -arch arm64 -e _kpp0 kpp.s -o kpp
-	#../../opdump/opdump -i ./kpp -o ./kpp.bin -r
+kpp : kpp.s kpp.o
+	$(CC) -arch arm64 -e _kpp0 kpp.s -o kpp
 	../../opdump/opdump -i ./kpp -a kpp_patches -r
-	#rm kpp
-
-# XNUSPY_EL3_FLAGS = -arch arm64 -ffreestanding -e _xnuspy_el3_entry_tramp
-# XNUSPY_EL3_FLAGS += -Wl,-order_file,./order
-
-# all : xnuspy_el3
-
-# the second one is for the actual on device EL3
-# the lines below that are for pongo on qemu
-
-# xnuspy_el3 : int.s xnuspy_el3.c
-# 	$(CC) $(XNUSPY_EL3_FLAGS) int.s xnuspy_el3.c -o xnuspy_el3
-# 	../../opdump/opdump -i ./xnuspy_el3 -o xnuspy_el3.bin -r
-	#../../opdump/opdump -i ./xnuspy_el3 -o xnuspy_el3_opcodes -t
-	#./hookgen.pl xnuspy_el3_opcodes
-	#cp ./xnuspy_el3_opcodes.h ~/iOS/Pongo\ Builds/pongoOS-QEMU/build/xnuspy_el3_opcodes.h
