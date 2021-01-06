@@ -7,10 +7,10 @@ el1/
 - kernel code
 
 el3/
-- KPP patches for A9 and below
+- KPP patchfinder/patches for A9 and below
 
 pf/
-- patchfinder code
+- patchfinder code for the kernel
 
 preboot_hook.c
 - patches the first `_enosys` sysent to point to the code in

@@ -22,7 +22,7 @@ _kpp0:
     b.eq 2f
 
     /* Otherwise, we are here because the kernel touched CPACR_EL1, so we
-    need to get off that instruction before we eret */
+    need to get off that instruction before we ERET */
     mov x19, 0x6b3
     msr scr_el3, x19
     mov x19, 0x0
@@ -38,6 +38,7 @@ _kpp0:
 2:
     cmp x0, MONITOR_SET_ENTRY
     b.ne 1f
+    /* XXX Need to patchfind for this as well */
     mov x19, 0x3028
     movk x19, 0x0001, lsl 16
     movk x19, 0x41, lsl 32
