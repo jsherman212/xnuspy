@@ -38,10 +38,8 @@ _kpp0:
 2:
     cmp x0, MONITOR_SET_ENTRY
     b.ne 1f
-    /* XXX Need to patchfind for this as well */
-    mov x19, 0x3028
-    movk x19, 0x0001, lsl 16
-    movk x19, 0x41, lsl 32
+    adr x19, kernEntry
+    ldr x19, [x19]
     str x1, [x19]
 
 1:
@@ -49,3 +47,5 @@ _kpp0:
     ldp x29, x30, [sp, 0x10]
     add sp, sp, 0x20
     ret
+
+kernEntry: .dword 0x4142434445464748

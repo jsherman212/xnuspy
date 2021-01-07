@@ -62,8 +62,6 @@ int main(int argc, char **argv, const char **envp){
         return 1;
     }
     
-    printf("xnuspy loader\n");
-
     int err = libusb_init(NULL);
 
     if(err < 0){
@@ -156,32 +154,6 @@ int main(int argc, char **argv, const char **envp){
         goto err1;
     }
 
-    /* const char *kpp = "./module/el3/kpp.bin"; */
-
-    /* if(stat(kpp, &st)){ */
-    /*     printf("Problem stat'ing '%s': %s\n", kpp, strerror(errno)); */
-    /*     goto err1; */
-    /* } */
-
-    /* size_t kpp_sz = st.st_size; */
-    /* printf("kpp patches size %#zx\n", kpp_sz); */
-
-    /* int kpp_fd = open(kpp, O_RDONLY); */
-
-    /* if(kpp_fd == -1){ */
-    /*     printf("Problem open'ing '%s': %s\n", kpp, strerror(errno)); */
-    /*     goto err1; */
-    /* } */
-
-    /* void *kpp_imgdata = mmap(NULL, kpp_sz, PROT_READ, MAP_PRIVATE, kpp_fd, 0); */
-
-    /* close(kpp_fd); */
-
-    /* if(kpp_imgdata == MAP_FAILED){ */
-    /*     printf("Problem mmap'ing '%s': %s\n", kpp, strerror(errno)); */
-    /*     goto err1; */
-    /* } */
-
     err = pongo_init_bulk_upload(pongo_device);
 
     if(err < 0){
@@ -208,44 +180,14 @@ int main(int argc, char **argv, const char **envp){
     /* Don't remove any of these boot args if you modify this string */
     err = pongo_send_command(pongo_device, "xargs rootdev=md0"
             " use_contiguous_hint=0 msgbuf=0x3c000 -show_pointers"
-            " atm_diagnostic_config=0x20000000\n");
+            " atm_diagnostic_config=0x20000000 -v\n");
 
     if(err < 0){
         printf("pongo_send_command: %s\n", libusb_error_name(err));
         goto err2;
     }
     
-/* #if 0 */
     usleep(200 * 1000);
-
-    /* err = pongo_discard_bulk_upload(pongo_device); */
-
-    /* if(err < 0){ */
-    /*     printf("pongo_discard_bulk_upload: %s\n", libusb_error_name(err)); */
-    /*     goto err2; */
-    /* } */
-
-    /* sleep(1); */
-
-    /* /1* The next command may have to patch KPP so we send the patches now *1/ */
-    /* err = pongo_init_bulk_upload(pongo_device); */
-
-    /* if(err < 0){ */
-    /*     printf("pongo_init_bulk_upload: %s\n", libusb_error_name(err)); */
-    /*     goto err2; */
-    /* } */
-
-    /* sleep(1); */
-
-    /* err = pongo_do_bulk_upload(pongo_device, kpp_imgdata, kpp_sz); */
-
-    /* if(err < 0){ */
-    /*     printf("pongo_do_bulk_upload (KPP patches): %s\n", */
-    /*             libusb_error_name(err)); */
-    /*     goto err2; */
-    /* } */
-
-    /* sleep(1); */
 
     err = pongo_send_command(pongo_device, "xnuspy-getkernelv\n");
 
@@ -254,7 +196,7 @@ int main(int argc, char **argv, const char **envp){
         goto err2;
     }
 
-    goto err2;
+    /* goto err2; */
 
     /* we may have had to pwn SEPROM or patch KPP, so wait a bit longer
      * before we continue */
@@ -272,20 +214,17 @@ int main(int argc, char **argv, const char **envp){
             xnuspy_ctl_imgsz);
 
     if(err < 0){
-        printf("pongo_do_bulk_upload (xnuspy_ctl): %s\n", libusb_error_name(err));
+        printf("pongo_do_bulk_upload (xnuspy_ctl): %s\n",
+                libusb_error_name(err));
         goto err2;
     }
 
-    sleep(2);
-
-#if 1
     err = pongo_send_command(pongo_device, "xnuspy-prep\n");
 
     if(err < 0){
         printf("pongo_send_command: %s\n", libusb_error_name(err));
         goto err2;
     }
-#endif
 
     /* goto err2; */
 
@@ -300,7 +239,6 @@ int main(int argc, char **argv, const char **envp){
 
 err2:
     munmap(xnuspy_ctl_imgdata, xnuspy_ctl_imgsz);
-    /* munmap(kpp_imgdata, kpp_sz); */
 err1:
     munmap(module_data, module_size);
 err0:;

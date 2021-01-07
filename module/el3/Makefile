@@ -1,3 +1,5 @@
+all : kpp
+
 kpp.o : ../common/common.h ../common/pongo.h kpp.c kpp.h
 	$(CC) $(CFLAGS) kpp.c -c
 

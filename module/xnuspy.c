@@ -111,6 +111,8 @@ static bool getkernelv_callback(xnu_pf_patch_t *patch, void *cacheable_stream){
         xnuspy_fatal_error();
     }
 
+    /* No need to exploit SEPROM on A9 and below, with conveniently are the
+     * only chips with KPP */
     if(pwn_seprom){
         /* printf("%s: NOT PWNING SEPROM FOR TESTING PURPOSES\n", __func__); */
         queue_rx_string("sep auto\n");
@@ -118,29 +120,7 @@ static bool getkernelv_callback(xnu_pf_patch_t *patch, void *cacheable_stream){
     else{
         /* Non-KTRR hardware, take this time to patch KPP */
         patch_kpp();
-
-        /* s8000 */
-        /* volatile uint64_t *iorvbar = (volatile uint64_t *)0x202050000; */
-        /* uint64_t kppphys = *iorvbar & 0xfffffffff; */
-        /* printf("%s: kpp is @ %#llx (phys)\n", __func__, kppphys); */
-
-        /* map_range(0xc10000000, kppphys, 0xc000, 3, 0, true); */
-
-        /* uint8_t *kppbase = (uint8_t *)0xc10000000; */
-        /* uint32_t *kpppatch0 = (uint32_t *)(kppbase + 0x5954); */
-
-        /* for(int i=0; i<kpp_patches_num_patches; i++){ */
-        /*     *kpppatch0++ = kpp_patches[i]; */
-        /* } */
-
-        /* kpppatch0 = (uint32_t *)(kppbase + 0x5954); */
-        /* DumpMemory(kpppatch0, kpppatch0, kpp_patches_num_patches * sizeof(uint32_t)); */
-
-        /* uint64_t *kppKernEntry = (uint64_t *)(kppbase + 0x */
-
-        /* kpppatch0 = (uint32_t *)(kppbase + 0x6460); */
-        /* *kpppatch0 = 0xd503201f; */
-
+        /* XXX REMOVE WHEN DONE */
         queue_rx_string("xfb\n");
     }
 
@@ -179,135 +159,6 @@ static void xnuspy_getkernelv(const char *cmd, char *args){
     xnu_pf_emit(patchset);
     xnu_pf_apply(__TEXT___const, patchset);
     xnu_pf_patchset_destroy(patchset);
-}
-
-/* Because there is no way of initializing the ramdisk KPF makes besides
- * with bootx. Only used on <=A9 */
-static void xnuspy_loadrd(const char *cmd, char *args){
-    // XXX
-    /* return; */
-    if(!ramdisk_size){
-        printf("xnuspy: ramdisk hasn't\n"
-                "  been initialized yet?\n");
-
-        xnuspy_fatal_error();
-    }
-
-    printf("%s: entrypoint %p\n", __func__, gEntryPoint);
-
-    dt_node_t *memory_map = dt_find(gDeviceTree, "memory-map");
-
-    if(!memory_map){
-        printf("xnuspy: no memory map?\n");
-        xnuspy_fatal_error();
-    }
-
-    struct memmap *map = dt_alloc_memmap(memory_map, "RAMDisk");
-
-    if(!map){
-        printf("xnuspy: dt_alloc_memmap failed\n");
-        xnuspy_fatal_error();
-    }
-
-    void *rd_static_buf = alloc_static(ramdisk_size);
-
-    if(!rd_static_buf){
-        printf("xnuspy: alloc_static for\n"
-                "  ramdisk buf failed\n");
-        xnuspy_fatal_error();
-    }
-
-    printf("allocated static region for rdsk: %p, sz: %#x\n", rd_static_buf,
-            ramdisk_size);
-
-    memcpy(rd_static_buf, ramdisk_buf, ramdisk_size);
-
-    struct memmap md0map;
-    md0map.addr = ((uint64_t)rd_static_buf) + 0x800000000 - kCacheableView;
-    md0map.size = ramdisk_size;
-
-    memcpy(map, &md0map, sizeof(md0map));
-
-    /* printf("%#x\n", socnum); */
-
-    /* dt_node_t *sep = dt_find(gDeviceTree, "sep"); */
-    /* uint32_t *xnu_wants_booted = dt_prop(sep, "sepfw-booted", NULL); */
-    /* volatile uint32_t *tz_regbase = (volatile uint32_t *)0x200000480; */
-
-    /* printf("%s: sep %p xnu_wants_booted %p\n", __func__, sep, xnu_wants_booted); */
-
-    /* if(xnu_wants_booted){ */
-    /*     printf("%s: xnu wants booted? %d\n", __func__, *xnu_wants_booted); */
-    /* } */
-
-    /* printf("%s: tz0 locked? %d\n", __func__, tz_regbase[4]); */
-
-    /* uint64_t addr = socnum == 0x8960 ? 0x200000910 : 0x200000490; */
-
-    /* printf("%d\n", *(volatile uint32_t *)addr); */
-
-    /* if(tz_regbase[0]) */
-    /*     tz_regbase[4] = 1; */
-
-    /* if(tz_regbase[2]) */
-    /*     tz_regbase[5] = 1; */
-
-    /* printf("%d\n", *(volatile uint32_t *)addr); */
-
-    printf("%s: loader_xfer_recv_count %#x data %p\n", __func__,
-            loader_xfer_recv_count, loader_xfer_recv_data);
-
-    void *el3_imgdata = alloc_static(loader_xfer_recv_count);
-
-    printf("%s: el3_imgdata %p\n", __func__, el3_imgdata);
-    
-    if(!el3_imgdata){
-        printf("xnuspy: failed allocing\n"
-                "  static region for EL3\n");
-
-        xnuspy_fatal_error();
-    }
-
-    volatile uint64_t *CPU0_IORVBar = (volatile uint64_t *)0x202050000;
-    uint64_t kppphys = *CPU0_IORVBar & 0xfffffffff;
-    printf("%s: kpp is @ %#llx (phys)\n", __func__, kppphys);
-
-    map_range(0xc10000000, kppphys, 0xc000, 3, 0, true);
-
-    uint8_t *kpp = (uint8_t *)0xc10000000;
-
-    for(int i=0; i<loader_xfer_recv_count; i++){
-        kpp[i] = loader_xfer_recv_data[i];
-    }
-
-    printf("%s: overwrote kpp\n", __func__);
-
-    /* memcpy(el3_imgdata, loader_xfer_recv_data, loader_xfer_recv_count); */
-    /* loader_xfer_recv_data = el3_imgdata; */
-    /* /1* XXX For iPhone SE 2016 14.3 kpp *1/ */
-    /* /1* loader_xfer_recv_data = (uint8_t *)((uintptr_t)el3_imgdata + 0x2804); *1/ */
-    /* DumpMemory(loader_xfer_recv_data, loader_xfer_recv_data, 0x100); */
-
-
-    /* volatile uint64_t *IORVBar = (volatile uint64_t *)(0x200000000uLL + 0x205000); */
-    /* printf("%s: IORVBar: %#llx %#llx\n", __func__, IORVBar, *IORVBar); */
-
-    /* for(;;); */
-
-    /* _bsd_init, doesn't seem to be getting called */
-    /* uint32_t *p = xnu_va_to_ptr(0xFFFFFFF0074F467C + kernel_slide); */
-    /* *p = 0xd4200000; */
-
-    /* monitor_call smc */
-    /* BRK 0 phone just doesn't do anything */
-    /* NOP: ? */
-    /* p = xnu_va_to_ptr(0xFFFFFFF00710BD10 + kernel_slide); */
-    /* *p = 0xd4200000; */
-
-    /* ramdisk_size = 0; */
-
-    queue_rx_string("xfb\n");
-    /* queue_rx_string("bootux\n"); */
 }
 
 #define MAXKEXTRANGE MAXPF
@@ -441,8 +292,6 @@ void module_entry(void){
     preboot_hook = xnuspy_preboot_hook;
 
     command_register("xnuspy-getkernelv", "get kernel version", xnuspy_getkernelv);
-    command_register("xnuspy-loadrd", "load the ramdisk KPF initializes",
-            xnuspy_loadrd);
     command_register("xnuspy-prep", "get all offsets", xnuspy_prep);
 }
 

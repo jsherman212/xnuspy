@@ -2,7 +2,7 @@
 
 #include "../common/pongo.h"
 
-static uint64_t sign_extend(uint64_t number, uint32_t numbits /* signbit */){
+uint64_t sign_extend(uint64_t number, uint32_t numbits /* signbit */){
     if(number & ((uint64_t)1 << (numbits - 1)))
         return number | ~(((uint64_t)1 << numbits) - 1);
 

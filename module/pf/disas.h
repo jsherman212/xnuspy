@@ -3,6 +3,8 @@
 
 #include <stdint.h>
 
+uint64_t sign_extend(uint64_t, uint32_t);
+
 uint32_t assemble_b(uint64_t, uint64_t);
 uint32_t assemble_bl(uint64_t, uint64_t);
 uint32_t assemble_mov(uint8_t, uint32_t, uint32_t);

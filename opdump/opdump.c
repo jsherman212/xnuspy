@@ -201,7 +201,7 @@ nextcmd:
             fprintf(outp,
                     "#ifndef %s_h\n"
                     "#define %s_h\n"
-                    "static const uint32_t %s[] = {\n",
+                    "static uint32_t %s[] = {\n",
                     c_array_name, c_array_name, c_array_name);
         }
 
