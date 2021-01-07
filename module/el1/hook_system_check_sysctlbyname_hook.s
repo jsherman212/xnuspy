@@ -1,11 +1,11 @@
-    .align 4
-    .globl _main
-
 #include "../common/xnuspy_cache.h"
 
 #include "hook_system_check_sysctlbyname_hook.h"
 
-_main:
+.align 2
+.globl _hook_system_check_sysctlbyname_hook
+
+_hook_system_check_sysctlbyname_hook:
     sub sp, sp, STACK
     ; we branched when parameters were being copied to callee-saved registers
     stp x7, x6, [sp, STACK-0xa0]
@@ -20,7 +20,7 @@ _main:
     stp x29, x30, [sp, STACK-0x10]
     add x29, sp, STACK-0x10
 
-    adr x19, ADDRESS_OF_XNUSPY_CACHE
+    adr x19, addrof_xnuspy_cache
     ldr x28, [x19]
 
     ; MIB array
@@ -35,11 +35,11 @@ _main:
     blr x21
     ; if this sysctl hasn't been added yet, don't do anything
     ldr x21, [x28, DID_REGISTER_SYSCTL]
-    cbz x21, register_xnuspy_ctl_callnum_sysctl
+    cbz x21, Lregister_xnuspy_ctl_callnum_sysctl
     ldr x21, [x28, XNUSPY_SYSCTL_MIB_COUNT_PTR]
     ldr w21, [x21]
     cmp w21, w20
-    b.ne not_ours
+    b.ne Lnot_ours
 
     ; same length, so compare MIB contents
     ldr x21, [x28, XNUSPY_SYSCTL_MIB_PTR]               ; our MIB array
@@ -49,17 +49,17 @@ _main:
     ; to use to check if we hit the end of both
     add x23, x21, w20, lsl 0x2
 
-mib_check_loop:
+Lmib_check_loop:
     ldr w24, [x21], 0x4
     ldr w25, [x22], 0x4
     ; one mismatched elem and we know it isn't ours
     cmp w24, w25
-    b.ne not_ours
+    b.ne Lnot_ours
     ; if we hit the end of our MIB array, it's ours
     subs x26, x23, x21
-    cbnz x26, mib_check_loop
+    cbnz x26, Lmib_check_loop
 
-ours:
+Lours:
     ldr x0, [x28, SYSCTL_GEOMETRY_LOCK_PTR]
     ldr x0, [x0]
     ldr x19, [x28, LCK_RW_DONE]
@@ -72,7 +72,7 @@ ours:
     br x1
     ; not reached
 
-register_xnuspy_ctl_callnum_sysctl:
+Lregister_xnuspy_ctl_callnum_sysctl:
     ; this does not need to be locked
     ldr x0, [x28, SYSCTL_GEOMETRY_LOCK_PTR]
     ldr x0, [x0]
@@ -83,15 +83,15 @@ register_xnuspy_ctl_callnum_sysctl:
     ; we still hold sysctl_geometry_lock
     ldr x19, [x28, IOS_VERSION]
     cmp x19, iOS_13_x
-    b.eq iOS_13_x_kalloc
+    b.eq LiOS_13_x_kalloc
     ; fall thru
 
     ldr x19, [x28, KALLOC_EXTERNAL]
     blr x19
 
-    b register
+    b Lregister
 
-iOS_13_x_kalloc:
+LiOS_13_x_kalloc:
     str x0, [sp, KALLOC_SZ]
     add x0, sp, KALLOC_SZ
     mov x1, xzr
@@ -100,8 +100,8 @@ iOS_13_x_kalloc:
     blr x19
     ; fall thru
 
-register:
-    cbz x0, not_ours
+Lregister:
+    cbz x0, Lnot_ours
 
     ldr x19, [x28, SYSCTL__KERN_CHILDREN_PTR]
     str x19, [x0, OFFSETOF_OID_PARENT]
@@ -155,7 +155,7 @@ register:
 
     ; in the case our sysctl wasn't being dealt with, return back to
     ; hook_system_check_sysctlbyname to carry out its normal operation
-not_ours:
+Lnot_ours:
     ldr x0, [x28, SYSCTL_GEOMETRY_LOCK_PTR]
     ldr x0, [x0]
     ldr x19, [x28, LCK_RW_DONE]
@@ -171,5 +171,8 @@ not_ours:
     ldp x5, x4, [sp, STACK-0x90]
     ldp x7, x6, [sp, STACK-0xa0]
     add sp, sp, STACK
-    ; this is missing a RET so xnuspy can write back the instructions
-    ; we overwrote to branch to this code
+    .zero (5*4)
+    ; xnuspy will write back the instructions we overwrote in the space above
+    ret
+
+addrof_xnuspy_cache: .dword 0x4142434445464748

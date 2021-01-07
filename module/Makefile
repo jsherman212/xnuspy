@@ -3,9 +3,11 @@ SDK = $(shell xcrun --sdk iphoneos --show-sdk-path)
 CFLAGS = -isysroot $(SDK) -arch arm64 -Wno-string-plus-int -fno-stack-protector
 CFLAGS += -D_FORTIFY_SOURCE=0 -nostdlib
 LDFLAGS = -Xlinker -kext
+OPDUMP = $(realpath ../opdump/opdump)
 
 export CC
 export CFLAGS
+export OPDUMP
 
 TARGET_DIRS = common el1 el3 pf
 

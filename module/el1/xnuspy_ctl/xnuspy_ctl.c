@@ -493,7 +493,7 @@ static struct _vm_map *current_map(void){
     return *(struct _vm_map **)(current_thread() + offsetof_struct_thread_map);
 }
 
-__attribute__ ((naked)) static void user_access_enable(void){
+__attribute__ ((naked)) static void _user_access_enable(void){
     asm(""
         ".long 0xd500409f\n"
         "isb sy\n"
@@ -501,12 +501,28 @@ __attribute__ ((naked)) static void user_access_enable(void){
        );
 }
 
-__attribute__ ((naked)) static void user_access_disable(void){
+__attribute__ ((naked)) static void _user_access_disable(void){
     asm(""
         ".long 0xd500419f\n"
         "isb sy\n"
         "ret\n"
        );
+}
+
+static void user_access_enable(void){
+    uint64_t id_aa64mmfr1_el1;
+    asm volatile("mrs %0, id_aa64mmfr1_el1" : "=r" (id_aa64mmfr1_el1));
+
+    if(id_aa64mmfr1_el1 & 0xf00000)
+        _user_access_enable();
+}
+
+static void user_access_disable(void){
+    uint64_t id_aa64mmfr1_el1;
+    asm volatile("mrs %0, id_aa64mmfr1_el1" : "=r" (id_aa64mmfr1_el1));
+
+    if(id_aa64mmfr1_el1 & 0xf00000)
+        _user_access_disable();
 }
 
 static int kern_return_to_errno(kern_return_t kret){
@@ -529,30 +545,6 @@ static int kern_return_to_errno(kern_return_t kret){
     /* Not a valid errno */
     return 10000;
 }
-
-/* void disable_preemption(void){ */
-/*     _disable_preemption(); */
-/* } */
-
-/* void enable_preemption(void){ */
-/*     _enable_preemption(); */
-/* } */
-
-/*
-static int xnuspy_reflector_page_free(struct xnuspy_reflector_page *p){
-    return p->refcnt == 0;
-}
-*/
-
-/*
-static void xnuspy_reflector_page_release(struct xnuspy_reflector_page *p){
-    p->refcnt--;
-}
-
-static void xnuspy_reflector_page_reference(struct xnuspy_reflector_page *p){
-    p->refcnt++;
-}
-*/
 
 MARK_AS_KERNEL_OFFSET struct xnuspy_tramp *xnuspy_tramp_page;
 MARK_AS_KERNEL_OFFSET uint8_t *xnuspy_tramp_page_end;
@@ -683,19 +675,6 @@ static void xnuspy_tramp_teardown(struct xnuspy_tramp *t){
     struct xnuspy_mapping_metadata *mm = t->mapping_metadata;
 
     if(mm){
-        /*
-        struct xnuspy_reflector_page *cur = mm->first_reflector_page;
-
-        for(int i=0; i<mm->used_reflector_pages; i++){
-            if(!cur)
-                break;
-
-            xnuspy_reflector_page_release(cur);
-
-            cur = cur->next;
-        }
-        */
-
         if(mm->refcnt > 0)
             xnuspy_mapping_metadata_release(mm);
 
@@ -877,9 +856,8 @@ map_caller_segments(struct mach_header_64 * /* __user */ umh,
     int seen_text = 0, seen_data = 0;
 
     struct load_command *lc = (struct load_command *)(umh + 1);
-
-    /* XXX CHECK IF HARDWARE SUPPORTS THIS BIT */
-    /* user_access_enable(); */
+    
+    user_access_enable();
 
     for(int i=0; i<umh->ncmds; i++){
         if(lc->cmd != LC_SEGMENT_64)
@@ -924,7 +902,7 @@ nextcmd:
         lc = (struct load_command *)((uintptr_t)lc + lc->cmdsize);
     }
 
-    /* user_access_disable(); */
+    user_access_disable();
 
     KDBG("%s: ended with copystart %#llx copysz %#llx\n", __func__,
             copystart, copysz);
@@ -1274,7 +1252,7 @@ static const uint64_t g_gc_leaked_page_hardcap = 64;
 static void xnuspy_do_gc(void){
     KDBG("%s: doing gc\n", __func__);
 
-    int64_t dealloc_pages = g_num_leaked_pages - g_gc_leaked_page_hardcap;
+    int64_t dealloc_pages = (int64_t)(g_num_leaked_pages - g_gc_leaked_page_hardcap);
 
     KDBG("%s: need to deallocate %lld pages to get back around hardcap\n",
             __func__, dealloc_pages);

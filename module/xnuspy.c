@@ -7,9 +7,6 @@
 
 #include "el3/kpp.h"
 
-/* XXX after done move this logic to el3's pf directory */
-/* #include "el3/kpp_patches.h" */
-
 #include "pf/offsets.h"
 #include "pf/pfs.h"
 
@@ -111,17 +108,14 @@ static bool getkernelv_callback(xnu_pf_patch_t *patch, void *cacheable_stream){
         xnuspy_fatal_error();
     }
 
-    /* No need to exploit SEPROM on A9 and below, with conveniently are the
-     * only chips with KPP */
-    if(pwn_seprom){
-        /* printf("%s: NOT PWNING SEPROM FOR TESTING PURPOSES\n", __func__); */
+    /* No need to exploit SEPROM on 14.x A9(x) and below, which conveniently
+     * is the only KPP non-PAN chip that xnuspy supports */
+    if(pwn_seprom)
         queue_rx_string("sep auto\n");
-    }
-    else{
-        /* Non-KTRR hardware, take this time to patch KPP */
+    else if(socnum == 0x8000 || socnum == 0x8001 || socnum == 0x8003){
         patch_kpp();
         /* XXX REMOVE WHEN DONE */
-        queue_rx_string("xfb\n");
+        /* queue_rx_string("xfb\n"); */
     }
 
     return true;

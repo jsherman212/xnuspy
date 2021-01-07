@@ -1,14 +1,14 @@
-    .align 4
-    .globl _main
-
 #include "../common/xnuspy_cache.h"
 
 #include "xnuspy_ctl_tramp.h"
 
+.align 2
+.global _xnuspy_ctl_tramp
+
 ; This is the code an _enosys sysent was modified to point to. We mark the
 ; memory which holds the xnuspy_ctl image as executable and then br to it. Since
 ; this is the entrypoint of xnuspy_ctl, we need to preserve x0, x1, and x2.
-_main:
+_xnuspy_ctl_tramp:
     sub sp, sp, STACK
     stp x0, x1, [sp, STACK-0x10]
     stp x2, x19, [sp, STACK-0x20]
@@ -19,11 +19,11 @@ _main:
     stp x29, x30, [sp, STACK-0x70]
     add x29, sp, STACK-0x70
 
-    adr x27, ADDRESS_OF_XNUSPY_CACHE
+    adr x27, addrof_xnuspy_cache
     ldr x27, [x27]
 
     ldr x19, [x27, XNUSPY_CTL_IS_RX]
-    cbnz x19, handoff
+    cbnz x19, Lhandoff
 
     ldr x19, [x27, XNUSPY_CTL_CODESTART]
     ldr x20, [x27, XNUSPY_CTL_CODESZ]
@@ -45,7 +45,7 @@ _main:
     ;   X22 - X26: scratch registers
     ;   X27: xnuspy cache pointer
 
-pteloop:
+Lpteloop:
     lsr x22, x19, ARM_TT_L1_SHIFT
     and x22, x22, 0x7
     add x22, x21, x22, lsl 0x3
@@ -81,11 +81,11 @@ pteloop:
     ldr x23, [x27, BCOPY_PHYS]
     blr x23
 
-nextpage:
+Lnextpage:
     mov w22, 0x1
     add x19, x19, x22, lsl 0xe
-    subs xzr, x20, x19
-    b.ne pteloop
+    cmp x20, x19
+    b.ne Lpteloop
 
     isb
     dsb sy
@@ -95,7 +95,7 @@ nextpage:
 
     str x22, [x27, XNUSPY_CTL_IS_RX]
 
-handoff:
+Lhandoff:
     mov x7, x27
     ldp x0, x1, [sp, STACK-0x10]
     ldp x2, x19, [sp, STACK-0x20]
@@ -126,7 +126,7 @@ _kvtophys:
     ; enable interrupts
     msr DAIF, x1
     ; check F bit of PAR_EL1, if not set, address translation was successful
-    tbnz x2, 0x0, invalid
+    tbnz x2, 0x0, 2f
     ; mask for PA[47:12] of PAR_EL1
     and x2, x2, 0xfffffffff000
     ; get page offset from parameter
@@ -134,10 +134,12 @@ _kvtophys:
     ; or physical address with page offset
     orr x0, x2, x1
 
-    b done
+    b 1f
 
-invalid:
+2:
     mov x0, xzr
 
-done:
+1:
     ret
+
+addrof_xnuspy_cache: .dword 0x4142434445464748

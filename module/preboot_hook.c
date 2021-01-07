@@ -25,7 +25,7 @@ static void DumpMemory(void *startaddr, void *data, size_t size){
     for (i = 0; i < size; ++i) {
         if(!putloc){
             if(startaddr != (void *)-1){
-                printf("%#llx: ", curaddr);
+                printf("%#llx: ", (uint64_t)curaddr);
                 curaddr += 0x10;
             }
 
@@ -89,20 +89,6 @@ uint64_t *xnuspy_cache_base = NULL;
         num_free_instrs--; \
     } while (0) \
 
-#define WRITE_QWORD_TO_SCRATCH_SPACE(qword) \
-    do { \
-        if(num_free_instrs < 2){ \
-            printf("xnuspy: ran out\n" \
-                    "  of executable scratch\n" \
-                    "  space in function %s\n", \
-                    __func__); \
-            xnuspy_fatal_error(); \
-        } \
-        *(uint64_t *)scratch_space = (qword); \
-        scratch_space += 2; \
-        num_free_instrs -= 2; \
-    } while (0); \
-
 #define XNUSPY_CACHE_WRITE(thing) \
     do { \
         *xnuspy_cache_cursor++ = (thing); \
@@ -155,14 +141,6 @@ static struct xnuspy_ctl_kernel_symbol {
     { "_xnuspy_tramp_page", &g_xnuspy_tramp_page_addr },
     { "_xnuspy_tramp_page_end", &g_xnuspy_tramp_page_end },
 };
-
-static uint32_t *write_h_s_c_sbn_h_instrs(uint32_t *scratch_space,
-        uint64_t *num_free_instrsp){
-    uint64_t num_free_instrs = *num_free_instrsp;
-    WRITE_HOOK_SYSTEM_CHECK_SYSCTLBYNAME_HOOK_INSTRS;
-    *num_free_instrsp = num_free_instrs;
-    return scratch_space;
-}
 
 static void anything_missing(void){
     static int printed_err_hdr = 0;
@@ -292,25 +270,37 @@ static uint32_t *install_h_s_c_sbn_hook(uint32_t *scratch_space,
         uint64_t *num_free_instrsp){
     uint64_t num_free_instrs = *num_free_instrsp;
 
-    /* allow hook_system_check_sysctlbyname_hook access to xnuspy cache */
-    WRITE_QWORD_TO_SCRATCH_SPACE(xnu_ptr_to_va(xnuspy_cache_base));
+    uint64_t h_s_c_sbn_hook_len =
+        g_hook_system_check_sysctlbyname_hook_len / sizeof(uint32_t);
+    uint32_t *h_s_c_sbn_hook_cursor =
+        (uint32_t *)g_hook_system_check_sysctlbyname_hook;
 
-    uint32_t *h_s_c_sbn_hook_addr = (uint32_t *)xnu_ptr_to_va(scratch_space);
+    uint64_t *addrof_xnuspy_cache =
+        (uint64_t *)(h_s_c_sbn_hook_cursor + (h_s_c_sbn_hook_len - 2));
+    *addrof_xnuspy_cache = xnu_ptr_to_va(xnuspy_cache_base);
+
+    uint64_t h_s_c_sbn_hook_addr = xnu_ptr_to_va(scratch_space);
     uint32_t *h_s_c_sbn_branch_from = xnu_va_to_ptr(g_h_s_c_sbn_branch_addr);
 
-    scratch_space = write_h_s_c_sbn_h_instrs(scratch_space, &num_free_instrs);
+    /* The zeros we reserved are for the instructions we overwrote */
+    while(*h_s_c_sbn_hook_cursor)
+        WRITE_INSTR_TO_SCRATCH_SPACE(*h_s_c_sbn_hook_cursor++);
 
-    /* restore the five instructions we overwrote at the end of
-     * system_check_sysctlbyname_hook to the end of `not_ours`
-     * in hook_system_check_sysctlbyname_hook.s */
     WRITE_INSTR_TO_SCRATCH_SPACE(h_s_c_sbn_branch_from[0]);
     WRITE_INSTR_TO_SCRATCH_SPACE(h_s_c_sbn_branch_from[1]);
     WRITE_INSTR_TO_SCRATCH_SPACE(h_s_c_sbn_branch_from[2]);
     WRITE_INSTR_TO_SCRATCH_SPACE(h_s_c_sbn_branch_from[3]);
     WRITE_INSTR_TO_SCRATCH_SPACE(h_s_c_sbn_branch_from[4]);
-    WRITE_INSTR_TO_SCRATCH_SPACE(0xd65f03c0);    /* ret */
-    
-    write_blr(8, (uint64_t)h_s_c_sbn_branch_from, (uint64_t)h_s_c_sbn_hook_addr);
+
+    /* Skip the reserved space */
+    h_s_c_sbn_hook_cursor += 5;
+
+    /* Write the ret and the pointer to the xnuspy cache */
+    WRITE_INSTR_TO_SCRATCH_SPACE(*h_s_c_sbn_hook_cursor++);
+    WRITE_INSTR_TO_SCRATCH_SPACE(*h_s_c_sbn_hook_cursor++);
+    WRITE_INSTR_TO_SCRATCH_SPACE(*h_s_c_sbn_hook_cursor++);
+
+    write_blr(8, (uint64_t)h_s_c_sbn_branch_from, h_s_c_sbn_hook_addr);
 
     *num_free_instrsp = num_free_instrs;
 
@@ -320,8 +310,18 @@ static uint32_t *install_h_s_c_sbn_hook(uint32_t *scratch_space,
 static uint32_t *write_xnuspy_ctl_tramp_instrs(uint32_t *scratch_space,
         uint64_t *num_free_instrsp){
     uint64_t num_free_instrs = *num_free_instrsp;
-    WRITE_XNUSPY_CTL_TRAMP_INSTRS;
+    uint64_t xnuspy_ctl_tramp_len = g_xnuspy_ctl_tramp_len / sizeof(uint32_t);
+    uint32_t *xnuspy_ctl_tramp_cursor = (uint32_t *)g_xnuspy_ctl_tramp;
+
+    uint64_t *addrof_xnuspy_cache =
+        (uint64_t *)(xnuspy_ctl_tramp_cursor + (xnuspy_ctl_tramp_len - 2));
+    *addrof_xnuspy_cache = xnu_ptr_to_va(xnuspy_cache_base);
+
+    for(uint64_t i=0; i<xnuspy_ctl_tramp_len; i++)
+        WRITE_INSTR_TO_SCRATCH_SPACE(*xnuspy_ctl_tramp_cursor++);
+
     *num_free_instrsp = num_free_instrs;
+
     return scratch_space;
 }
 
@@ -330,8 +330,6 @@ static uint32_t *write_xnuspy_ctl_tramp_instrs(uint32_t *scratch_space,
  * module/el1/xnuspy_ctl_tramp.s */
 static uint32_t *install_xnuspy_ctl_tramp(uint32_t *scratch_space,
         uint64_t *num_free_instrsp){
-    uint64_t num_free_instrs = *num_free_instrsp;
-
     uint8_t *sysent_stream = (uint8_t *)xnu_va_to_ptr(g_sysent_addr);
     size_t sizeof_struct_sysent = 0x18;
 
@@ -356,9 +354,6 @@ static uint32_t *install_xnuspy_ctl_tramp(uint32_t *scratch_space,
         /* mov w0, ENOSYS; ret */
         if(*(uint64_t *)xnu_va_to_ptr(sy_call) == 0xd65f03c0528009c0){
             g_xnuspy_ctl_callnum = i;
-
-            /* allow xnuspy_ctl_tramp access to xnuspy cache */
-            WRITE_QWORD_TO_SCRATCH_SPACE(xnu_ptr_to_va(xnuspy_cache_base));
 
             /* sy_call */
             if(!tagged_ptr)
@@ -385,9 +380,8 @@ static uint32_t *install_xnuspy_ctl_tramp(uint32_t *scratch_space,
             /* four 64 bit arguments, so arguments total 32 bytes */
             *(uint16_t *)(sysent_stream + 0x16) = 0x20;
 
-            *num_free_instrsp = num_free_instrs;
-
-            return scratch_space;
+            return write_xnuspy_ctl_tramp_instrs(scratch_space,
+                    num_free_instrsp);
         }
 
         sysent_stream += sizeof_struct_sysent;
@@ -435,10 +429,6 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
 
     for(size_t i=0; i<num_needed_symbols; i++){
         if(strcmp(ksym, g_xnuspy_ctl_needed_symbols[i].symbol) == 0){
-            /* printf("%s: replacing '%s' with %#llx (unslid %#llx)\n", __func__, */
-            /*         ksym, *g_xnuspy_ctl_needed_symbols[i].val, */
-            /*         *g_xnuspy_ctl_needed_symbols[i].val - kernel_slide); */
-            
             *va = *g_xnuspy_ctl_needed_symbols[i].valp;
             return;
         }
@@ -685,62 +675,21 @@ void xnuspy_preboot_hook(void){
 
     process_xnuspy_ctl_image(xnuspy_ctl_image);
 
-    /* install our hook for hook_system_check_sysctlbyname */
     uint64_t num_free_instrs = g_exec_scratch_space_size / sizeof(uint32_t);
     uint32_t *scratch_space = xnu_va_to_ptr(g_exec_scratch_space_addr);
 
     scratch_space = install_h_s_c_sbn_hook(scratch_space, &num_free_instrs);
-
-    initialize_xnuspy_callnum_sysctl_offsets();
-
-    /* replace an enosys sysent with xnuspy_ctl_tramp */
-    scratch_space = install_xnuspy_ctl_tramp(scratch_space, &num_free_instrs);
-
     printf("%s: xnuspy_ctl_tramp @ %#llx\n", __func__,
             xnu_ptr_to_va(scratch_space)-kernel_slide);
+    scratch_space = install_xnuspy_ctl_tramp(scratch_space, &num_free_instrs);
 
-    /* write the code for xnuspy_ctl_tramp */
-    scratch_space = write_xnuspy_ctl_tramp_instrs(scratch_space,
-            &num_free_instrs);
-
+    initialize_xnuspy_callnum_sysctl_offsets();
     initialize_xnuspy_cache();
 
     printf("%s: KERNEL SLIDE %#llx\n", __func__, kernel_slide);
 
-    /* iphone se 2016 14.3 */
-    /* volatile uint64_t *CPU0_IORVBar = (volatile uint64_t *)0x202050000; */
-    /* uint64_t kppphys = *CPU0_IORVBar & 0xfffffffff; */
-    /* printf("%s: kpp is @ %#llx (phys)\n", __func__, kppphys); */
-
-    /* map_range(0xc10000000, kppphys, 0xc000, 3, 0, true); */
-
-    /* uint8_t *kpp = (uint8_t *)0xc10000000; */
-    /* printf("%#x\n", *(uint32_t *)(kpp + 0x4428)); */
-    /* printf("%#x\n", *(uint32_t *)(kpp + 0x5988)); */
-    /* *(uint32_t *)(kpp + 0x4428) = 0xd503201f; */
-    /* *(uint32_t *)(kpp + 0x5988) = 0x52800028; */
-
-
-
-    /* memset(kpp, 0, 0xc000); */
-
-    /* volatile uint64_t *CPU0_IORVBar = (volatile uint64_t *)0x202050000; */
-    /* volatile uint64_t *CPU1_IORVBar = (volatile uint64_t *)0x202150000; */
-
-    /* uint64_t kppphys = *CPU0_IORVBar & 0xfffffffff; */
-    /* printf("%s: kpp is @ %#llx (phys)\n", __func__, kppphys); */
-
-    /* map_range(0xc10000000, kppphys, 0xc000, 3, 0, true); */
-
-    /* uint8_t *kpp = (uint8_t *)0xc10000000; */
-
-    /* for(int i=0; i<0xc000; i++){ */
-    /*     kpp[i] = '\0'; */
-    /* } */
-
     if(next_preboot_hook)
         next_preboot_hook();
 
-    /* combat short read */
-    asm volatile(".align 12");
+    asm volatile(".align 9");
 }

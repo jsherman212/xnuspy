@@ -229,7 +229,7 @@ int main(int argc, char **argv){
     }
 
     /* All hardcoded offsets are for iPhone 8 13.6.1 */
-    copyinstr = (int (*)(const void *, void *, size_t, size_t *))(0xfffffff007d03060 + kernel_slide);
+    /* copyinstr = (int (*)(const void *, void *, size_t, size_t *))(0xfffffff007d03060 + kernel_slide); */
     /* iphone se 14.3 */
     copyinstr = (int (*)(const void *, void *, size_t, size_t *))(0xFFFFFFF007241298 + kernel_slide);
 

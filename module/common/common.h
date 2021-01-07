@@ -15,8 +15,6 @@ extern uint64_t kernel_slide;
 
 extern void (*next_preboot_hook)(void);
 
-#define PAGE_SIZE                   (0x4000)
-
 #define iOS_13_x                    (19)
 #define iOS_14_x                    (20)
 

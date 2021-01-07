@@ -66,7 +66,7 @@ static void patchfind_kpp(uint32_t *kpp_stream, uint32_t *kpp_stream_end){
      * the start of the integrity check function and replace it with the code
      * from kpp.s.
      *
-     * kpp_stream points to KPP's Mach header, so we can do a linear search.
+     * kpp_stream points to KPP's Mach-O header, so we can do a linear search.
      */
     uint32_t stp_x16_x17_sp_pre = 0xa9bf47f0;
 
@@ -142,23 +142,25 @@ nope:
     uint32_t imm12 = bits(str, 10, 21);
     uint32_t shift = bits(str, 30, 31);
 
-    uint64_t mapping_page = sign_extend(((immhi << 2) | immlo) << 12, 32) +
+    uint64_t page = sign_extend(((immhi << 2) | immlo) << 12, 32) +
         ((uintptr_t)kpp_stream & ~0xfffuLL);
+    uint64_t pageoff = sign_extend(imm12, 12) << shift;
 
-    uint64_t imm = sign_extend(imm12, 12) << shift;
-
-    uint64_t mapping_kernEntryp = mapping_page + imm;
+    uint64_t mapping_kernEntryp = page + pageoff;
     uint64_t kpp_kernEntryp = 0x4100000000 + (mapping_kernEntryp - 0xc10000000);
 
+    uint64_t kpp_patches_len = g_kpp_patches_len / sizeof(uint32_t);
+    uint32_t *kpp_patches_cursor = (uint32_t *)g_kpp_patches;
+
     /* Set the space we reserved for kernEntry inside kpp.s */
-    uint64_t *_kernEntryp = (uint64_t *)(kpp_patches + (kpp_patches_num_patches - 2));
+    uint64_t *_kernEntryp = (uint64_t *)(kpp_patches_cursor + (kpp_patches_len - 2));
     *_kernEntryp = kpp_kernEntryp;
 
     kpp_stream = saved_prologue;
 
     /* Finally, replace this function */
-    for(int i=0; i<kpp_patches_num_patches; i++)
-        *kpp_stream++ = kpp_patches[i];
+    for(uint64_t i=0; i<kpp_patches_len; i++)
+        *kpp_stream++ = kpp_patches_cursor[i];
 }
 
 void patch_kpp(void){

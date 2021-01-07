@@ -2,8 +2,7 @@
 
 xnuspy is a pongoOS module which installs a new system call, `xnuspy_ctl`,
 allowing you to hook kernel functions from userspace. It supports iOS 13.x and
-14.x on checkra1n 0.11.0 and up. Devices with a 4K page size are not
-supported because I don't have any that boot.
+14.x on checkra1n 0.11.0 and up.
 
 Requires `libusb`: `brew install libusb`
 

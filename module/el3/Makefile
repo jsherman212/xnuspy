@@ -1,8 +1,8 @@
-all : kpp
+all : kpp kpp.o
 
-kpp.o : ../common/common.h ../common/pongo.h kpp.c kpp.h
-	$(CC) $(CFLAGS) kpp.c -c
-
-kpp : kpp.s kpp.o
+kpp : kpp.s
 	$(CC) -arch arm64 -e _kpp0 kpp.s -o kpp
-	../../opdump/opdump -i ./kpp -a kpp_patches -r
+	$(OPDUMP) -td -i ./kpp -a kpp_patches -o kpp_patches.h
+
+kpp.o : ../common/common.h ../common/pongo.h kpp.c kpp.h kpp_patches.h
+	$(CC) $(CFLAGS) kpp.c -c
