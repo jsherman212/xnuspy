@@ -65,6 +65,7 @@ extern uint64_t g_ipc_port_release_send_addr;
 extern uint64_t g_lck_rw_free_addr;
 extern uint64_t g_lck_grp_free_addr;
 extern int g_patched_doprnt_hide_pointers;
+extern uint64_t g_copyinstr_addr;
 extern uint64_t g_xnuspy_sysctl_name_ptr;
 extern uint64_t g_xnuspy_sysctl_descr_ptr;
 extern uint64_t g_xnuspy_sysctl_fmt_ptr;

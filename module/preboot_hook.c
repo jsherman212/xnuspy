@@ -101,6 +101,7 @@ static struct xnuspy_ctl_kernel_symbol {
     { "_allprocp", &g_allproc_addr },
     { "_bcopy_phys", &g_bcopy_phys_addr },
     { "_copyin", &g_copyin_addr },
+    { "_copyinstr", &g_copyinstr_addr },
     { "_copyout", &g_copyout_addr },
     { "_current_proc", &g_current_proc_addr },
     { "_first_reflector_page", &g_first_reflector_page },
@@ -212,6 +213,7 @@ static void anything_missing(void){
     chk(!g_lck_rw_free_addr, "lck_rw_free not found\n");
     chk(!g_lck_grp_free_addr, "lck_grp_free not found\n");
     chk(!g_patched_doprnt_hide_pointers, "doprnt_hide_pointers wasn't patched\n");
+    chk(!g_copyinstr_addr, "copyinstr not found\n");
 
     /* if we printed the error header, something is missing */
     if(printed_err_hdr)
@@ -605,8 +607,8 @@ void xnuspy_preboot_hook(void){
     free_static_memory -= (loader_xfer_recv_count + PAGE_SIZE) & ~(PAGE_SIZE - 1);
 
 
-    /* printf("%s: xnuspy_ctl image %#llx loader_xfer_recv_data %#llx\n", __func__, */
-    /*         xnuspy_ctl_image, loader_xfer_recv_data); */
+    printf("%s: xnuspy_ctl image %#llx loader_xfer_recv_data %#llx\n", __func__,
+            xnuspy_ctl_image, loader_xfer_recv_data);
 
     memcpy(xnuspy_ctl_image, loader_xfer_recv_data, loader_xfer_recv_count);
 
@@ -691,5 +693,5 @@ void xnuspy_preboot_hook(void){
     if(next_preboot_hook)
         next_preboot_hook();
 
-    asm volatile(".align 9");
+    /* asm volatile(".align 11"); */
 }

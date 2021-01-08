@@ -1176,6 +1176,32 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
             }),
             3, doprnt_hide_pointers_patcher_13, "__TEXT_EXEC"),
     },
+    {
+        PF_DECL32("copyinstr finder iOS 13",
+            LISTIZE({
+                0xf90007ff,     /* str xzr, [sp, 8] */
+                0xf900007f,     /* str xzr, [x3] */
+                0xb4000002,     /* cbz x2, n */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xff00001f,     /* ignore immediate */
+            }),
+            3, copyinstr_finder_13, "__TEXT_EXEC"),
+        PF_DECL32("copyinstr finder iOS 14",
+            LISTIZE({
+                0xf90007ff,     /* str xzr, [sp, 8] */
+                0xf900007f,     /* str xzr, [x3] */
+                0xb4000002,     /* cbz x2, n */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xff00001f,     /* ignore immediate */
+            }),
+            3, copyinstr_finder_13, "__TEXT_EXEC"),
+    },
     { PF_END, PF_END },
 };
 

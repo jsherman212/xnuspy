@@ -59,6 +59,7 @@ uint64_t g_ipc_port_release_send_addr = 0;
 uint64_t g_lck_rw_free_addr = 0;
 uint64_t g_lck_grp_free_addr = 0;
 int g_patched_doprnt_hide_pointers = 0;
+uint64_t g_copyinstr_addr = 0;
 uint64_t g_xnuspy_sysctl_name_ptr = 0;
 uint64_t g_xnuspy_sysctl_descr_ptr = 0;
 uint64_t g_xnuspy_sysctl_fmt_ptr = 0;
@@ -1077,6 +1078,30 @@ bool doprnt_hide_pointers_patcher_13(xnu_pf_patch_t *patch,
     g_patched_doprnt_hide_pointers = 1;
 
     puts("xnuspy: unset doprnt_hide_pointers");
+
+    return true;
+}
+
+/* confirmed working on all kernels 13.0-14.3 */
+bool copyinstr_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
+    /* We've landed inside copyinstr, find its prologue. Looking for
+     * sub sp, sp, n */
+    xnu_pf_disable_patch(patch);
+
+    uint32_t *opcode_stream = cacheable_stream;
+    uint32_t instr_limit = 50;
+
+    while((*opcode_stream & 0xffc003ff) != 0xd10003ff){
+        if(instr_limit-- == 0)
+            return false;
+
+        opcode_stream--;
+    }
+
+    g_copyinstr_addr = xnu_ptr_to_va(opcode_stream);
+
+    puts("xnuspy: found copyinstr");
+    printf("%s: copyinstr @ %#llx\n", __func__, g_copyinstr_addr - kernel_slide);
 
     return true;
 }

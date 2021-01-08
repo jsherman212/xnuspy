@@ -76,8 +76,8 @@ static int open1(void *vfsctx, struct nameidata *ndp, int uflags,
     /* kprintf("%s: %#x\n", __func__, *(uint32_t *)(0xFFFFFFF0072DA0F4 + kernel_slide)); */
 
     size_t sz = PATHBUFLEN;
-    /* char *path = kalloc_canblock(&sz, 1, NULL); */
-    char *path = kalloc_external(sz);
+    char *path = kalloc_canblock(&sz, 1, NULL);
+    /* char *path = kalloc_external(sz); */
 
     if(!path)
         goto orig;
@@ -86,8 +86,8 @@ static int open1(void *vfsctx, struct nameidata *ndp, int uflags,
     int res = copyinstr(ndp->ni_dirp, path, sz, &pathlen);
 
     if(res){
-        /* kfree_addr(path); */
-        kfree_ext(NULL, path, sz);
+        kfree_addr(path);
+        /* kfree_ext(NULL, path, sz); */
         goto orig;
     }
 
@@ -101,14 +101,14 @@ static int open1(void *vfsctx, struct nameidata *ndp, int uflags,
 
     if(strcmp_(path, "/var/mobile/testfile.txt") == 0){
         kprintf("%s: denying open for '%s'\n", __func__, path);
-        /* kfree_addr(path); */
-        kfree_ext(NULL, path, sz);
+        kfree_addr(path);
+        /* kfree_ext(NULL, path, sz); */
         *retval = -1;
         return ENOENT;
     }
 
-    /* kfree_addr(path); */
-    kfree_ext(NULL, path, sz);
+    kfree_addr(path);
+    /* kfree_ext(NULL, path, sz); */
 
 orig:
     return open1_orig(vfsctx, ndp, uflags, vap, fp_zalloc, cra, retval);
@@ -123,6 +123,13 @@ static int gather_kernel_offsets(void){
 
     if(ret){
         printf("Failed getting copyin\n");
+        return ret;
+    }
+
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, COPYINSTR, &copyinstr, 0);
+
+    if(ret){
+        printf("Failed getting copyinstr\n");
         return ret;
     }
 
@@ -228,17 +235,13 @@ int main(int argc, char **argv){
         return 1;
     }
 
-    /* All hardcoded offsets are for iPhone 8 13.6.1 */
-    /* copyinstr = (int (*)(const void *, void *, size_t, size_t *))(0xfffffff007d03060 + kernel_slide); */
-    /* iphone se 14.3 */
-    copyinstr = (int (*)(const void *, void *, size_t, size_t *))(0xFFFFFFF007241298 + kernel_slide);
-
     printf("kernel slide: %#llx\n", kernel_slide);
     printf("kalloc_canblock @ %#llx\n", (uint64_t)kalloc_canblock);
     printf("kfree_addr @ %#llx\n", (uint64_t)kfree_addr);
     printf("kalloc_external @ %#llx\n", (uint64_t)kalloc_external);
     printf("kfree_ext @ %#llx\n", (uint64_t)kfree_ext);
     printf("copyin @ %#llx\n", (uint64_t)copyin);
+    printf("copyinstr @ %#llx\n", (uint64_t)copyinstr);
     printf("copyout @ %#llx\n", (uint64_t)copyout);
     printf("current_proc @ %#llx\n", (uint64_t)current_proc);
     printf("kprintf @ %#llx\n", (uint64_t)kprintf);
@@ -246,11 +249,11 @@ int main(int argc, char **argv){
     printf("proc_pid @ %#llx\n", (uint64_t)proc_pid);
 
     /* open1 for iphone 8 13.6.1 */
-    /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xfffffff007d99c1c, */
-    /*         open1, &open1_orig); */
-    /* iphone se 14.3 */
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF0072DA190,
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xfffffff007d99c1c,
             open1, &open1_orig);
+    /* iphone se 14.3 */
+    /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF0072DA190, */
+    /*         open1, &open1_orig); */
 
     if(ret){
         printf("Could not hook open1: %s\n", strerror(errno));

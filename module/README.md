@@ -7,7 +7,7 @@ el1/
 - kernel code
 
 el3/
-- KPP patchfinder/patches for A9 and below
+- KPP patchfinder for A9
 
 pf/
 - patchfinder code for the kernel

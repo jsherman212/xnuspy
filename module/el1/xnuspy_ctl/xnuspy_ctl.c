@@ -34,11 +34,6 @@
 #define XNUSPY_INSTALL_HOOK         (0)
 #define XNUSPY_CHECK_IF_PATCHED     (1)
 #define XNUSPY_CACHE_READ           (2)
-/*
-#define XNUSPY_DUMP_TTES            (3)
-#define XNUSPY_KREAD                (4)
-#define XNUSPY_GET_CURRENT_TASK     (5)
-*/
 #define XNUSPY_MAX_FLAVOR           XNUSPY_CACHE_READ
 
 /* values for XNUSPY_CACHE_READ */
@@ -51,21 +46,22 @@
 #define BCOPY_PHYS                  (6)
 #define PHYSTOKV                    (7)
 #define COPYIN                      (8)
-#define COPYOUT                     (9)
-#define CURRENT_PROC                (10)
-#define PROC_PID                    (11)
-#define KERNEL_THREAD_START         (12)
-#define THREAD_DEALLOCATE           (13)
-#define KVTOPHYS                    (14)
-#define UVTOPHYS                    (15)
-#define KPROTECT                    (16)
-#define UPROTECT                    (17)
-#define KWRITE                      (18)
-#define KWRITE_INSTR                (19)
-#define EL0_PTEP                    (20)
-#define EL1_PTEP                    (21)
-#define COMMON_KALLOC               (22)
-#define COMMON_KFREE                (23)
+#define COPYINSTR                   (9)
+#define COPYOUT                     (10)
+#define CURRENT_PROC                (11)
+#define PROC_PID                    (12)
+#define KERNEL_THREAD_START         (13)
+#define THREAD_DEALLOCATE           (14)
+#define KVTOPHYS                    (15)
+#define UVTOPHYS                    (16)
+#define KPROTECT                    (17)
+#define UPROTECT                    (18)
+#define KWRITE                      (19)
+#define KWRITE_INSTR                (20)
+#define EL0_PTEP                    (21)
+#define EL1_PTEP                    (22)
+#define COMMON_KALLOC               (23)
+#define COMMON_KFREE                (24)
 #define MAX_CACHE                   COMMON_KFREE
 
 typedef struct {
@@ -126,13 +122,14 @@ MARK_AS_KERNEL_OFFSET void (*bcopy_phys)(uint64_t src, uint64_t dst,
 MARK_AS_KERNEL_OFFSET uint64_t (*phystokv)(uint64_t pa);
 MARK_AS_KERNEL_OFFSET int (*copyin)(const uint64_t uaddr, void *kaddr,
         vm_size_t nbytes);
+MARK_AS_KERNEL_OFFSET int (*copyinstr)(const uint64_t uaddr, void *kaddr,
+        size_t len, size_t *done);
 MARK_AS_KERNEL_OFFSET int (*copyout)(const void *kaddr, uint64_t uaddr,
         vm_size_t nbytes);
 
 MARK_AS_KERNEL_OFFSET void *(*current_proc)(void);
 MARK_AS_KERNEL_OFFSET pid_t (*proc_pid)(void *proc);
 MARK_AS_KERNEL_OFFSET void (*proc_list_lock)(void);
-/* MARK_AS_KERNEL_OFFSET void (*proc_list_unlock)(void); */
 MARK_AS_KERNEL_OFFSET uint64_t (*proc_uniqueid)(void *proc);
 MARK_AS_KERNEL_OFFSET void (*proc_ref_locked)(void *proc);
 MARK_AS_KERNEL_OFFSET void (*proc_rele_locked)(void *proc);
@@ -940,14 +937,10 @@ nextcmd:
      * patched to not bail when VM_PROT_EXECUTE is given, so that's also one
      * less patchfinder for me to write :D We also set from_user to one because
      * we're dealing with a user map. */
-    //kret = vm_map_wire_kernel(current_map, copystart, copysz, VM_PROT_READ,
-            //VM_KERN_MEMORY_OSFMK, 1);
     kern_return_t kret = vm_map_wire_external(current_map, copystart, copysz,
             VM_PROT_READ, 1);
 
     if(kret){
-        //KDBG("%s: vm_map_wire_kernel failed when wiring down "
-                //"[copystart, copysz): %d\n", __func__, kret);
         KDBG("%s: vm_map_wire_external failed when wiring down "
                 "[copystart, copysz): %d\n", __func__, kret);
         *retval = kern_return_to_errno(kret);
@@ -1010,13 +1003,10 @@ nextcmd:
     /* } */
 
     /* Wire down the shared mapping */
-    //kret = vm_map_wire_kernel(kernel_map, shm_addr, shm_addr + copysz,
-            //shm_prot, VM_KERN_MEMORY_OSFMK, 0);
     kret = vm_map_wire_external(kernel_map, shm_addr, shm_addr + copysz,
             shm_prot, 0);
 
     if(kret){
-        //KDBG("%s: vm_map_wire_kernel failed: %d\n", __func__, kret);
         KDBG("%s: vm_map_wire_external failed: %d\n", __func__, kret);
         *retval = kern_return_to_errno(kret);
         goto failed_dealloc_kernel_mapping;
@@ -1331,6 +1321,9 @@ static void xnuspy_consider_gc(void){
         return;
 
     xnuspy_do_gc();
+
+    /* Combat short read */
+    asm volatile(".align 12");
 }
 
 /* Every second, this thread loops through the proc list, and checks
@@ -1545,6 +1538,9 @@ static int xnuspy_cache_read(uint64_t which, uint64_t /* __user */ outp){
         case COPYIN:
             what = copyin;
             break;
+        case COPYINSTR:
+            what = copyinstr;
+            break;
         case COPYOUT:
             what = copyout;
             break;
@@ -1634,23 +1630,6 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
         case XNUSPY_CACHE_READ:
             res = xnuspy_cache_read(uap->arg1, uap->arg2);
             break;
-            /*
-        case XNUSPY_DUMP_TTES:
-            res = xnuspy_dump_ttes(uap->arg1, uap->arg2);
-            break;
-        case XNUSPY_KREAD:
-            res = copyout((const void *)uap->arg1, uap->arg2, uap->arg3);
-            break;
-        case XNUSPY_GET_CURRENT_TASK:
-            *retval = -1;
-            return ENOSYS;
-            */
-        /* case XNUSPY_GET_CURRENT_TASK: */
-        /*     { */
-        /*         void *ct = current_task(); */
-        /*         res = copyout(&ct, uap->arg1, sizeof(void *)); */
-        /*         break; */
-        /*     } */
         default:
             *retval = -1;
             return EINVAL;

@@ -20,11 +20,12 @@
 #define BCOPY_PHYS                  (6)
 #define PHYSTOKV                    (7)
 #define COPYIN                      (8)
-#define COPYOUT                     (9)
-#define CURRENT_PROC                (10)
-#define PROC_PID                    (11)
-#define KERNEL_THREAD_START         (12)
-#define THREAD_DEALLOCATE           (13)
+#define COPYINSTR                   (9)
+#define COPYOUT                     (10)
+#define CURRENT_PROC                (11)
+#define PROC_PID                    (12)
+#define KERNEL_THREAD_START         (13)
+#define THREAD_DEALLOCATE           (14)
 
 /* The rest of these functions are from xnuspy */
 
@@ -38,7 +39,7 @@
  * Returns:
  *  Non-zero if address translation was successful, zero otherwise.
  */
-#define KVTOPHYS                    (14)
+#define KVTOPHYS                    (15)
 
 /* uint64_t uvtophys(uint64_t uaddr)
  *
@@ -50,7 +51,7 @@
  * Returns:
  *  Non-zero if address translation was successful, zero otherwise.
  */
-#define UVTOPHYS                    (15)
+#define UVTOPHYS                    (16)
 
 /* int kprotect(uint64_t kaddr, uint64_t size, vm_prot_t prot)
  *
@@ -66,7 +67,7 @@
  * Returns:
  *  Zero if successful, non-zero otherwise.
  */
-#define KPROTECT                    (16)
+#define KPROTECT                    (17)
 
 /* int uprotect(uint64_t uaddr, uint64_t size, vm_prot_t prot)
  *
@@ -82,7 +83,7 @@
  * Returns:
  *  Zero if successful, non-zero otherwise.
  */
-#define UPROTECT                    (17)
+#define UPROTECT                    (18)
 
 /* void kwrite(void *dst, void *buf, size_t sz)
  *
@@ -94,7 +95,7 @@
  *  buf: kernel virtual address of data.
  *  sz:  how many bytes 'buf' is.
  */
-#define KWRITE                      (18)
+#define KWRITE                      (19)
 
 /* void kwrite_instr(uint64_t addr, uint32_t instr)
  *
@@ -105,7 +106,7 @@
  *  addr:  kernel virtual address.
  *  instr: new instruction for addr.
  */
-#define KWRITE_INSTR                (19)
+#define KWRITE_INSTR                (20)
 
 /* uint64_t *el0_ptep(uint64_t uaddr)
  *
@@ -118,7 +119,7 @@
  * Returns:
  *  Kernel virtual address of page table entry for uaddr.
  */
-#define EL0_PTEP                    (20)
+#define EL0_PTEP                    (21)
 
 /* uint64_t *el1_ptep(uint64_t kaddr)
  *
@@ -131,7 +132,7 @@
  * Returns:
  *  Kernel virtual address of page table entry for kaddr.
  */
-#define EL1_PTEP                    (21)
+#define EL1_PTEP                    (22)
 
 /* The next two functions abstract away the different kalloc/kfree pairs for
  * different iOS versions and keeps track of allocation sizes. This creates
@@ -171,8 +172,8 @@
  * Parameters:
  *  ptr: a pointer to memory with an objhdr struct at the beginning.
  */
-#define COMMON_KALLOC               (22)
-#define COMMON_KFREE                (23)
+#define COMMON_KALLOC               (23)
+#define COMMON_KFREE                (24)
 
 struct objhdr {
     size_t sz;
