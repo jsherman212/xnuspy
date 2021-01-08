@@ -10,7 +10,7 @@ int uprotect(uint64_t, uint64_t, vm_prot_t);
 void kwrite(void *, void *, size_t);
 void kwrite_instr(uint64_t, uint32_t);
 
-void *common_kalloc(size_t);
-void common_kfree(void *);
+void *unified_kalloc(size_t);
+void unified_kfree(void *);
 
 #endif

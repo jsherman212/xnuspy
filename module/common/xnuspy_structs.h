@@ -1,11 +1,6 @@
 #ifndef XNUSPY_STRUCTS
 #define XNUSPY_STRUCTS
 
-/* All kalloc'ed memory will have this struct as their first field */
-struct objhdr {
-    size_t sz;
-};
-
 struct xnuspy_reflector_page {
     struct xnuspy_reflector_page *next;
     void *page;
@@ -15,7 +10,6 @@ struct xnuspy_reflector_page {
 /* This structure represents a shared __TEXT and __DATA mapping. There is
  * one xnuspy_mapping_metadata struct per-process. */
 struct xnuspy_mapping_metadata {
-    struct objhdr hdr;
     /* Reference count for metadata, NOT the xnuspy_tramp */
     _Atomic uint64_t refcnt;
     /* Process which owns this mapping (p_uniqueid of calling process) */
@@ -36,7 +30,6 @@ struct xnuspy_mapping_metadata {
  * necessary to keep in the struct itself. I do this to save space. These are
  * not reference counted because they're per-hook. */
 struct xnuspy_tramp_metadata {
-    struct objhdr hdr;
     /* Hooked kernel function */
     uint64_t hooked;
     /* Overwritten instruction */

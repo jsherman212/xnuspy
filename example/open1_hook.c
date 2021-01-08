@@ -20,6 +20,8 @@ static void (*kfree_ext)(void *, void *, size_t);
 static void (*kprintf)(const char *, ...);
 static void (*kwrite_instr)(uint64_t, uint32_t);
 static pid_t (*proc_pid)(void *);
+static void *(*unified_kalloc)(size_t sz);
+static void (*unified_kfree)(void *ptr);
 
 static uint64_t kernel_slide;
 
@@ -74,7 +76,8 @@ static int open1(void *vfsctx, struct nameidata *ndp, int uflags,
 
     size_t sz = PATHBUFLEN;
     /* char *path = kalloc_canblock(&sz, 1, NULL); */
-    char *path = kalloc_external(sz);
+    /* char *path = kalloc_external(sz); */
+    char *path = unified_kalloc(sz);
 
     if(!path)
         goto orig;
@@ -84,7 +87,8 @@ static int open1(void *vfsctx, struct nameidata *ndp, int uflags,
 
     if(res){
         /* kfree_addr(path); */
-        kfree_ext(NULL, path, sz);
+        /* kfree_ext(NULL, path, sz); */
+        unified_kfree(path);
         goto orig;
     }
 
@@ -99,13 +103,15 @@ static int open1(void *vfsctx, struct nameidata *ndp, int uflags,
     if(strcmp_(path, "/var/mobile/testfile.txt") == 0){
         kprintf("%s: denying open for '%s'\n", __func__, path);
         /* kfree_addr(path); */
-        kfree_ext(NULL, path, sz);
+        /* kfree_ext(NULL, path, sz); */
+        unified_kfree(path);
         *retval = -1;
         return ENOENT;
     }
 
     /* kfree_addr(path); */
-    kfree_ext(NULL, path, sz);
+    /* kfree_ext(NULL, path, sz); */
+    unified_kfree(path);
 
 orig:
     return open1_orig(vfsctx, ndp, uflags, vap, fp_zalloc, cra, retval);
@@ -204,6 +210,22 @@ static int gather_kernel_offsets(void){
         return ret;
     }
 
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, UNIFIED_KALLOC,
+            &unified_kalloc, 0);
+
+    if(ret){
+        printf("Failed getting unified_kalloc\n");
+        return ret;
+    }
+
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, UNIFIED_KFREE,
+            &unified_kfree, 0);
+
+    if(ret){
+        printf("Failed getting unified_kfree\n");
+        return ret;
+    }
+
     return 0;
 }
 
@@ -244,13 +266,15 @@ int main(int argc, char **argv){
     printf("kprintf @ %#llx\n", (uint64_t)kprintf);
     printf("kwrite_instr @ %#llx\n", (uint64_t)kwrite_instr);
     printf("proc_pid @ %#llx\n", (uint64_t)proc_pid);
+    printf("unified_kalloc @ %#llx\n", (uint64_t)unified_kalloc);
+    printf("unified_kfree @ %#llx\n", (uint64_t)unified_kfree);
 
     /* open1 for iphone 8 13.6.1 */
-    /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xfffffff007d99c1c, */
-    /*         open1, &open1_orig); */
-    /* iphone 7 14.1 */
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF00730AA64,
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xfffffff007d99c1c,
             open1, &open1_orig);
+    /* iphone 7 14.1 */
+    /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF00730AA64, */
+    /*         open1, &open1_orig); */
     /* iphone se 14.3 */
     /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF0072DA190, */
     /*         open1, &open1_orig); */

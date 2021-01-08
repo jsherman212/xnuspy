@@ -60,9 +60,9 @@
 #define KWRITE_INSTR                (20)
 #define EL0_PTEP                    (21)
 #define EL1_PTEP                    (22)
-#define COMMON_KALLOC               (23)
-#define COMMON_KFREE                (24)
-#define MAX_CACHE                   COMMON_KFREE
+#define UNIFIED_KALLOC              (23)
+#define UNIFIED_KFREE               (24)
+#define MAX_CACHE                   UNIFIED_KFREE
 
 typedef struct {
     uint64_t word;
@@ -120,9 +120,9 @@ MARK_AS_KERNEL_OFFSET lck_rw_t *(*lck_rw_alloc_init)(void *grp, void *attr);
 MARK_AS_KERNEL_OFFSET void (*bcopy_phys)(uint64_t src, uint64_t dst,
         vm_size_t bytes);
 MARK_AS_KERNEL_OFFSET uint64_t (*phystokv)(uint64_t pa);
-MARK_AS_KERNEL_OFFSET int (*copyin)(const uint64_t uaddr, void *kaddr,
+MARK_AS_KERNEL_OFFSET int (*copyin)(const void *uaddr, void *kaddr,
         vm_size_t nbytes);
-MARK_AS_KERNEL_OFFSET int (*copyinstr)(const uint64_t uaddr, void *kaddr,
+MARK_AS_KERNEL_OFFSET int (*copyinstr)(const void *uaddr, void *kaddr,
         size_t len, size_t *done);
 MARK_AS_KERNEL_OFFSET int (*copyout)(const void *kaddr, uint64_t uaddr,
         vm_size_t nbytes);
@@ -490,38 +490,6 @@ static struct _vm_map *current_map(void){
     return *(struct _vm_map **)(current_thread() + offsetof_struct_thread_map);
 }
 
-__attribute__ ((naked)) static void _user_access_enable(void){
-    asm(""
-        ".long 0xd500409f\n"
-        "isb sy\n"
-        "ret\n"
-       );
-}
-
-__attribute__ ((naked)) static void _user_access_disable(void){
-    asm(""
-        ".long 0xd500419f\n"
-        "isb sy\n"
-        "ret\n"
-       );
-}
-
-static void user_access_enable(void){
-    uint64_t id_aa64mmfr1_el1;
-    asm volatile("mrs %0, id_aa64mmfr1_el1" : "=r" (id_aa64mmfr1_el1));
-
-    if(id_aa64mmfr1_el1 & 0xf00000)
-        _user_access_enable();
-}
-
-static void user_access_disable(void){
-    uint64_t id_aa64mmfr1_el1;
-    asm volatile("mrs %0, id_aa64mmfr1_el1" : "=r" (id_aa64mmfr1_el1));
-
-    if(id_aa64mmfr1_el1 & 0xf00000)
-        _user_access_disable();
-}
-
 static int kern_return_to_errno(kern_return_t kret){
     switch(kret){
         case KERN_INVALID_ADDRESS:
@@ -550,7 +518,6 @@ MARK_AS_KERNEL_OFFSET struct xnuspy_reflector_page *first_reflector_page;
 static lck_rw_t *xnuspy_rw_lck = NULL;
 
 struct stailq_entry {
-    struct objhdr hdr;
     void *elem;
     STAILQ_ENTRY(stailq_entry) link;
 };
@@ -587,7 +554,6 @@ static STAILQ_HEAD(, stailq_entry) unmaplist = STAILQ_HEAD_INITIALIZER(unmaplist
 static uint64_t g_num_leaked_pages = 0;
 
 struct orphan_mapping {
-    struct objhdr hdr;
     uint64_t mapping_addr;
     uint64_t mapping_size;
     void *memory_object;
@@ -620,11 +586,10 @@ static void desc_orphan_mapping(struct orphan_mapping *om){
 }
 
 static void xnuspy_mapping_metadata_release(struct xnuspy_mapping_metadata *mm){
-    //_Atomic uint64_t old = mm->refcnt;
     if(--mm->refcnt == 0){
         g_num_leaked_pages += mm->mapping_size / PAGE_SIZE;
 
-        struct orphan_mapping *om = common_kalloc(sizeof(*om));
+        struct orphan_mapping *om = unified_kalloc(sizeof(*om));
 
         /* I don't care for allocation failures here, we just won't be able to
          * ever unmap this mapping. This shouldn't happen too often? */
@@ -633,7 +598,7 @@ static void xnuspy_mapping_metadata_release(struct xnuspy_mapping_metadata *mm){
             return;
         }
 
-        struct stailq_entry *stqe = common_kalloc(sizeof(*stqe));
+        struct stailq_entry *stqe = unified_kalloc(sizeof(*stqe));
 
         if(!stqe){
             KDBG("%s: stqe allocation failed\n", __func__);
@@ -654,7 +619,7 @@ static void xnuspy_mapping_metadata_release(struct xnuspy_mapping_metadata *mm){
                 om->mapping_addr);
         desc_orphan_mapping(om);
 
-        common_kfree(mm);
+        unified_kfree(mm);
     }
 }
 
@@ -679,7 +644,7 @@ static void xnuspy_tramp_teardown(struct xnuspy_tramp *t){
     }
 
     if(t->tramp_metadata){
-        common_kfree(t->tramp_metadata);
+        unified_kfree(t->tramp_metadata);
         t->tramp_metadata = NULL;
     }
 }
@@ -852,11 +817,43 @@ map_caller_segments(struct mach_header_64 * /* __user */ umh,
     uint64_t copystart = 0, copysz = 0;
     int seen_text = 0, seen_data = 0;
 
-    struct load_command *lc = (struct load_command *)(umh + 1);
-    
-    user_access_enable();
+    struct mach_header_64 umh_kern;
 
-    for(int i=0; i<umh->ncmds; i++){
+    int res = copyin(umh, &umh_kern, sizeof(umh_kern));
+
+    if(res){
+        KDBG("%s: copyin failed for mach header: %d\n", __func__, res);
+        *retval = res;
+        return NULL;
+    }
+
+    uint32_t sizeofcmds = umh_kern.sizeofcmds;
+
+    KDBG("%s: %#x\n", __func__, sizeofcmds);
+
+    struct load_command *lc = unified_kalloc(sizeofcmds);
+
+    if(!lc){
+        KDBG("%s: failed allocating load command buffer\n", __func__);
+        *retval = ENOMEM;
+        return NULL;
+    }
+
+    struct load_command *lc_orig = lc;
+    struct load_command *ulc = (struct load_command *)((uintptr_t)umh + sizeof(*umh));
+
+    res = copyin(ulc, lc, sizeofcmds);
+
+    if(res){
+        unified_kfree(lc);
+        KDBG("%s: copyin failed for load commands: %d\n", __func__, res);
+        *retval = res;
+        return NULL;
+    }
+
+    uint32_t ncmds = umh_kern.ncmds;
+
+    for(uint32_t i=0; i<ncmds; i++){
         if(lc->cmd != LC_SEGMENT_64)
             goto nextcmd;
 
@@ -899,7 +896,7 @@ nextcmd:
         lc = (struct load_command *)((uintptr_t)lc + lc->cmdsize);
     }
 
-    user_access_disable();
+    unified_kfree(lc_orig);
 
     KDBG("%s: ended with copystart %#llx copysz %#llx\n", __func__,
             copystart, copysz);
@@ -913,10 +910,10 @@ nextcmd:
     }
 
     /* Create the metadata object for the calling process */
-    metadata = common_kalloc(sizeof(*metadata));
+    metadata = unified_kalloc(sizeof(*metadata));
 
     if(!metadata){
-        KDBG("%s: common_kalloc returned NULL when allocating metadata\n",
+        KDBG("%s: unified_kalloc returned NULL when allocating metadata\n",
                 __func__);
         *retval = ENOMEM;
         goto failed;
@@ -1076,7 +1073,7 @@ failed_unwire_user_segments:
     vm_map_unwire(current_map, copystart, copystart + copysz, 1);
 failed:;
    if(need_free_on_error)
-       common_kfree(metadata);
+       unified_kfree(metadata);
 
     return NULL;
 }
@@ -1097,7 +1094,7 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
         goto out;
     }
 
-    struct xnuspy_tramp_metadata *tm = common_kalloc(sizeof(*tm));
+    struct xnuspy_tramp_metadata *tm = unified_kalloc(sizeof(*tm));
 
     if(!tm){
         KDBG("%s: failed allocating mem for tramp metadata\n", __func__);
@@ -1223,7 +1220,7 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
 out_free_tramp_entry:
     xnuspy_tramp_free(tramp_entry);
 out_free_tramp_metadata:
-    common_kfree(tm);
+    unified_kfree(tm);
 out:
     return res;
 }
@@ -1308,8 +1305,8 @@ static void xnuspy_do_gc(void){
 
         STAILQ_REMOVE(&unmaplist, entry, stailq_entry, link);
 
-        common_kfree(entry);
-        common_kfree(om);
+        unified_kfree(entry);
+        unified_kfree(om);
     }
 }
 
@@ -1441,7 +1438,7 @@ static int xnuspy_init(void){
     while((uint8_t *)cursor < xnuspy_tramp_page_end){
     /* int lim = 5; */
     /* for(int i=0; i<lim; i++){ */
-        struct stailq_entry *entry = common_kalloc(sizeof(*entry));
+        struct stailq_entry *entry = unified_kalloc(sizeof(*entry));
 
         if(!entry){
             KDBG("%s: no mem for stailq_entry\n", __func__);
@@ -1494,7 +1491,7 @@ out_dealloc_freelist:;
 
     STAILQ_FOREACH_SAFE(entry, &freelist, link, tmp){
         STAILQ_REMOVE(&freelist, entry, stailq_entry, link);
-        common_kfree(entry);
+        unified_kfree(entry);
     }
 
     STAILQ_INIT(&freelist);
@@ -1580,11 +1577,11 @@ static int xnuspy_cache_read(uint64_t which, uint64_t /* __user */ outp){
         case EL1_PTEP:
             what = el1_ptep;
             break;
-        case COMMON_KALLOC:
-            what = common_kalloc;
+        case UNIFIED_KALLOC:
+            what = unified_kalloc;
             break;
-        case COMMON_KFREE:
-            what = common_kfree;
+        case UNIFIED_KFREE:
+            what = unified_kfree;
             break;
         default:
             return EINVAL;

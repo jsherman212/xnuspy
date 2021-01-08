@@ -157,32 +157,35 @@ void kwrite_instr(uint64_t dst, uint32_t instr){
     kprotect(dst, sizeof(uint32_t), VM_PROT_READ | VM_PROT_EXECUTE);
 }
 
-struct objhdr {
-    size_t sz;
+struct unifiedhdr {
+    size_t allocsz;
 };
 
-void *common_kalloc(size_t sz){
-    struct objhdr *mem;
+void *unified_kalloc(size_t sz){
+    struct unifiedhdr *hdr;
+    size_t allocsz = sizeof(*hdr) + sz;
 
     if(iOS_version == iOS_13_x)
-        mem = kalloc_canblock(&sz, 0, NULL);
+        hdr = kalloc_canblock(&allocsz, 0, NULL);
     else
-        mem = kalloc_external(sz);
+        hdr = kalloc_external(allocsz);
 
-    if(!mem)
+    if(!hdr)
         return NULL;
 
-    mem->sz = sz;
+    hdr->allocsz = allocsz;
 
-    return mem;
+    return hdr + 1;
 }
 
-void common_kfree(struct objhdr *obj){
-    if(!obj)
+void unified_kfree(void *ptr){
+    if(!ptr)
         return;
 
+    struct unifiedhdr *hdr = (struct unifiedhdr *)((uintptr_t)ptr - sizeof(*hdr));
+
     if(iOS_version == iOS_13_x)
-        kfree_addr(obj);
+        kfree_addr(hdr);
     else
-        kfree_ext(NULL, obj, obj->sz);
+        kfree_ext(NULL, hdr, hdr->allocsz);
 }

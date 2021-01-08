@@ -136,47 +136,37 @@
 
 /* The next two functions abstract away the different kalloc/kfree pairs for
  * different iOS versions and keeps track of allocation sizes. This creates
- * an API somewhat like malloc/free. Every allocation must be a struct and
- * must start with an objhdr field followed by data. For example:
+ * an API like malloc/free. Pointers returned from unified_kalloc can only be
+ * freed with unified_kfree.
+ *
+ *  uint8_t *buf = unified_kalloc(0x200);
  *  
- *  struct mystruct {
- *      struct objhdr hdr;
- *      uint64_t a;
- *      float b;
- *  };
- *
- *  struct mystruct *mem = common_kalloc(sizeof(*mem));
- *
- *  if(!mem)
+ *  if(!buf)
  *     <error>
  *
- *  mem->a = 99;
- *  mem->b = 4.0f;
+ *  buf[0] = '\0';
  *
- *  common_kfree(mem);
+ *  unified_kfree(buf);
  *
  * -------------------------------
  *
- * void *common_kalloc(size_t sz)
+ * void *unified_kalloc(size_t sz)
  *
  * Parameters:
  *  sz: allocation size.
  *
  * Returns:
- *  NULL if the chosen kalloc function fails, a pointer otherwise.
+ *  Upon success, a pointer to memory. If we are on 13.x, kalloc_canblock's
+ *  canblock parameter is false. Upon failure, NULL.
  *
  * -------------------------------
  *
- * void common_kfree(void *ptr)
+ * void unified_kfree(void *ptr)
  *
  * Parameters:
- *  ptr: a pointer to memory with an objhdr struct at the beginning.
+ *  ptr: a pointer returned from unified_kalloc.
  */
-#define COMMON_KALLOC               (23)
-#define COMMON_KFREE                (24)
-
-struct objhdr {
-    size_t sz;
-};
+#define UNIFIED_KALLOC              (23)
+#define UNIFIED_KFREE               (24)
 
 #endif
