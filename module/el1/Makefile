@@ -7,7 +7,7 @@ all : $(ASM_INSTR_HDRS) target_dirs
 	$(eval OUTFILE = $(subst .s,,$<))
 	$(CC) -arch arm64 -e _$(OUTFILE) $< -o $(OUTFILE)
 	$(OPDUMP) -td -i ./$(OUTFILE) -a $(OUTFILE) -o $(OUTFILE)_instrs.h
-	rm ./$(OUTFILE)
+	# rm ./$(OUTFILE)
 
 .PHONY : target_dirs $(TARGET_DIRS)
 

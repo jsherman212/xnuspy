@@ -3,59 +3,64 @@
 #include "hook_system_check_sysctlbyname_hook.h"
 
 .align 2
-.globl _hook_system_check_sysctlbyname_hook
+.global _hook_system_check_sysctlbyname_hook
 
 _hook_system_check_sysctlbyname_hook:
     sub sp, sp, STACK
-    ; we branched when parameters were being copied to callee-saved registers
-    stp x7, x6, [sp, STACK-0xa0]
-    stp x5, x4, [sp, STACK-0x90]
-    stp x3, x2, [sp, STACK-0x80]
-    stp x1, x0, [sp, STACK-0x70]
-    stp x28, x27, [sp, STACK-0x60]
-    stp x26, x25, [sp, STACK-0x50]
-    stp x24, x23, [sp, STACK-0x40]
-    stp x22, x21, [sp, STACK-0x30]
-    stp x20, x19, [sp, STACK-0x20]
-    stp x29, x30, [sp, STACK-0x10]
-    add x29, sp, STACK-0x10
+    /* We branched when parameters were being copied to callee-saved
+    registers */
+    stp x7, x6, [sp, #(STACK-0xa0)]
+    stp x5, x4, [sp, #(STACK-0x90)]
+    stp x3, x2, [sp, #(STACK-0x80)]
+    stp x1, x0, [sp, #(STACK-0x70)]
+    stp x28, x27, [sp, #(STACK-0x60)]
+    stp x26, x25, [sp, #(STACK-0x50)]
+    stp x24, x23, [sp, #(STACK-0x40)]
+    stp x22, x21, [sp, #(STACK-0x30)]
+    stp x20, x19, [sp, #(STACK-0x20)]
+    stp x29, x30, [sp, #(STACK-0x10)]
+    add x29, sp, #(STACK-0x10)
 
     adr x19, addrof_xnuspy_cache
     ldr x28, [x19]
 
-    ; MIB array
+    /* MIB array */
     mov x19, x2
-    ; length of MIB array
+    /* Length of MIB array */
     mov w20, w3
 
-    ; this function does not take sysctl_geometry_lock
+    /* This function does not take sysctl_geometry_lock */
     ldr x0, [x28, SYSCTL_GEOMETRY_LOCK_PTR]
     ldr x0, [x0]
     ldr x21, [x28, LCK_RW_LOCK_SHARED]
     blr x21
-    ; if this sysctl hasn't been added yet, don't do anything
+    /* If this sysctl hasn't been added yet, register it */
     ldr x21, [x28, DID_REGISTER_SYSCTL]
     cbz x21, Lregister_xnuspy_ctl_callnum_sysctl
     ldr x21, [x28, XNUSPY_SYSCTL_MIB_COUNT_PTR]
     ldr w21, [x21]
+    /* Not the same length? Definitely not ours */
     cmp w21, w20
     b.ne Lnot_ours
 
-    ; same length, so compare MIB contents
-    ldr x21, [x28, XNUSPY_SYSCTL_MIB_PTR]               ; our MIB array
-    mov x22, x19                                        ; passed in MIB array
-    ; end of our MIB array. The MIB array param and our MIB array are
-    ; guarenteed to have matching lengths, so we can pick one of them
-    ; to use to check if we hit the end of both
-    add x23, x21, w20, lsl 0x2
+    /* Same length, so compare MIB contents. Setting up for mib_check_loop:
+    X21: pointer to kern.xnuspy_ctl_callnum MIB array
+    X22: pointer to passed in MIB array
+    X23: pointer to the end of our MIB array. If we're here, the MIB array
+         parameter is the same length of ours.
+    X24-X26: scratch registers
+    */
+    ldr x21, [x28, XNUSPY_SYSCTL_MIB_PTR]
+    mov x22, x19
+    add x23, x21, w20, lsl #0x2
 
 Lmib_check_loop:
-    ldr w24, [x21], 0x4
-    ldr w25, [x22], 0x4
-    ; one mismatched elem and we know it isn't ours
+    ldr w24, [x21], #0x4
+    ldr w25, [x22], #0x4
+    /* One mismatched elem and we know it isn't ours */
     cmp w24, w25
     b.ne Lnot_ours
-    ; if we hit the end of our MIB array, it's ours
+    /* If we hit the end of our MIB array, it's ours */
     subs x26, x23, x21
     cbnz x26, Lmib_check_loop
 
@@ -64,27 +69,24 @@ Lours:
     ldr x0, [x0]
     ldr x19, [x28, LCK_RW_DONE]
     blr x19
-    ; if it is ours, branch right to hook_system_check_sysctlbyname's
-    ; epilogue, returning no error
+    /* If it is ours, branch right to hook_system_check_sysctlbyname's
+    epilogue, returning no error */
     ldr x1, [x28, H_S_C_SBN_EPILOGUE_ADDR]
     add sp, sp, STACK
     mov x0, xzr
     br x1
-    ; not reached
+    /* Not reached */
 
 Lregister_xnuspy_ctl_callnum_sysctl:
-    ; this does not need to be locked
     ldr x0, [x28, SYSCTL_GEOMETRY_LOCK_PTR]
     ldr x0, [x0]
     ldr x19, [x28, LCK_RW_DONE]
     blr x19
 
     mov x0, SIZEOF_STRUCT_SYSCTL_OID
-    ; we still hold sysctl_geometry_lock
     ldr x19, [x28, IOS_VERSION]
     cmp x19, iOS_13_x
     b.eq LiOS_13_x_kalloc
-    ; fall thru
 
     ldr x19, [x28, KALLOC_EXTERNAL]
     blr x19
@@ -98,7 +100,6 @@ LiOS_13_x_kalloc:
     mov w2, wzr
     ldr x19, [x28, KALLOC_CANBLOCK]
     blr x19
-    ; fall thru
 
 Lregister:
     cbz x0, Lnot_ours
@@ -116,63 +117,77 @@ Lregister:
     add x19, x28, XNUSPY_CTL_CALLNUM
     str x19, [x0, OFFSETOF_OID_ARG1]
     str wzr, [x0, OFFSETOF_OID_ARG2]
-    ; oid_name, "kern.xnuspy_ctl_callnum"
-    ldr x19, [x28, XNUSPY_SYSCTL_NAME_PTR]
-    ; skip "kern."
-    add x19, x19, 0x5
+    adr x19, oid_name
+    /* Skip "kern." */
+    add x19, x19, #0x5
     str x19, [x0, OFFSETOF_OID_NAME]
     ldr x19, [x28, SYSCTL_HANDLE_LONG]
     str x19, [x0, OFFSETOF_OID_HANDLER]
-    ldr x19, [x28, XNUSPY_SYSCTL_FMT_PTR]
+    adr x19, oid_fmt
     str x19, [x0, OFFSETOF_OID_FMT]
-    ldr x19, [x28, XNUSPY_SYSCTL_DESCR_PTR]
+    adr x19, oid_descr
     str x19, [x0, OFFSETOF_OID_DESCR]
     mov w19, SYSCTL_OID_VERSION
     str w19, [x0, OFFSETOF_OID_VERSION]
     str wzr, [x0, OFFSETOF_OID_REFCNT]
 
-    ; register this sysctl
     ldr x19, [x28, SYSCTL_REGISTER_OID]
     blr x19
 
-    ; Figure out what MIB array looks like for this new sysctl.
-    ; We need this so we can check if the incoming sysctl is ours.
-    ; name2oid expects this lock to be held
+    /* Figure out what the MIB array looks like for this new sysctl.
+    Unfortunately I can't just reserve space for this because this
+    page is r-x. name2oid expects sysctl_geometry_lock to be held */
     ldr x0, [x28, SYSCTL_GEOMETRY_LOCK_PTR]
     ldr x0, [x0]
     ldr x19, [x28, LCK_RW_LOCK_SHARED]
     blr x19
 
-    ldr x0, [x28, XNUSPY_SYSCTL_NAME_PTR]
+    ; ldr x0, [x28, XNUSPY_SYSCTL_NAME_PTR]
+    /* name2oid modifies the first parameter, so we need to deep copy */
+    adr x0, oid_name
+    add x1, sp, SYSCTL_NAME_SPACE
+
+Lcopy_name:
+    ldrb w2, [x0], #0x1
+    strb w2, [x1], #0x1
+    cmp w2, wzr
+    b.ne Lcopy_name
+
+    ; adr x0, oid_name
+    add x0, sp, SYSCTL_NAME_SPACE
     ldr x1, [x28, XNUSPY_SYSCTL_MIB_PTR]
     ldr x2, [x28, XNUSPY_SYSCTL_MIB_COUNT_PTR]
     ldr x19, [x28, NAME2OID]
     blr x19
 
-    mov x19, 0x1
+    mov x19, #0x1
     str x19, [x28, DID_REGISTER_SYSCTL]
-    ; fall thru
 
-    ; in the case our sysctl wasn't being dealt with, return back to
-    ; hook_system_check_sysctlbyname to carry out its normal operation
 Lnot_ours:
     ldr x0, [x28, SYSCTL_GEOMETRY_LOCK_PTR]
     ldr x0, [x0]
     ldr x19, [x28, LCK_RW_DONE]
     blr x19
-    ldp x29, x30, [sp, STACK-0x10]
-    ldp x20, x19, [sp, STACK-0x20]
-    ldp x22, x21, [sp, STACK-0x30]
-    ldp x24, x23, [sp, STACK-0x40]
-    ldp x26, x25, [sp, STACK-0x50]
-    ldp x28, x27, [sp, STACK-0x60]
-    ldp x1, x0, [sp, STACK-0x70]
-    ldp x3, x2, [sp, STACK-0x80]
-    ldp x5, x4, [sp, STACK-0x90]
-    ldp x7, x6, [sp, STACK-0xa0]
+    ldp x29, x30, [sp, #(STACK-0x10)]
+    ldp x20, x19, [sp, #(STACK-0x20)]
+    ldp x22, x21, [sp, #(STACK-0x30)]
+    ldp x24, x23, [sp, #(STACK-0x40)]
+    ldp x26, x25, [sp, #(STACK-0x50)]
+    ldp x28, x27, [sp, #(STACK-0x60)]
+    ldp x1, x0, [sp, #(STACK-0x70)]
+    ldp x3, x2, [sp, #(STACK-0x80)]
+    ldp x5, x4, [sp, #(STACK-0x90)]
+    ldp x7, x6, [sp, #(STACK-0xa0)]
     add sp, sp, STACK
     .zero (5*4)
-    ; xnuspy will write back the instructions we overwrote in the space above
+    /* xnuspy will write back the instructions we overwrote in the space
+    above */
     ret
 
 addrof_xnuspy_cache: .dword 0x4142434445464748
+oid_name: .asciz "kern.xnuspy_ctl_callnum"
+oid_descr: .asciz "query for xnuspy_ctl's call number"
+oid_fmt: .asciz "L"
+/* Align so we can write four bytes every time and not have to worry about
+    scratch_space being unaligned when we go to write other instructions */
+.align 2

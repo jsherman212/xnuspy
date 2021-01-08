@@ -3,6 +3,8 @@
 
 #define STACK                       (0x200)
 
+#define NEW_PTE_SPACE               (STACK-0x80)
+
 /* mask for extracting pointer to the next table */
 #define ARM_TTE_TABLE_MASK          (0x0000ffffffffc000)
 
@@ -21,16 +23,6 @@
 #define ARM_TT_L1_INDEX_MASK        ARM_16K_TT_L1_INDEX_MASK
 #define ARM_TT_L2_INDEX_MASK        ARM_16K_TT_L2_INDEX_MASK
 #define ARM_TT_L3_INDEX_MASK        ARM_16K_TT_L3_INDEX_MASK
-
-#define ARM_TTE_TYPE_FAULT          (0x0000000000000000)
-#define ARM_TTE_EMPTY               (0x0000000000000000)
-#define ARM_TTE_VALID               (0x0000000000000001)
-#define ARM_TTE_TYPE_MASK           (0x0000000000000002)
-#define ARM_TTE_TYPE_TABLE          (0x0000000000000002)
-#define ARM_TTE_TYPE_BLOCK          (0x0000000000000000)
-
-#define ARM_PTE_TYPE_MASK           (0x0000000000000002)
-#define ARM_PTE_TYPE_VALID          (0x0000000000000003)
 
 #define DAIFSC_DEBUGF               (1 << 3)
 #define DAIFSC_ASYNCF               (1 << 2)

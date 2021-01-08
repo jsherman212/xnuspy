@@ -231,13 +231,11 @@ static void initialize_xnuspy_cache(void){
     XNUSPY_CACHE_WRITE(g_lck_rw_lock_shared_addr);
     XNUSPY_CACHE_WRITE(g_lck_rw_done_addr);
 
-    /* DID_REGISTER_SYSCTL */
+    /* DID_REGISTER_SYSCTL, used inside hook_system_check_sysctlbyname_hook,
+     * initialize to false */
     XNUSPY_CACHE_WRITE(0);
 
     XNUSPY_CACHE_WRITE(g_h_s_c_sbn_epilogue_addr);
-    XNUSPY_CACHE_WRITE(g_xnuspy_sysctl_name_ptr);
-    XNUSPY_CACHE_WRITE(g_xnuspy_sysctl_descr_ptr);
-    XNUSPY_CACHE_WRITE(g_xnuspy_sysctl_fmt_ptr);
     XNUSPY_CACHE_WRITE(g_xnuspy_sysctl_mib_ptr);
     XNUSPY_CACHE_WRITE(g_xnuspy_sysctl_mib_count_ptr);
     XNUSPY_CACHE_WRITE(g_xnuspy_ctl_callnum);
@@ -246,11 +244,10 @@ static void initialize_xnuspy_cache(void){
     XNUSPY_CACHE_WRITE(g_xnuspy_ctl_img_codestart);
     XNUSPY_CACHE_WRITE(g_xnuspy_ctl_img_codesz);
 
-    /* Used inside xnuspy_ctl_tramp.s, initialize to false */
+    /* XNUSPY_CTL_IS_RX, used inside xnuspy_ctl_tramp.s, initialize to false */
     XNUSPY_CACHE_WRITE(0);
 
     XNUSPY_CACHE_WRITE(g_phystokv_addr);
-
     XNUSPY_CACHE_WRITE(g_bcopy_phys_addr);
 
     if(g_kern_version_major == iOS_13_x){
@@ -261,9 +258,6 @@ static void initialize_xnuspy_cache(void){
         XNUSPY_CACHE_WRITE(g_kalloc_external_addr);
         XNUSPY_CACHE_WRITE(g_kfree_ext_addr);
     }
-
-    /* new PTE space, zero it out */
-    XNUSPY_CACHE_WRITE(0);
 
     puts("xnuspy: initialized xnuspy cache");
 }
@@ -276,33 +270,23 @@ static uint32_t *install_h_s_c_sbn_hook(uint32_t *scratch_space,
         g_hook_system_check_sysctlbyname_hook_len / sizeof(uint32_t);
     uint32_t *h_s_c_sbn_hook_cursor =
         (uint32_t *)g_hook_system_check_sysctlbyname_hook;
-
-    uint64_t *addrof_xnuspy_cache =
-        (uint64_t *)(h_s_c_sbn_hook_cursor + (h_s_c_sbn_hook_len - 2));
-    *addrof_xnuspy_cache = xnu_ptr_to_va(xnuspy_cache_base);
+    uint32_t *h_s_c_sbn_hook_end = h_s_c_sbn_hook_cursor + h_s_c_sbn_hook_len;
 
     uint64_t h_s_c_sbn_hook_addr = xnu_ptr_to_va(scratch_space);
     uint32_t *h_s_c_sbn_branch_from = xnu_va_to_ptr(g_h_s_c_sbn_branch_addr);
+    uint32_t *h_s_c_sbn_branch_from_orig = h_s_c_sbn_branch_from;
 
-    /* The zeros we reserved are for the instructions we overwrote */
-    while(*h_s_c_sbn_hook_cursor)
+    while(h_s_c_sbn_hook_cursor < h_s_c_sbn_hook_end){
+        if(*(uint64_t *)h_s_c_sbn_hook_cursor == 0x4142434445464748)
+            *(uint64_t *)h_s_c_sbn_hook_cursor = xnu_ptr_to_va(xnuspy_cache_base);
+        else if(*h_s_c_sbn_hook_cursor == 0)
+            *h_s_c_sbn_hook_cursor = *h_s_c_sbn_branch_from++;
+
         WRITE_INSTR_TO_SCRATCH_SPACE(*h_s_c_sbn_hook_cursor++);
+    }
 
-    WRITE_INSTR_TO_SCRATCH_SPACE(h_s_c_sbn_branch_from[0]);
-    WRITE_INSTR_TO_SCRATCH_SPACE(h_s_c_sbn_branch_from[1]);
-    WRITE_INSTR_TO_SCRATCH_SPACE(h_s_c_sbn_branch_from[2]);
-    WRITE_INSTR_TO_SCRATCH_SPACE(h_s_c_sbn_branch_from[3]);
-    WRITE_INSTR_TO_SCRATCH_SPACE(h_s_c_sbn_branch_from[4]);
-
-    /* Skip the reserved space */
-    h_s_c_sbn_hook_cursor += 5;
-
-    /* Write the ret and the pointer to the xnuspy cache */
-    WRITE_INSTR_TO_SCRATCH_SPACE(*h_s_c_sbn_hook_cursor++);
-    WRITE_INSTR_TO_SCRATCH_SPACE(*h_s_c_sbn_hook_cursor++);
-    WRITE_INSTR_TO_SCRATCH_SPACE(*h_s_c_sbn_hook_cursor++);
-
-    write_blr(8, (uint64_t)h_s_c_sbn_branch_from, h_s_c_sbn_hook_addr);
+    /* Use x8 */
+    write_blr(8, (uint64_t)h_s_c_sbn_branch_from_orig, h_s_c_sbn_hook_addr);
 
     *num_free_instrsp = num_free_instrs;
 
@@ -397,30 +381,9 @@ static uint32_t *install_xnuspy_ctl_tramp(uint32_t *scratch_space,
 }
 
 static void initialize_xnuspy_callnum_sysctl_offsets(void){
-    uint8_t *sysctl_stuff = (uint8_t *)xnuspy_cache_base + (PAGE_SIZE / 2);
-
-    /* sysctl name for the system call number */
-    const char *sysctl_name = "kern.xnuspy_ctl_callnum";
-    strcpy((char *)sysctl_stuff, sysctl_name);
-
-    char *sysctl_namep = (char *)sysctl_stuff;
-
-    const char *sysctl_descr = "query for xnuspy_ctl's system call number";
-    size_t sysctl_name_len = strlen(sysctl_name);
-    char *sysctl_descrp = (char *)(sysctl_stuff + sysctl_name_len + 1);
-    strcpy(sysctl_descrp, sysctl_descr);
-
-    /* how sysctl should format the call number, long */
-    size_t sysctl_descr_len = strlen(sysctl_descr);
-    char *sysctl_fmtp = sysctl_descrp + strlen(sysctl_descr) + 1;
-    strcpy(sysctl_fmtp, "L");
-
-    uint32_t *sysctl_mibp = (uint32_t *)((uint64_t)(sysctl_fmtp + 8) & ~7);
+    uint32_t *sysctl_mibp = (uint32_t *)((uint8_t *)xnuspy_cache_base + (PAGE_SIZE / 2));
     uint32_t *sysctl_mib_countp = (uint32_t *)(sysctl_mibp + CTL_MAXNAME);
 
-    g_xnuspy_sysctl_name_ptr = xnu_ptr_to_va(sysctl_namep);
-    g_xnuspy_sysctl_descr_ptr = xnu_ptr_to_va(sysctl_descrp);
-    g_xnuspy_sysctl_fmt_ptr = xnu_ptr_to_va(sysctl_fmtp);
     g_xnuspy_sysctl_mib_ptr = xnu_ptr_to_va(sysctl_mibp);
     g_xnuspy_sysctl_mib_count_ptr = xnu_ptr_to_va(sysctl_mib_countp);
 }
@@ -692,6 +655,4 @@ void xnuspy_preboot_hook(void){
 
     if(next_preboot_hook)
         next_preboot_hook();
-
-    /* asm volatile(".align 11"); */
 }

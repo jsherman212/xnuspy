@@ -4,6 +4,7 @@
 #define STACK                       (0x200)
 
 #define KALLOC_SZ                   (STACK-0xb0)
+#define SYSCTL_NAME_SPACE           (STACK-0xf0)
 
 /* sysctl stuff */
 #define CTL_MAXNAME                 (12)
