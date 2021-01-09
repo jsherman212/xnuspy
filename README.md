@@ -6,8 +6,6 @@ allowing you to hook kernel functions from userspace. It supports iOS 13.x and
 
 Requires `libusb`: `brew install libusb`
 
-Requires `perl`: `brew install perl`
-
 # Building
 Run `make` in the top level directory. It'll build the loader and the module.
 

@@ -175,7 +175,8 @@ void *unified_kalloc(size_t sz){
 
     hdr->allocsz = allocsz;
 
-    return hdr + 1;
+    /* future-proofing */
+    return (void *)((uintptr_t)hdr + sizeof(*hdr));
 }
 
 void unified_kfree(void *ptr){

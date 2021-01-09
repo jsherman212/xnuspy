@@ -1017,7 +1017,7 @@ nextcmd:
     struct xnuspy_reflector_page *found = NULL;
     struct xnuspy_reflector_page *cur = first_reflector_page;
 
-    /* This needs to be locked because we check the reference count of more
+    /* This needs to be locked because we check the used flag of more
      * than one reflector page */
     lck_rw_lock_exclusive(xnuspy_rw_lck);
 
@@ -1598,6 +1598,7 @@ struct xnuspy_ctl_args {
 };
 
 int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
+    size_t s = sizeof(struct xnuspy_tramp);
     uint64_t flavor = uap->flavor;
 
     if(flavor > XNUSPY_MAX_FLAVOR){

@@ -270,7 +270,10 @@ int main(int argc, char **argv){
     printf("unified_kfree @ %#llx\n", (uint64_t)unified_kfree);
 
     /* open1 for iphone 8 13.6.1 */
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xfffffff007d99c1c,
+    /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xfffffff007d99c1c, */
+    /*         open1, &open1_orig); */
+    /* iphone x 13.3.1 */
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF007D70534,
             open1, &open1_orig);
     /* iphone 7 14.1 */
     /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF00730AA64, */

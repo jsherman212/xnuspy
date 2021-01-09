@@ -6,7 +6,6 @@
 #include "../common/common.h"
 #include "../common/pongo.h"
 
-/* XXX move to common */
 #include "../pf/disas.h"
 
 static uint64_t find_kpp(void){

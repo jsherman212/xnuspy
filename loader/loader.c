@@ -179,8 +179,8 @@ int main(int argc, char **argv, const char **envp){
 
     /* Don't remove any of these boot args if you modify this string */
     err = pongo_send_command(pongo_device, "xargs rootdev=md0"
-            " use_contiguous_hint=0 msgbuf=0x3c000 -show_pointers"
-            " atm_diagnostic_config=0x20000000 -v\n");
+            " use_contiguous_hint=0 msgbuf=0x3c000"
+            " atm_diagnostic_config=0x20000000\n");
 
     if(err < 0){
         printf("pongo_send_command: %s\n", libusb_error_name(err));
@@ -196,7 +196,7 @@ int main(int argc, char **argv, const char **envp){
         goto err2;
     }
 
-    /* goto err2; */
+    goto err2;
 
     /* we may have had to pwn SEPROM or patch KPP, so wait a bit longer
      * before we continue */

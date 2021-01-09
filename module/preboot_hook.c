@@ -59,18 +59,12 @@ static void DumpMemory(void *startaddr, void *data, size_t size){
 }
 
 static uint64_t g_xnuspy_ctl_addr = 0;
-
 /* address of start of __TEXT_EXEC in xnuspy_ctl image */
 static uint64_t g_xnuspy_ctl_img_codestart = 0;
-
 /* how many bytes to we need to mark as executable inside xnuspy_ctl_tramp? */
 static uint64_t g_xnuspy_ctl_img_codesz = 0;
-
 static uint64_t g_xnuspy_tramp_page_addr = 0;
-
-/* needed for when we are too far away for an immediate branch */
 static uint64_t g_xnuspy_tramp_page_end = 0;
-
 static uint64_t g_first_reflector_page = 0;
 
 uint64_t *xnuspy_cache_base = NULL;
@@ -501,15 +495,6 @@ void xnuspy_preboot_hook(void){
 
     free_static_memory -= PAGE_SIZE;
 
-    /* For every function someone wants to hook, I will write a single
-     * unconditional immediate branch into some point on the above page
-     * ONLY if this memory is within 128MB of the base of the kernelcache.
-     * If this memory is not within that range, we cannot assume every
-     * branch will fall within 128MB, and we'll have to default to unused
-     * r-x code already in the kernelcache.
-     *
-     * TODO actually write the logic to default to the unused r-x code
-     */
     if(!xnuspy_tramp_page){
         puts("xnuspy: alloc_static");
         puts("   returned NULL while");
@@ -519,21 +504,92 @@ void xnuspy_preboot_hook(void){
         xnuspy_fatal_error();
     }
 
-#define _128MB (134217728)
+    memset(xnuspy_tramp_page, 0, PAGE_SIZE);
 
-    /* XXX why am I doing a conversion */
-    uint64_t dist_from_kcbase = xnu_ptr_to_va(xnuspy_tramp_page) -
-        xnu_ptr_to_va(mh_execute_header);
-   
-    printf("%s: trampoline page is %#llx bytes away from kc base\n", __func__,
-            dist_from_kcbase);
+    printf("%s: xnuspy tramp page @ %#llx\n", __func__,
+            xnu_ptr_to_va(xnuspy_tramp_page)-kernel_slide);
+    /* For every function which gets hooked, a single unconditional
+     * immediate branch is written targeting some point on the
+     * xnuspy_tramp_page. So that page must be within 128MB from the first
+     * code in the kernelcache. If it's is not within that range, we cannot
+     * assume every branch will fall within 128MB. Issue a warning and
+     * continue. */
 
-    if(dist_from_kcbase > _128MB){
-        printf("%s: dist_from_kcbase > 128MB, unimplemented, try again\n", __func__);
-        xnuspy_fatal_error();
+    /* I hope this is right */
+    struct segment_command_64 *__PRELINK_TEXT = macho_get_segment(mh_execute_header,
+            "__PRELINK_TEXT");
+    struct segment_command_64 *__TEXT_EXEC = macho_get_segment(mh_execute_header,
+            "__TEXT_EXEC");
+    struct section_64 *__text = macho_get_section(__TEXT_EXEC, "__text");
+
+    uint64_t codestart = __text->addr;
+
+    /* Old style kc */
+    if(__PRELINK_TEXT && __PRELINK_TEXT->vmsize > 0){
+        printf("%s: prelink text %#llx mh %#llx\n", __func__,
+                __PRELINK_TEXT->vmaddr - kernel_slide,
+                xnu_ptr_to_va(mh_execute_header)-kernel_slide);
+
+        /* This gives back __PRELINK_INFO, which isn't right, so go forward
+         * until we get a non-NULL __TEXT_EXEC */
+        struct mach_header_64 *first_kext = xnu_pf_get_first_kext(mh_execute_header);
+        uint32_t *cursor = (uint32_t *)first_kext;
+        __TEXT_EXEC = NULL;
+
+        /* this is so gross, parse prelinked dict myself for first kext TODO */
+        while(!__TEXT_EXEC){
+            if(*cursor == MH_MAGIC_64)
+                __TEXT_EXEC = macho_get_segment(cursor, "__TEXT_EXEC");
+
+            cursor++;
+        }
+
+        printf("%s: first kext %p %p\n", __func__, first_kext,
+                xnu_ptr_to_va(first_kext)-kernel_slide);
+
+        printf("%s: text exec %p %#llx\n", __func__, __TEXT_EXEC,
+                xnu_ptr_to_va(__TEXT_EXEC)-kernel_slide);
+        __text = macho_get_section(__TEXT_EXEC, "__text");
+        printf("%s: text %p %#llx\n", __func__, __text,
+                xnu_ptr_to_va(__text)-kernel_slide);
+
+        if(__text->addr < codestart)
+            codestart = __text->addr;
+
+        /* Not slid on old style kernels */
+        codestart += kernel_slide;
+
+        /* Will this ever not happen? */
+        /* if(__PRELINK_TEXT->vmaddr < codestart) */
+        /*     codestart = __PRELINK_TEXT->vmaddr; */
     }
 
-    memset(xnuspy_tramp_page, 0, PAGE_SIZE);
+    void *c = xnu_va_to_ptr(codestart);
+    DumpMemory(c,c,sizeof(uint32_t)*10);
+
+    printf("%s: codestart %#llx %#llx\n", __func__, codestart, codestart-kernel_slide);
+
+    uint64_t ceil = xnu_ptr_to_va(xnuspy_tramp_page) + PAGE_SIZE;
+    uint64_t dist = ceil - codestart;
+
+    if(dist > 0x8000000){
+        /* uint64_t excluded = ceil - 0x8000000 - kernel_slide; */
+
+        /* printf("xnuspy: warning: distance\n" */
+        /*        "  from kernel base to tramp\n" */
+        /*        "  page is larger than 128 MB.\n" */
+        /*        "  Any function before %#llx is\n" */
+        /*        "  unable to be hooked. Continuing\n" */
+        /*        "  anyway.\n", excluded); */
+
+        /* XXX Display a message about defaulting to the r-x code where
+         * we will write the xnuspy_ctl_tramp & the sysctlbyname thing */
+    }
+
+    printf("%s: trampoline page is %#llx bytes away from kc base\n", __func__,
+            dist);
+
+    for(;;);
 
     g_xnuspy_tramp_page_addr = xnu_ptr_to_va(xnuspy_tramp_page);
     g_xnuspy_tramp_page_end = g_xnuspy_tramp_page_addr + PAGE_SIZE;
@@ -568,7 +624,6 @@ void xnuspy_preboot_hook(void){
     }
 
     free_static_memory -= (loader_xfer_recv_count + PAGE_SIZE) & ~(PAGE_SIZE - 1);
-
 
     printf("%s: xnuspy_ctl image %#llx loader_xfer_recv_data %#llx\n", __func__,
             xnuspy_ctl_image, loader_xfer_recv_data);
