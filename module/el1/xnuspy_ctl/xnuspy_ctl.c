@@ -681,34 +681,6 @@ static void xnuspy_tramp_commit(struct stailq_entry *stqe){
     STAILQ_INSERT_TAIL(&usedlist, stqe, link);
 }
 
-/* Pull an xnuspy_tramp off of the usedlist, according to its target */
-#if 0
-static struct stailq_entry *xnuspy_tramp_disconnect(uint64_t target){
-    lck_rw_lock_exclusive(xnuspy_rw_lck);
-
-    if(STAILQ_EMPTY(&usedlist)){
-        lck_rw_done(xnuspy_rw_lck);
-        return NULL;
-    }
-
-    struct stailq_entry *entry, *tmp;
-
-    STAILQ_FOREACH_SAFE(entry, &usedlist, link, tmp){
-        struct xnuspy_tramp *tramp = entry->elem;
-
-        if(tramp->tramp_metadata->hooked == target){
-            STAILQ_REMOVE(&usedlist, entry, stailq_entry, link);
-            lck_rw_done(xnuspy_rw_lck);
-            return entry;
-        }
-    }
-
-    lck_rw_done(xnuspy_rw_lck);
-
-    return NULL;
-}
-#endif
-
 static struct xnuspy_mapping_metadata *find_mapping_metadata(void){
     uint64_t cuniqueid = proc_uniqueid(current_proc());
     struct stailq_entry *entry;
@@ -1435,7 +1407,7 @@ static int xnuspy_init(void){
     struct xnuspy_tramp *cursor = (struct xnuspy_tramp *)xnuspy_tramp_page;
 
     int c = 0;
-    while((uint8_t *)cursor < xnuspy_tramp_page_end){
+    while((uint8_t *)cursor + sizeof(*cursor) < xnuspy_tramp_page_end){
     /* int lim = 5; */
     /* for(int i=0; i<lim; i++){ */
         struct stailq_entry *entry = unified_kalloc(sizeof(*entry));
@@ -1598,7 +1570,6 @@ struct xnuspy_ctl_args {
 };
 
 int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
-    size_t s = sizeof(struct xnuspy_tramp);
     uint64_t flavor = uap->flavor;
 
     if(flavor > XNUSPY_MAX_FLAVOR){

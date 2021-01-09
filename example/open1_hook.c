@@ -75,8 +75,6 @@ static int open1(void *vfsctx, struct nameidata *ndp, int uflags,
         goto orig;
 
     size_t sz = PATHBUFLEN;
-    /* char *path = kalloc_canblock(&sz, 1, NULL); */
-    /* char *path = kalloc_external(sz); */
     char *path = unified_kalloc(sz);
 
     if(!path)
@@ -86,8 +84,6 @@ static int open1(void *vfsctx, struct nameidata *ndp, int uflags,
     int res = copyinstr(ndp->ni_dirp, path, sz, &pathlen);
 
     if(res){
-        /* kfree_addr(path); */
-        /* kfree_ext(NULL, path, sz); */
         unified_kfree(path);
         goto orig;
     }
@@ -102,15 +98,11 @@ static int open1(void *vfsctx, struct nameidata *ndp, int uflags,
 
     if(strcmp_(path, "/var/mobile/testfile.txt") == 0){
         kprintf("%s: denying open for '%s'\n", __func__, path);
-        /* kfree_addr(path); */
-        /* kfree_ext(NULL, path, sz); */
         unified_kfree(path);
         *retval = -1;
         return ENOENT;
     }
 
-    /* kfree_addr(path); */
-    /* kfree_ext(NULL, path, sz); */
     unified_kfree(path);
 
 orig:
@@ -273,11 +265,11 @@ int main(int argc, char **argv){
     /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xfffffff007d99c1c, */
     /*         open1, &open1_orig); */
     /* iphone x 13.3.1 */
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF007D70534,
-            open1, &open1_orig);
-    /* iphone 7 14.1 */
-    /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF00730AA64, */
+    /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF007D70534, */
     /*         open1, &open1_orig); */
+    /* iphone 7 14.1 */
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF00730AA64,
+            open1, &open1_orig);
     /* iphone se 14.3 */
     /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF0072DA190, */
     /*         open1, &open1_orig); */
