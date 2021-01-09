@@ -87,8 +87,7 @@ static bool getkernelv_callback(xnu_pf_patch_t *patch, void *cacheable_stream){
         revision_s[i] = *version;
 
     /* currently, I only use major, but I get the rest in case I need
-     * them in the future
-     */
+     * them in the future */
     g_kern_version_major = atoi(major_s);
     g_kern_version_minor = atoi(minor_s);
     g_kern_version_revision = atoi(revision_s);
@@ -109,7 +108,7 @@ static bool getkernelv_callback(xnu_pf_patch_t *patch, void *cacheable_stream){
     }
 
     /* No need to exploit SEPROM on 14.x A9(x) and below, which conveniently
-     * is the only KPP non-PAN chip that xnuspy supports */
+     * is the only KPP chip that xnuspy supports */
     if(pwn_seprom)
         queue_rx_string("sep auto\n");
     else if(socnum == 0x8000 || socnum == 0x8001 || socnum == 0x8003){

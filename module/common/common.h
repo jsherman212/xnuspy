@@ -7,6 +7,7 @@ int atoi(const char *);
 int isdigit(int);
 
 char *strcpy(char *, const char *);
+char *strstr(const char *, const char *);
 
 __attribute__ ((noreturn)) void xnuspy_fatal_error(void);
 

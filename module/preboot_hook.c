@@ -520,9 +520,21 @@ void xnuspy_preboot_hook(void){
             "__PRELINK_TEXT");
     struct segment_command_64 *__TEXT_EXEC = macho_get_segment(mh_execute_header,
             "__TEXT_EXEC");
-    struct section_64 *__text = macho_get_section(__TEXT_EXEC, "__text");
 
-    uint64_t codestart = __text->addr;
+    struct section_64 *sec64 = (struct section_64 *)(__TEXT_EXEC + 1);
+
+    /* codestart already slid on all kernels */
+    uint64_t codestart = UINT64_MAX;
+
+    for(uint32_t i=0; i<__TEXT_EXEC->nsects; i++){
+        if(sec64->addr < codestart)
+            codestart = sec64->addr;
+
+        sec64++;
+    }
+    /* struct section_64 *__text = macho_get_section(__TEXT_EXEC, "__text"); */
+
+    printf("%s: kslide %#llx\n", __func__, kernel_slide);
 
     /* Old style kc */
     if(__PRELINK_TEXT && __PRELINK_TEXT->vmsize > 0){
@@ -530,38 +542,70 @@ void xnuspy_preboot_hook(void){
                 __PRELINK_TEXT->vmaddr - kernel_slide,
                 xnu_ptr_to_va(mh_execute_header)-kernel_slide);
 
-        /* This gives back __PRELINK_INFO, which isn't right, so go forward
-         * until we get a non-NULL __TEXT_EXEC */
-        struct mach_header_64 *first_kext = xnu_pf_get_first_kext(mh_execute_header);
-        uint32_t *cursor = (uint32_t *)first_kext;
-        __TEXT_EXEC = NULL;
+        struct segment_command_64 *__PRELINK_INFO = macho_get_segment(mh_execute_header,
+                "__PRELINK_INFO");
 
-        /* this is so gross, parse prelinked dict myself for first kext TODO */
-        while(!__TEXT_EXEC){
-            if(*cursor == MH_MAGIC_64)
-                __TEXT_EXEC = macho_get_segment(cursor, "__TEXT_EXEC");
+        if(!__PRELINK_INFO){
+            printf("xnuspy: no prelink info\n"
+                   "  segment???\n");
 
-            cursor++;
+            xnuspy_fatal_error();
         }
 
-        printf("%s: first kext %p %p\n", __func__, first_kext,
-                xnu_ptr_to_va(first_kext)-kernel_slide);
+        struct section_64 *__info = macho_get_section(__PRELINK_INFO, "__info");
 
-        printf("%s: text exec %p %#llx\n", __func__, __TEXT_EXEC,
+        if(!__info){
+            printf("xnuspy: no prelink info\n"
+                   "  dict?\n");
+
+            xnuspy_fatal_error();
+        }
+
+        /* Already slid */
+        char *infodict = xnu_va_to_ptr(__info->addr);
+
+        /* uint64_t infodict_va = __info->addr + kernel_slide; */
+
+        /* printf("%s: infodict @ %#llx %#llx\n", __func__, infodict_va, */
+        /*         infodict_va - kernel_slide); */
+
+        /* char *infodict = xnu_va_to_ptr(__PRELINK_INFO->vmaddr + kernel_slide); */
+
+        DumpMemory(infodict, infodict, 0x100);
+        puts("");
+
+        char *cursor;
+
+        while((cursor = strstr(infodict, "_PrelinkExecutableLoadAddr"))){
+            char *loadaddr_s = strstr(cursor, "0xfffffff");
+
+            if(!loadaddr_s)
+                goto next;
+
+            uint64_t loadaddr = strtoul(loadaddr_s, NULL, 0) + kernel_slide;
+            struct mach_header_64 *mh64 = xnu_va_to_ptr(loadaddr);
+            __TEXT_EXEC = macho_get_segment(mh64, "__TEXT_EXEC");
+
+            if(__TEXT_EXEC)
+                break;
+
+next:
+            infodict = cursor + 1;
+        }
+
+        printf("%s: first kext @ %#llx %#llx\n", __func__, xnu_ptr_to_va(__TEXT_EXEC),
                 xnu_ptr_to_va(__TEXT_EXEC)-kernel_slide);
-        __text = macho_get_section(__TEXT_EXEC, "__text");
-        printf("%s: text %p %#llx\n", __func__, __text,
-                xnu_ptr_to_va(__text)-kernel_slide);
+        printf("%s: codestart before %#llx\n", __func__, codestart);
 
-        if(__text->addr < codestart)
-            codestart = __text->addr;
+        struct section_64 *__text = macho_get_section(__TEXT_EXEC, "__text");
 
-        /* Not slid on old style kernels */
-        codestart += kernel_slide;
+        /* __text->addr not slid */
+        if(__text->addr + kernel_slide < codestart)
+            codestart = __text->addr + kernel_slide;
 
-        /* Will this ever not happen? */
-        /* if(__PRELINK_TEXT->vmaddr < codestart) */
-        /*     codestart = __PRELINK_TEXT->vmaddr; */
+        printf("%s: codestart after %#llx\n", __func__, codestart);
+
+        /* for(;;); */
     }
 
     void *c = xnu_va_to_ptr(codestart);
@@ -573,17 +617,13 @@ void xnuspy_preboot_hook(void){
     uint64_t dist = ceil - codestart;
 
     if(dist > 0x8000000){
-        /* uint64_t excluded = ceil - 0x8000000 - kernel_slide; */
-
-        /* printf("xnuspy: warning: distance\n" */
-        /*        "  from kernel base to tramp\n" */
-        /*        "  page is larger than 128 MB.\n" */
-        /*        "  Any function before %#llx is\n" */
-        /*        "  unable to be hooked. Continuing\n" */
-        /*        "  anyway.\n", excluded); */
-
-        /* XXX Display a message about defaulting to the r-x code where
-         * we will write the xnuspy_ctl_tramp & the sysctlbyname thing */
+        printf("xnuspy: distance from first\n"
+               "  code to tramp page is larger\n"
+               "  than 128 MB. Falling back to\n"
+               "  the unused r-x code already in\n"
+               "  the kernelcache. As a result,\n"
+               "  there are less hooks you can\n"
+               "  install simultaneously.\n");
     }
 
     printf("%s: trampoline page is %#llx bytes away from kc base\n", __func__,

@@ -396,6 +396,7 @@ extern void* memset(void *b, int c, size_t len);
 extern void* memmem(const void* big, unsigned long blength, const void* little, unsigned long llength);
 extern void* memstr(const void* big, unsigned long blength, const char* little);
 extern void* memstr_partial(const void* big, unsigned long blength, const char* little);
+extern unsigned long int strtoul(const char *nptr, char **endptr, int base);
 
 extern uint64_t scheduler_ticks;
 extern void invalidate_icache(void);

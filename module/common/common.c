@@ -25,6 +25,33 @@ char *strcpy(char *dest, const char *src){
     return dest;
 }
 
+char *strstr(const char *haystack, const char *needle){
+    if(!*needle)
+        return (char *)haystack;
+
+    char *hay = (char *)haystack;
+    char *n = (char *)needle;
+
+    for(; *hay; hay++){
+        if(*hay != *n)
+            continue;
+
+        char *h = hay;
+
+        for(;;){
+            if(!*n)
+                return hay;
+
+            if(*h++ != *n++)
+                break;
+        }
+
+        n = (char *)needle;
+    }
+
+    return NULL;
+}
+
 struct mach_header_64 *mh_execute_header = NULL;
 uint64_t kernel_slide = 0;
 
