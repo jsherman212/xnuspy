@@ -131,8 +131,8 @@ static struct xnuspy_ctl_kernel_symbol {
     { "_proc_uniqueid", &g_proc_uniqueid_addr },
     { "_thread_deallocate", &g_thread_deallocate_addr },
     { "__vm_deallocate", &g_vm_deallocate_addr },
-    { "_vm_map_wire_external", &g_vm_map_wire_external_addr },
     { "_vm_map_unwire", &g_vm_map_unwire_addr },
+    { "_vm_map_wire_external", &g_vm_map_wire_external_addr },
     { "_xnuspy_tramp_page", &g_xnuspy_tramp_page_addr },
     { "_xnuspy_tramp_page_end", &g_xnuspy_tramp_page_end },
 };
@@ -627,7 +627,7 @@ next:
 
     bool fallback = false;
 
-    if(dist > 1){//0x8000000){
+    if(dist > 0x8000000){
         printf("xnuspy: distance from first\n"
                "  code to tramp page is larger\n"
                "  than 128 MB. Falling back to\n"

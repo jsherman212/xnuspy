@@ -2,12 +2,13 @@
 
 xnuspy is a pongoOS module which installs a new system call, `xnuspy_ctl`,
 allowing you to hook kernel functions from userspace. It supports iOS 13.x and
-14.x on checkra1n 0.11.0 and up.
+14.x on checkra1n 0.12.2 and up.
 
 Requires `libusb`: `brew install libusb`
 
 # Building
 Run `make` in the top level directory. It'll build the loader and the module.
+If you want debug output from xnuspy, run `XNUSPY_DEBUG=1 make`.
 
 # Usage
 After you've built everything, have checkra1n boot your device to a pongo
@@ -81,11 +82,11 @@ calling process.
   - `mach_make_memory_entry_64` did not return a memory entry for the entirety
 of the calling processes' `__TEXT` and `__DATA` segments.
 
-`errno` also depends on the return value of `vm_map_wire_kernel`,
+`errno` also depends on the return value of `vm_map_wire_external`,
 `vm_map_unwire`, `vm_deallocate`, `mach_make_memory_entry_64`,
-`mach_vm_map_external`, `copyout`, and if applicable, the one-time initialization
-function. An `errno` of `10000` represents a `kern_return_t` value that I
-haven't yet taken into account for.
+`mach_vm_map_external`, `copyin`, `copyout`, and if applicable, the one-time
+initialization function. An `errno` of `10000` represents a `kern_return_t`
+value that I haven't yet taken into account for.
 
 If this flavor returns an error, the target kernel function was not hooked.
 If you passed a non-NULL pointer for `arg3`, it may or may not have been
@@ -120,6 +121,12 @@ throwing the binary inside your favorite disassembler to figure out how it was
 compiled.
 
 # Important Information
+### Common Pitfalls
+While testing and writing examples, I found myself making a lot of the same
+mistakes
+Since your replacement is kernel code, you cannot execute *any* code which
+lives outside of your program's `__TEXT` segment.
+
 ### Hook Uninstallation
 xnuspy will manage this for you. Once a process exits, all the kernel hooks
 that were installed by that process are uninstalled within a couple seconds of

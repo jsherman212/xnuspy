@@ -111,11 +111,8 @@ static bool getkernelv_callback(xnu_pf_patch_t *patch, void *cacheable_stream){
      * is the only KPP chip that xnuspy supports */
     if(pwn_seprom)
         queue_rx_string("sep auto\n");
-    else if(socnum == 0x8000 || socnum == 0x8001 || socnum == 0x8003){
+    else if(socnum == 0x8000 || socnum == 0x8001 || socnum == 0x8003)
         patch_kpp();
-        /* XXX REMOVE WHEN DONE */
-        /* queue_rx_string("xfb\n"); */
-    }
 
     return true;
 }

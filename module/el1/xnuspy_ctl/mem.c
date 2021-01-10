@@ -1,6 +1,7 @@
 #include <mach/mach.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <unistd.h>
 
 #include "externs.h"
 #include "pte.h"
@@ -92,9 +93,9 @@ static int protect_common(uint64_t vaddr, uint64_t size, vm_prot_t prot,
         pte_t *pte;
 
         if(el == 0)
-            pte = el0_ptep(target_region_cur);
+            pte = el0_ptep((void *)target_region_cur);
         else
-            pte = el1_ptep(target_region_cur);
+            pte = el1_ptep((void *)target_region_cur);
 
         pte_t new_pte = (*pte & ~ARM_PTE_APMASK) | new_pte_ap;
 
@@ -125,8 +126,8 @@ static int protect_common(uint64_t vaddr, uint64_t size, vm_prot_t prot,
  * Returns:
  *  zero if successful, non-zero otherwise
  */
-int kprotect(uint64_t kaddr, uint64_t size, vm_prot_t prot){
-    return protect_common(kaddr, size, prot, 1);
+int kprotect(void *kaddr, uint64_t size, vm_prot_t prot){
+    return protect_common((uint64_t)kaddr, size, prot, 1);
 }
 
 /* Change protections of user memory at the page table level.
@@ -139,12 +140,13 @@ int kprotect(uint64_t kaddr, uint64_t size, vm_prot_t prot){
  * Returns:
  *  zero if successful, non-zero otherwise
  */
-int uprotect(uint64_t uaddr, uint64_t size, vm_prot_t prot){
-    return protect_common(uaddr, size, prot, 0);
+int uprotect(void *uaddr, uint64_t size, vm_prot_t prot){
+    return protect_common((uint64_t)uaddr, size, prot, 0);
 }
 
 void kwrite_instr(uint64_t dst, uint32_t instr){
-    kprotect(dst, sizeof(uint32_t), VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE);
+    kprotect((void *)dst, sizeof(uint32_t), VM_PROT_READ | VM_PROT_WRITE |
+            VM_PROT_EXECUTE);
 
     *(uint32_t *)dst = instr;
 
@@ -154,7 +156,7 @@ void kwrite_instr(uint64_t dst, uint32_t instr){
     asm volatile("dsb ish");
     asm volatile("isb sy");
 
-    kprotect(dst, sizeof(uint32_t), VM_PROT_READ | VM_PROT_EXECUTE);
+    kprotect((void *)dst, sizeof(uint32_t), VM_PROT_READ | VM_PROT_EXECUTE);
 }
 
 struct unifiedhdr {

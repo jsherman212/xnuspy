@@ -126,17 +126,15 @@ uint32_t *get_branch_dst_ptr(uint32_t branch, uint32_t *pc){
     return (uint32_t *)(signed_pc + imm26);
 }
 
-void write_blr(uint32_t reg, uint64_t from, uint64_t to){
-    uint32_t *cur = (uint32_t *)from;
-
+void write_blr(uint32_t reg, uint32_t *from, uint64_t to){
     /* movz */
-    *(cur++) = (uint32_t)(0xd2800000 | ((to & 0xffff) << 5) | reg);
+    *(from++) = (uint32_t)(0xd2800000 | ((to & 0xffff) << 5) | reg);
     /* movk */
-    *(cur++) = (uint32_t)(0xf2800000 | (1 << 21) | (((to >> 16) & 0xffff) << 5) | reg);
+    *(from++) = (uint32_t)(0xf2800000 | (1 << 21) | (((to >> 16) & 0xffff) << 5) | reg);
     /* movk */
-    *(cur++) = (uint32_t)(0xf2800000 | (2 << 21) | (((to >> 32) & 0xffff) << 5) | reg);
+    *(from++) = (uint32_t)(0xf2800000 | (2 << 21) | (((to >> 32) & 0xffff) << 5) | reg);
     /* movk */
-    *(cur++) = (uint32_t)(0xf2800000 | (3 << 21) | (((to >> 48) & 0xffff) << 5) | reg);
+    *(from++) = (uint32_t)(0xf2800000 | (3 << 21) | (((to >> 48) & 0xffff) << 5) | reg);
     /* blr */
-    *(cur++) = (uint32_t)(0xd63f0000 | (reg << 5));
+    *(from++) = (uint32_t)(0xd63f0000 | (reg << 5));
 }

@@ -20,6 +20,6 @@ uint64_t get_pc_rel_va_target(uint32_t *);
 
 uint32_t *get_branch_dst_ptr(uint32_t, uint32_t *);
 
-void write_blr(uint32_t, uint64_t, uint64_t);
+void write_blr(uint32_t, uint32_t *, uint64_t);
 
 #endif

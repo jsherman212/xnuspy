@@ -30,14 +30,14 @@ static uint64_t *ptep(uint64_t ttbr, uint64_t addr){
     return (uint64_t *)(l3_table + (0x8 * l3_idx));
 }
 
-uint64_t *el0_ptep(uint64_t uaddr){
-    uint64_t ttbr0_el1 = 0;
+uint64_t *el0_ptep(void *uaddr){
+    uint64_t ttbr0_el1;
     asm volatile("mrs %0, ttbr0_el1" : "=r" (ttbr0_el1));
-    return ptep(ttbr0_el1, uaddr);
+    return ptep(ttbr0_el1, (uint64_t)uaddr);
 }
 
-uint64_t *el1_ptep(uint64_t kaddr){
-    uint64_t ttbr1_el1 = 0;
+uint64_t *el1_ptep(void *kaddr){
+    uint64_t ttbr1_el1;
     asm volatile("mrs %0, ttbr1_el1" : "=r" (ttbr1_el1));
-    return ptep(ttbr1_el1, kaddr);
+    return ptep(ttbr1_el1, (uint64_t)kaddr);
 }

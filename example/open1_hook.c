@@ -1,4 +1,5 @@
 #include <errno.h>
+#include <mach/mach.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -95,6 +96,12 @@ static int open1(void *vfsctx, struct nameidata *ndp, int uflags,
 
     kprintf("%s: (CPU %d): process %d wants to open '%s'\n", __func__, cpu,
             caller, path);
+
+    asm volatile(".long 0xd500409f");
+    asm volatile("isb sy");
+    kprintf("%#llx\n", PAGE_SIZE);
+    asm volatile(".long 0xd500419f");
+    asm volatile("isb sy");
 
     if(strcmp_(path, "/var/mobile/testfile.txt") == 0){
         kprintf("%s: denying open for '%s'\n", __func__, path);
@@ -261,15 +268,17 @@ int main(int argc, char **argv){
     printf("unified_kalloc @ %#llx\n", (uint64_t)unified_kalloc);
     printf("unified_kfree @ %#llx\n", (uint64_t)unified_kfree);
 
+    vm_size_t sz = PAGE_SIZE;
+
     /* open1 for iphone 8 13.6.1 */
-    /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xfffffff007d99c1c, */
-    /*         open1, &open1_orig); */
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xfffffff007d99c1c,
+            open1, &open1_orig);
     /* iphone x 13.3.1 */
     /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF007D70534, */
     /*         open1, &open1_orig); */
     /* iphone 7 14.1 */
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF00730AA64,
-            open1, &open1_orig);
+    /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF00730AA64, */
+    /*         open1, &open1_orig); */
     /* iphone se 14.3 */
     /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF0072DA190, */
     /*         open1, &open1_orig); */

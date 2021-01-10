@@ -1,11 +1,10 @@
 #include <mach/mach.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include "unistd.h"
 
 #include "asm.h"
 #include "externs.h"
-
-#define NOP 0xD503201F
 
 static void generate_b_cond_equivalent(uint32_t orig_instr, uint32_t **tramp,
         uint32_t *len_out){

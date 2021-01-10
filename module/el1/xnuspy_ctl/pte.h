@@ -3,8 +3,8 @@
 
 typedef uint64_t pte_t;
 
-pte_t *el0_ptep(uint64_t);
-pte_t *el1_ptep(uint64_t);
+pte_t *el0_ptep(void *);
+pte_t *el1_ptep(void *);
 
 #define ARM_16K_TT_L1_SHIFT         (36)
 #define ARM_16K_TT_L2_SHIFT         (25)

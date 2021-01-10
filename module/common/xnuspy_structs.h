@@ -1,10 +1,25 @@
 #ifndef XNUSPY_STRUCTS
 #define XNUSPY_STRUCTS
 
+#include <sys/queue.h>
+
+struct stailq_entry {
+    void *elem;
+    STAILQ_ENTRY(stailq_entry) link;
+};
+
 struct xnuspy_reflector_page {
     struct xnuspy_reflector_page *next;
     void *page;
     int used;
+};
+
+struct orphan_mapping {
+    uint64_t mapping_addr;
+    uint64_t mapping_size;
+    void *memory_object;
+    struct xnuspy_reflector_page *first_reflector_page;
+    uint64_t used_reflector_pages;
 };
 
 /* This structure represents a shared __TEXT and __DATA mapping. There is
@@ -115,6 +130,28 @@ struct xnuspy_tramp {
     uint32_t orig[10];
     struct xnuspy_tramp_metadata *tramp_metadata;
     struct xnuspy_mapping_metadata *mapping_metadata;
+};
+
+typedef struct __lck_rw_t__ {
+    uint64_t word;
+    void *owner;
+} lck_rw_t;
+
+#define vme_prev		links.prev
+#define vme_next		links.next
+#define vme_start		links.start
+#define vme_end			links.end
+
+struct _vm_map {
+    lck_rw_t lck;
+    struct {
+        struct {
+            void *prev;
+            void *next;
+            void *start;
+            void *end;
+        } links;
+    } hdr;
 };
 
 #endif

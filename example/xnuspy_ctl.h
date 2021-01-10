@@ -53,7 +53,7 @@
  */
 #define UVTOPHYS                    (16)
 
-/* int kprotect(uint64_t kaddr, uint64_t size, vm_prot_t prot)
+/* int kprotect(void *kaddr, uint64_t size, vm_prot_t prot)
  *
  * Change protections of static kernel memory at the page table level.
  *
@@ -69,7 +69,7 @@
  */
 #define KPROTECT                    (17)
 
-/* int uprotect(uint64_t uaddr, uint64_t size, vm_prot_t prot)
+/* int uprotect(void *uaddr, uint64_t size, vm_prot_t prot)
  *
  * Change protections of user memory at the page table level.
  *
@@ -108,7 +108,7 @@
  */
 #define KWRITE_INSTR                (20)
 
-/* uint64_t *el0_ptep(uint64_t uaddr)
+/* uint64_t *el0_ptep(void *uaddr)
  *
  * Given a user virtual address, this function returns a pointer to its
  * page table entry.
@@ -121,7 +121,7 @@
  */
 #define EL0_PTEP                    (21)
 
-/* uint64_t *el1_ptep(uint64_t kaddr)
+/* uint64_t *el1_ptep(void *kaddr)
  *
  * Given a kernel virtual address, this function returns a pointer to its
  * page table entry.
