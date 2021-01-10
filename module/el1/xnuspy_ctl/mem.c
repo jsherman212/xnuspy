@@ -44,7 +44,7 @@ __attribute__ ((naked)) uint64_t uvtophys(uint64_t kaddr){
             );
 }
 
-/* Write to kernel memory, using bcopy_phys.
+/* Write to static kernel memory, using bcopy_phys.
  *
  * Parameters:
  *  dst: kernel virtual address of destination
@@ -53,7 +53,7 @@ __attribute__ ((naked)) uint64_t uvtophys(uint64_t kaddr){
  *
  * Returns: nothing
  */
-void kwrite(void *dst, void *buf, size_t sz){
+void kwrite_static(void *dst, void *buf, size_t sz){
     uint64_t dst_phys = kvtophys((uint64_t)dst);
     uint64_t buf_phys = kvtophys((uint64_t)buf);
 
@@ -99,19 +99,21 @@ static int protect_common(uint64_t vaddr, uint64_t size, vm_prot_t prot,
 
         pte_t new_pte = (*pte & ~ARM_PTE_APMASK) | new_pte_ap;
 
-        if(prot & VM_PROT_EXECUTE)
-            new_pte &= ~(ARM_PTE_NX | ARM_PTE_PNX);
+        new_pte &= ~(ARM_PTE_NX | ARM_PTE_PNX);
 
-        kwrite(pte, &new_pte, sizeof(new_pte));
+        if(prot & VM_PROT_EXECUTE){
+            if(el == 0)
+                new_pte |= ARM_PTE_PNX;
+            else
+                new_pte |= ARM_PTE_NX;
+        }
+
+        kwrite_static(pte, &new_pte, sizeof(new_pte));
 
         target_region_cur += PAGE_SIZE;
     }
 
-    asm volatile("isb");
-    asm volatile("dsb sy");
-    asm volatile("tlbi vmalle1");
-    asm volatile("dsb sy");
-    asm volatile("isb");
+    pte_sync();
 
     return 0;
 }
@@ -177,14 +179,14 @@ void *unified_kalloc(size_t sz){
 
     hdr->allocsz = allocsz;
 
-    /* future-proofing */
-    return (void *)((uintptr_t)hdr + sizeof(*hdr));
+    return hdr + 1;
 }
 
 void unified_kfree(void *ptr){
     if(!ptr)
         return;
 
+    /* future-proofing */
     struct unifiedhdr *hdr = (struct unifiedhdr *)((uintptr_t)ptr - sizeof(*hdr));
 
     if(iOS_version == iOS_13_x)

@@ -154,4 +154,12 @@ struct _vm_map {
     } hdr;
 };
 
+struct sysent {
+    uint64_t sy_call;
+    void *sy_arg_munge32;
+    int32_t sy_return_type;
+    int16_t sy_narg;
+    uint16_t sy_arg_bytes;
+};
+
 #endif

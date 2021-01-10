@@ -3,10 +3,9 @@
 
 #include "kpp_patches.h"
 
+#include "../common/asm.h"
 #include "../common/common.h"
 #include "../common/pongo.h"
-
-#include "../pf/disas.h"
 
 static uint64_t find_kpp(void){
     dt_node_t *cpus = dt_find(gDeviceTree, "cpus");
@@ -79,7 +78,7 @@ static void patchfind_kpp(uint32_t *kpp_stream, uint32_t *kpp_stream_end){
         kpp_stream++;
     }
 
-    kpp_stream = get_branch_dst_ptr(kpp_stream[2], kpp_stream + 2);
+    kpp_stream = get_branch_dst_ptr(kpp_stream + 2);
 
     uint32_t *saved_prologue = kpp_stream;
 

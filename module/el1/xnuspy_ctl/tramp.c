@@ -1,10 +1,10 @@
 #include <mach/mach.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include "unistd.h"
 
-#include "asm.h"
 #include "externs.h"
+
+#include "../../common/asm.h"
 
 static void generate_b_cond_equivalent(uint32_t orig_instr, uint32_t **tramp,
         uint32_t *len_out){
@@ -82,7 +82,7 @@ static void generate_tbz_or_tbnz_equivalent(uint32_t orig_instr, uint32_t **tram
         0xf244001f, 0xf243001f, 0xf242001f, 0xf241001f,
     };
 
-    uint8_t b5 = orig_instr >> 31;
+    uint32_t b5 = orig_instr >> 31;
     uint32_t b40 = bits(orig_instr, 19, 23);
     uint32_t tested_bit = (b5 << 5) | b40;
     uint32_t Rt = orig_instr & 0x1f;
@@ -121,16 +121,16 @@ static void generate_tbz_or_tbnz_equivalent(uint32_t orig_instr, uint32_t **tram
 
 static void generate_adr_equivalent(uint32_t orig_instr, uint64_t orig_instr_pc,
         uint32_t **tramp, uint32_t *len_out){
-    uint64_t adr_va_target = get_adr_va_target((uint32_t *)orig_instr_pc);
-    uint64_t dist = (adr_va_target & ~0xfffLL) - ((uintptr_t)tramp & ~0xfffLL);
+    uint64_t adr_target = get_adr_target((uint32_t *)orig_instr_pc);
+    uint64_t dist = (adr_target & ~0xfffuLL) - ((uintptr_t)tramp & ~0xfffuLL);
     uint32_t Rd = orig_instr & 0x1f;
-    uint32_t adrp = (1 << 31) | (1 << 28) | ((dist & 0x3000) << 17) |
-        ((dist & 0x1ffffc000) >> 9) | Rd;
+    uint32_t adrp = (1u << 31) | (1 << 28) | ((dist & 0x3000) << 17) |
+        ((dist & 0x1ffffc000uLL) >> 9) | Rd;
 
     /* ADRP Rn, #n@PAGE */
     *(*tramp)++ = adrp;
     /* ADD Rn, Rn, #n@PAGEOFF */
-    *(*tramp)++ = assemble_immediate_add(1, 0, adr_va_target & 0xfff, Rd, Rd);
+    *(*tramp)++ = assemble_immediate_add(1, 0, adr_target & 0xfff, Rd, Rd);
     /* ADR X16, #0xc */
     *(*tramp)++ = 0x10000070;
     /* LDR X16, [X16] */
@@ -142,7 +142,7 @@ static void generate_adr_equivalent(uint32_t orig_instr, uint64_t orig_instr_pc,
 }
 
 /* This function generates a trampoline that'll represent the original
- * function. 'tramp' is expected to be an array of 12 uint32_t's, and
+ * function. 'tramp' is expected to be an array of 10 uint32_t's, and
  * the length of the trampoline is returned through 'tramp_len_out'.
  *
  * 'addrof_second_instr' is to know where to branch back to. */
@@ -204,13 +204,13 @@ void generate_original_tramp(uint64_t addrof_second_instr,
         uint32_t fixed_instr = orig_instr;
 
         if((orig_instr & 0x9f000000) == 0x90000000){
-            uint64_t adrp_va_target =
-                get_adrp_va_target((uint32_t *)(addrof_second_instr - 4));
+            uint64_t adrp_target =
+                get_adrp_target((uint32_t *)(addrof_second_instr - 4));
 
-            uint64_t dist = (adrp_va_target & ~0xfff) - ((uintptr_t)tramp & ~0xfff);
+            uint64_t dist = (adrp_target & ~0xfffuLL) - ((uintptr_t)tramp & ~0xfffuLL);
 
             uint32_t Rd = orig_instr & 0x1f;
-            uint32_t adrp = (1 << 31) | (1 << 28) | ((dist & 0x3000) << 17) |
+            uint32_t adrp = (1u << 31) | (1 << 28) | ((dist & 0x3000) << 17) |
                 ((dist & 0x1ffffc000) >> 9) | Rd;
 
             fixed_instr = adrp;
@@ -245,7 +245,7 @@ void generate_original_tramp(uint64_t addrof_second_instr,
 }
 
 /* this function generates a replacement trampoline and returns it through
- * the 'tramp' parameter. 'tramp' is expected to be an array of 4 uint32_t's */
+ * the 'tramp' parameter. 'tramp' is expected to be an array of 3 uint32_t's */
 void generate_replacement_tramp(uint32_t *tramp){
     /* ADR X16, #-0x8 */
     tramp[0] = 0x10ffffd0;

@@ -1,6 +1,9 @@
 #ifndef EXTERNS
 #define EXTERNS
 
+#include <mach/mach.h>
+#include <stdbool.h>
+#include <stdint.h>
 #include <sys/queue.h>
 #include <unistd.h>
 

@@ -4,20 +4,18 @@
 extern uint64_t *xnuspy_cache_base;
 
 /* This file contains offsets which will be written to the xnuspy cache
- * as well as offsets needed before XNU boots.
- */
+ * as well as offsets needed before XNU boots.  */
 
+/* NOT a kernel virtual address */
 extern uint64_t g_sysent_addr;
 
 /* iOS 13.x: kalloc_canblock
- * iOS 14.x: kalloc_external
- */
+ * iOS 14.x: kalloc_external */
 extern uint64_t g_kalloc_canblock_addr;
 extern uint64_t g_kalloc_external_addr;
 
 /* iOS 13.x: kfree_addr
- * iOS 14.x: kfree_ext
- */
+ * iOS 14.x: kfree_ext */
 extern uint64_t g_kfree_addr_addr;
 extern uint64_t g_kfree_ext_addr;
 

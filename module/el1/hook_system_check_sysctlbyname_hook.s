@@ -184,9 +184,13 @@ Lnot_ours:
     above */
     ret
 
+/* These are still in __text, so clang treats them as code. Four byte align
+    them so clang doesn't complain */
 addrof_xnuspy_cache: .dword 0x4142434445464748
 oid_name: .asciz "kern.xnuspy_ctl_callnum"
+.align 2
 oid_descr: .asciz "query for xnuspy_ctl's call number"
+.align 2
 oid_fmt: .asciz "L"
 /* Align so we can write four bytes every time and not have to worry about
     scratch_space being unaligned when we go to write other instructions */

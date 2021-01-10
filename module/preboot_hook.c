@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <sys/sysctl.h>
 
+#include "common/asm.h"
 #include "common/common.h"
 #include "common/pongo.h"
 #include "common/xnuspy_structs.h"
@@ -11,7 +12,6 @@
 #include "el1/hook_system_check_sysctlbyname_hook_instrs.h"
 #include "el1/xnuspy_ctl_tramp_instrs.h"
 
-#include "pf/disas.h"
 #include "pf/macho.h"
 #include "pf/offsets.h"
 #include "pf/pf_common.h"
@@ -280,7 +280,7 @@ static uint32_t *install_h_s_c_sbn_hook(uint32_t *scratch_space,
     }
 
     /* Use x8 */
-    write_blr(8, (uint64_t)h_s_c_sbn_branch_from_orig, h_s_c_sbn_hook_addr);
+    write_blr(8, h_s_c_sbn_branch_from_orig, h_s_c_sbn_hook_addr);
 
     *num_free_instrsp = num_free_instrs;
 
@@ -290,15 +290,24 @@ static uint32_t *install_h_s_c_sbn_hook(uint32_t *scratch_space,
 static uint32_t *write_xnuspy_ctl_tramp_instrs(uint32_t *scratch_space,
         uint64_t *num_free_instrsp){
     uint64_t num_free_instrs = *num_free_instrsp;
+
     uint64_t xnuspy_ctl_tramp_len = g_xnuspy_ctl_tramp_len / sizeof(uint32_t);
     uint32_t *xnuspy_ctl_tramp_cursor = (uint32_t *)g_xnuspy_ctl_tramp;
+    uint32_t *xnuspy_ctl_tramp_end = xnuspy_ctl_tramp_cursor + xnuspy_ctl_tramp_len;
 
-    uint64_t *addrof_xnuspy_cache =
-        (uint64_t *)(xnuspy_ctl_tramp_cursor + (xnuspy_ctl_tramp_len - 2));
-    *addrof_xnuspy_cache = xnu_ptr_to_va(xnuspy_cache_base);
+    while(xnuspy_ctl_tramp_cursor < xnuspy_ctl_tramp_end){
+        if(*(uint64_t *)xnuspy_ctl_tramp_cursor == 0x4142434445464748)
+            *(uint64_t *)xnuspy_ctl_tramp_cursor = xnu_ptr_to_va(xnuspy_cache_base);
 
-    for(uint64_t i=0; i<xnuspy_ctl_tramp_len; i++)
         WRITE_INSTR_TO_SCRATCH_SPACE(*xnuspy_ctl_tramp_cursor++);
+    }
+
+    /* uint64_t *addrof_xnuspy_cache = */
+    /*     (uint64_t *)(xnuspy_ctl_tramp_cursor + (xnuspy_ctl_tramp_len - 2)); */
+    /* *addrof_xnuspy_cache = xnu_ptr_to_va(xnuspy_cache_base); */
+
+    /* for(uint64_t i=0; i<xnuspy_ctl_tramp_len; i++) */
+    /*     WRITE_INSTR_TO_SCRATCH_SPACE(*xnuspy_ctl_tramp_cursor++); */
 
     *num_free_instrsp = num_free_instrs;
 
@@ -310,8 +319,11 @@ static uint32_t *write_xnuspy_ctl_tramp_instrs(uint32_t *scratch_space,
  * module/el1/xnuspy_ctl_tramp.s */
 static uint32_t *install_xnuspy_ctl_tramp(uint32_t *scratch_space,
         uint64_t *num_free_instrsp){
-    uint8_t *sysent_stream = (uint8_t *)xnu_va_to_ptr(g_sysent_addr);
-    size_t sizeof_struct_sysent = 0x18;
+    /* uint8_t *sysent_stream = (uint8_t *)xnu_va_to_ptr(g_sysent_addr); */
+    /* uint8_t *sysent_stream = (uint8_t *)g_sysent_addr; */
+    /* size_t sizeof_struct_sysent = 0x18; */
+
+    struct sysent *sysent_stream = (struct sysent *)g_sysent_addr;
 
     bool tagged_ptr = false;
     uint16_t old_tag = 0;
@@ -319,7 +331,8 @@ static uint32_t *install_xnuspy_ctl_tramp(uint32_t *scratch_space,
     uint32_t limit = 1000;
 
     for(uint32_t i=0; i<limit; i++){
-        uint64_t sy_call = *(uint64_t *)sysent_stream;
+        /* uint64_t sy_call = *(uint64_t *)sysent_stream; */
+        uint64_t sy_call = sysent_stream->sy_call;
 
         /* tagged pointer */
         if((sy_call & 0xffff000000000000) != 0xffff000000000000){
@@ -335,36 +348,47 @@ static uint32_t *install_xnuspy_ctl_tramp(uint32_t *scratch_space,
         if(*(uint64_t *)xnu_va_to_ptr(sy_call) == 0xd65f03c0528009c0){
             g_xnuspy_ctl_callnum = i;
 
+            uint64_t new_sy_call;
+
             /* sy_call */
             if(!tagged_ptr)
-                *(uint64_t *)sysent_stream = xnu_ptr_to_va(scratch_space);
+                /* *(uint64_t *)sysent_stream = xnu_ptr_to_va(scratch_space); */
+                new_sy_call = xnu_ptr_to_va(scratch_space);
+                /* sysent_stream->sy_call = xnu_ptr_to_va(scratch_space); */
             else{
                 uint64_t untagged = (xnu_ptr_to_va(scratch_space) &
                         0xffffffffffff) - kernel_slide;
 
                 /* re-tag */
-                uint64_t new_sy_call = untagged | ((uint64_t)old_tag << 48);
+                new_sy_call = untagged | ((uint64_t)old_tag << 48);
 
-                *(uint64_t *)sysent_stream = new_sy_call;
+                /* *(uint64_t *)sysent_stream = new_sy_call; */
             }
 
+            sysent_stream->sy_call = new_sy_call;
+
             /* no 32 bit processes on iOS 11+, so no argument munger */
-            *(uint64_t *)(sysent_stream + 0x8) = 0;
+            /* *(uint64_t *)(sysent_stream + 0x8) = 0; */
+            sysent_stream->sy_arg_munge32 = NULL;
 
             /* this syscall will return an integer */
-            *(int32_t *)(sysent_stream + 0x10) = 1; /* _SYSCALL_RET_INT_T */
+            /* *(int32_t *)(sysent_stream + 0x10) = 1; /1* _SYSCALL_RET_INT_T *1/ */
+            sysent_stream->sy_return_type = 1; /* _SYSCALL_RET_INT_T */
 
             /* this syscall has four arguments */
-            *(int16_t *)(sysent_stream + 0x14) = 4;
+            /* *(int16_t *)(sysent_stream + 0x14) = 4; */
+            sysent_stream->sy_narg = 4;
 
             /* four 64 bit arguments, so arguments total 32 bytes */
-            *(uint16_t *)(sysent_stream + 0x16) = 0x20;
+            /* *(uint16_t *)(sysent_stream + 0x16) = 0x20; */
+            sysent_stream->sy_arg_bytes = sizeof(uint64_t) * sysent_stream->sy_narg;
 
             return write_xnuspy_ctl_tramp_instrs(scratch_space,
                     num_free_instrsp);
         }
 
-        sysent_stream += sizeof_struct_sysent;
+        /* sysent_stream += sizeof_struct_sysent; */
+        sysent_stream++;
     }
 
     puts("xnuspy: didn't");
@@ -631,7 +655,7 @@ next:
         printf("xnuspy: distance from first\n"
                "  code to tramp page is larger\n"
                "  than 128 MB. Falling back to\n"
-               "  the unused r-x code already in\n"
+               "  the unused r-x page already in\n"
                "  the kernelcache. As a result,\n"
                "  there are less hooks you can\n"
                "  install simultaneously.\n");

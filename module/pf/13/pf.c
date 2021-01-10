@@ -3,11 +3,11 @@
 #include <stdint.h>
 #include <sys/sysctl.h>
 
-#include "../disas.h"
 #include "../macho.h"
 #include "../offsets.h"
 #include "../pf_common.h"
 
+#include "../../common/asm.h"
 #include "../../common/common.h"
 #include "../../common/pongo.h"
 
@@ -69,8 +69,7 @@ bool sysent_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     uint32_t *opcode_stream = cacheable_stream;
 
     /* if we're in the right place, sysent will be the first ADRP/ADD
-     * pair we find when we go forward
-     */
+     * pair we find when we go forward */
     uint32_t instr_limit = 10;
 
     while((*opcode_stream & 0x9f000000) != 0x90000000){
@@ -81,16 +80,8 @@ bool sysent_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     }
 
     /* make sure this is actually sysent. to do this, we can check if
-     * the first entry is the indirect system call
-     */
-    uint64_t addr_va = 0;
-
-    if(bits(*opcode_stream, 31, 31) == 0)
-        addr_va = get_adr_va_target(opcode_stream);
-    else
-        addr_va = get_adrp_add_va_target(opcode_stream);
-
-    uint64_t maybe_sysent = (uint64_t)xnu_va_to_ptr(addr_va);
+     * the first entry is the indirect system call */
+    uint64_t maybe_sysent = get_pc_rel_target(opcode_stream);
 
     if(*(uint64_t *)maybe_sysent != 0 &&
             *(uint64_t *)(maybe_sysent + 0x8) == 0 &&
@@ -99,7 +90,7 @@ bool sysent_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
             *(uint16_t *)(maybe_sysent + 0x16) == 0){
         xnu_pf_disable_patch(patch);
 
-        g_sysent_addr = addr_va;
+        g_sysent_addr = maybe_sysent;
 
         puts("xnuspy: found sysent");
 
@@ -138,48 +129,12 @@ bool kalloc_canblock_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
 
 /* confirmed working on all kernels 13.0-13.7 */
 bool kfree_addr_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
-    uint32_t *opcode_stream = cacheable_stream;
-
-    /* we should have landed inside kfree_addr, but just to make sure,
-     * look for "kfree on an address not in the kernel" from this point on
-     */
-    uint32_t instr_limit = 200;
-    bool inside_kfree_addr = 0;
-
-    while(instr_limit-- != 0){
-        /* ADRP/ADD or ADR/NOP */
-        if((*opcode_stream & 0x1f000000) == 0x10000000){
-            uint64_t addr_va = 0;
-
-            if(bits(*opcode_stream, 31, 31) == 0)
-                addr_va = get_adr_va_target(opcode_stream);
-            else
-                addr_va = get_adrp_add_va_target(opcode_stream);
-
-            char *string = xnu_va_to_ptr(addr_va);
-
-            const char *match = "kfree on an address not in the kernel";
-            size_t matchlen = strlen(match);
-
-            if(memmem(string, matchlen + 1, match, matchlen)){
-                inside_kfree_addr = true;
-                break;
-            }
-        }
-
-        opcode_stream++;
-    }
-
-    if(!inside_kfree_addr)
-        return false;
-
     xnu_pf_disable_patch(patch);
 
-    /* find kfree_addr's prologue
-     *
-     * looking for sub sp, sp, n
-     */
-    instr_limit = 200;
+    uint32_t *opcode_stream = cacheable_stream;
+
+    /* Find kfree_addr's prologue, looking for sub sp, sp, n */
+    uint32_t instr_limit = 200;
 
     while((*opcode_stream & 0xffc003ff) != 0xd10003ff){
         if(instr_limit-- == 0)
@@ -242,8 +197,7 @@ bool ExceptionVectorsBase_finder_13(xnu_pf_patch_t *patch,
     }
 
     /* we're currently at the upper 32 bits of the last pointer in
-     * exc_vectors_table
-     */
+     * exc_vectors_table */
     opcode_stream++;
 
     g_exec_scratch_space_size -= sizeof(uint32_t);
@@ -268,21 +222,11 @@ bool sysctl__kern_children_finder_13(xnu_pf_patch_t *patch,
     /* advance to the ADRP X20, n or ADR X20 */
     opcode_stream += 2;
 
-    uint64_t addr_va = 0;
+    g_sysctl__kern_children_addr = *(uint64_t *)get_pc_rel_target(opcode_stream);
 
-    if(bits(*opcode_stream, 31, 31) == 0)
-        addr_va = get_adr_va_target(opcode_stream);
-    else
-        addr_va = get_adrp_add_va_target(opcode_stream);
-
-    g_sysctl__kern_children_addr = *(uint64_t *)xnu_va_to_ptr(addr_va);
-
-    /* tagged pointer */
-    if((g_sysctl__kern_children_addr & 0xffff000000000000) != 0xffff000000000000){
-        /* untag and slide */
-        g_sysctl__kern_children_addr |= ((uint64_t)0xffff << 48);
-        g_sysctl__kern_children_addr += kernel_slide;
-    }
+    /* Always untag, no need for a branch */
+    g_sysctl__kern_children_addr |= ((uint64_t)0xffff << 48);
+    g_sysctl__kern_children_addr = xnu_rebase_va(g_sysctl__kern_children_addr);
 
     puts("xnuspy: found sysctl__kern_children");
 
@@ -297,8 +241,7 @@ bool sysctl_register_oid_finder_13(xnu_pf_patch_t *patch,
     uint32_t *opcode_stream = cacheable_stream;
 
     /* the BL we matched is guarenteed to be sysctl_register_oid */
-    uint32_t *sysctl_register_oid = get_branch_dst_ptr(opcode_stream[5],
-            opcode_stream + 5);
+    uint32_t *sysctl_register_oid = get_branch_dst_ptr(opcode_stream + 5);
 
     g_sysctl_register_oid_addr = xnu_ptr_to_va(sysctl_register_oid);
 
@@ -314,11 +257,10 @@ bool sysctl_handle_long_finder_13(xnu_pf_patch_t *patch,
 
     xnu_pf_disable_patch(patch);
 
-    /* the patchfinder landed us at sysctl_handle_long or sysctl_handle_quad,
+    /* The patchfinder landed us at sysctl_handle_long or sysctl_handle_quad,
      * whichever came first in the kernelcache, because these functions are
      * pretty much identical. Both of them can act as sysctl_handle_long and
-     * be fine.
-     */
+     * be fine. */
     g_sysctl_handle_long_addr = xnu_ptr_to_va(opcode_stream);
 
     puts("xnuspy: found sysctl_handle_long");
@@ -348,16 +290,12 @@ bool name2oid_and_its_dependencies_finder_13(xnu_pf_patch_t *patch,
 
     xnu_pf_disable_patch(patch);
 
-    g_sysctl_geometry_lock_addr = get_adrp_ldr_va_target(opcode_stream);
+    uint32_t *sysctl_geometry_lock_addr = (uint32_t *)get_pc_rel_target(opcode_stream);
+    uint32_t *name2oid = get_branch_dst_ptr(opcode_stream + 6);
+    uint32_t *lck_rw_done = get_branch_dst_ptr(opcode_stream + 9);
 
-    uint32_t *name2oid = get_branch_dst_ptr(opcode_stream[6],
-            opcode_stream + 6);
-
+    g_sysctl_geometry_lock_addr = xnu_ptr_to_va(sysctl_geometry_lock_addr);
     g_name2oid_addr = xnu_ptr_to_va(name2oid);
-
-    uint32_t *lck_rw_done = get_branch_dst_ptr(opcode_stream[9],
-            opcode_stream + 9);
-
     g_lck_rw_done_addr = xnu_ptr_to_va(lck_rw_done);
 
     puts("xnuspy: found sysctl_geometry_lock");
@@ -425,7 +363,7 @@ bool lck_grp_alloc_init_finder_13(xnu_pf_patch_t *patch,
     /* the BL we matched is guarenteed to be branching to lck_grp_alloc_init */
     uint32_t *blp = ((uint32_t *)cacheable_stream) + 2;
 
-    uint32_t *lck_grp_alloc_init = get_branch_dst_ptr(*blp, blp);
+    uint32_t *lck_grp_alloc_init = get_branch_dst_ptr(blp);
 
     g_lck_grp_alloc_init_addr = xnu_ptr_to_va(lck_grp_alloc_init);
 
@@ -463,8 +401,7 @@ bool lck_rw_alloc_init_finder_13(xnu_pf_patch_t *patch,
         opcode_stream++;
     }
 
-    uint32_t *lck_rw_alloc_init = get_branch_dst_ptr(*opcode_stream,
-            opcode_stream);
+    uint32_t *lck_rw_alloc_init = get_branch_dst_ptr(opcode_stream);
 
     g_lck_rw_alloc_init_addr = xnu_ptr_to_va(lck_rw_alloc_init);
 
@@ -497,8 +434,7 @@ bool bcopy_phys_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     opcode_stream--;
 
     /* make sure we are actually on bcopy_phys. Check for sub sp, sp, n
-     * two instructions down
-     */
+     * two instructions down */
     if((opcode_stream[2] & 0xffc003ff) != 0xd10003ff)
         return false;
 
@@ -518,9 +454,8 @@ bool phystokv_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     uint32_t *opcode_stream = cacheable_stream;
 
     /* We've landed inside arm_vm_init; the 5th instruction from this point
-     * is branching to phystokv
-     */
-    uint32_t *phystokv = get_branch_dst_ptr(opcode_stream[5], opcode_stream + 5);
+     * is branching to phystokv */
+    uint32_t *phystokv = get_branch_dst_ptr(opcode_stream + 5);
 
     g_phystokv_addr = xnu_ptr_to_va(phystokv);
 
@@ -598,8 +533,7 @@ bool copyout_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
      * make the order of the three ignored instructions different across
      * kernels. On some kernels, the matches/masks combo matches two places,
      * so we need to make sure we're inside copyout. We're inside copyout if
-     * the eighth instruction from this point is cmp w0, 0x12.
-     */
+     * the eighth instruction from this point is cmp w0, 0x12. */
     if(opcode_stream[8] != 0x7100481f)
         return false;
 
@@ -669,8 +603,8 @@ bool kernel_map_vm_deallocate_vm_map_unwire_finder_13(xnu_pf_patch_t *patch,
      * branch we're currently sitting at. */
     uint32_t *opcode_stream = cacheable_stream;
 
-    uint32_t *vm_map_unwire = get_branch_dst_ptr(*opcode_stream, opcode_stream);
-    uint32_t *vm_deallocate = get_branch_dst_ptr(opcode_stream[3], opcode_stream + 3);
+    uint32_t *vm_map_unwire = get_branch_dst_ptr(opcode_stream);
+    uint32_t *vm_deallocate = get_branch_dst_ptr(opcode_stream + 3);
 
     g_vm_map_unwire_addr = xnu_ptr_to_va(vm_map_unwire);
     g_vm_deallocate_addr = xnu_ptr_to_va(vm_deallocate);
@@ -688,21 +622,19 @@ bool kernel_map_vm_deallocate_vm_map_unwire_finder_13(xnu_pf_patch_t *patch,
 
     /* The ADRP,LDR pairs require another level of indirection for this */
     if(((opcode_stream[1] >> 25) & 5) == 4){
-        uint64_t pva = get_adrp_ldr_va_target(opcode_stream);
-        uint64_t *ptr = xnu_va_to_ptr(pva);
-
-        g_kernel_map_addr = *ptr;
-
-        if((g_kernel_map_addr & 0xffff000000000000) != 0xffff000000000000)
-            g_kernel_map_addr |= ((uint64_t)0xffff << 48);
-
-        g_kernel_map_addr += kernel_slide;
+        g_kernel_map_addr = *(uint64_t *)get_adrp_ldr_target(opcode_stream);
+        g_kernel_map_addr |= ((uint64_t)0xffff << 48);
+        g_kernel_map_addr = kext_rebase_va(g_kernel_map_addr);
     }
     else{
+        uint64_t kernel_map_addr;
+
         if(*opcode_stream & 0x80000000)
-            g_kernel_map_addr = get_adrp_add_va_target(opcode_stream);
+            kernel_map_addr = get_adrp_add_target(opcode_stream);
         else
-            g_kernel_map_addr = get_adr_va_target(opcode_stream);
+            kernel_map_addr = get_adr_target(opcode_stream);
+
+        g_kernel_map_addr = xnu_ptr_to_va((void *)kernel_map_addr);
     }
 
     puts("xnuspy: found vm_map_unwire");
@@ -721,8 +653,8 @@ bool kernel_thread_start_thread_deallocate_finder_13(xnu_pf_patch_t *patch,
 
     uint32_t *opcode_stream = cacheable_stream;
 
-    uint32_t *kernel_thread_start = get_branch_dst_ptr(*opcode_stream, opcode_stream);
-    uint32_t *thread_deallocate = get_branch_dst_ptr(opcode_stream[8], opcode_stream + 8);
+    uint32_t *kernel_thread_start = get_branch_dst_ptr(opcode_stream);
+    uint32_t *thread_deallocate = get_branch_dst_ptr(opcode_stream + 8);
 
     g_kernel_thread_start_addr = xnu_ptr_to_va(kernel_thread_start);
     g_thread_deallocate_addr = xnu_ptr_to_va(thread_deallocate);
@@ -761,7 +693,6 @@ bool offsetof_struct_thread_map_finder_13(xnu_pf_patch_t *patch,
     g_offsetof_struct_thread_map = (uint64_t)(imm12 << size);
 
     puts("xnuspy: found offsetof(struct thread, map)");
-    /*         g_offsetof_struct_thread_map); */
 
     return true;
 }
@@ -782,9 +713,9 @@ bool proc_stuff0_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
 
     uint32_t *opcode_stream = cacheable_stream;
 
-    uint32_t *current_proc = get_branch_dst_ptr(opcode_stream[1], opcode_stream + 1);
-    uint32_t *proc_list_lock = get_branch_dst_ptr(opcode_stream[3], opcode_stream + 3);
-    uint32_t *proc_ref_locked = get_branch_dst_ptr(opcode_stream[5], opcode_stream + 5);
+    uint32_t *current_proc = get_branch_dst_ptr(opcode_stream + 1);
+    uint32_t *proc_list_lock = get_branch_dst_ptr(opcode_stream + 3);
+    uint32_t *proc_ref_locked = get_branch_dst_ptr(opcode_stream + 5);
 
     g_current_proc_addr = xnu_ptr_to_va(current_proc);
     g_proc_list_lock_addr = xnu_ptr_to_va(proc_list_lock);
@@ -801,7 +732,7 @@ bool proc_stuff0_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
         opcode_stream++;
     }
 
-    g_proc_list_mlock_addr = get_pc_rel_va_target(opcode_stream);
+    g_proc_list_mlock_addr = xnu_ptr_to_va((void *)get_pc_rel_target(opcode_stream));
 
     instr_limit = 20;
 
@@ -812,7 +743,7 @@ bool proc_stuff0_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
         opcode_stream++;
     }
 
-    uint32_t *lck_mtx_unlock = get_branch_dst_ptr(*opcode_stream, opcode_stream);
+    uint32_t *lck_mtx_unlock = get_branch_dst_ptr(opcode_stream);
 
     g_lck_mtx_unlock_addr = xnu_ptr_to_va(lck_mtx_unlock);
 
@@ -833,7 +764,7 @@ bool proc_stuff0_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
 
     /* We're at the ldr, and if we're at the beginning of proc_rele_locked,
      * we will not see mov x29, sp. If we see that, the beginning is two
-     * instruction behind this point. */
+     * instructions behind this point. */
     if(opcode_stream[-1] == 0x910003fd)
         opcode_stream -= 2;
 
@@ -869,7 +800,7 @@ bool proc_stuff1_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
         opcode_stream--;
     }
 
-    uint32_t *proc_uniqueid = get_branch_dst_ptr(*opcode_stream, opcode_stream);
+    uint32_t *proc_uniqueid = get_branch_dst_ptr(opcode_stream);
 
     /* Get off the branch to proc_uniqueid */
     opcode_stream--;
@@ -881,7 +812,7 @@ bool proc_stuff1_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
         opcode_stream--;
     }
 
-    uint32_t *proc_pid = get_branch_dst_ptr(*opcode_stream, opcode_stream);
+    uint32_t *proc_pid = get_branch_dst_ptr(opcode_stream);
 
     g_proc_uniqueid_addr = xnu_ptr_to_va(proc_uniqueid);
     g_proc_pid_addr = xnu_ptr_to_va(proc_pid);
@@ -899,7 +830,7 @@ bool allproc_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
 
     uint32_t *opcode_stream = cacheable_stream;
 
-    g_allproc_addr = get_pc_rel_va_target(opcode_stream + 3);
+    g_allproc_addr = xnu_ptr_to_va((void *)get_pc_rel_target(opcode_stream + 3));
 
     puts("xnuspy: found allproc");
 
@@ -918,11 +849,9 @@ bool misc_lck_stuff_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
      * easier to get all three of these at once. */
     uint32_t *opcode_stream = cacheable_stream;
 
-    uint32_t *lck_rw_lock_shared = get_branch_dst_ptr(*opcode_stream, opcode_stream);
-    uint32_t *lck_rw_lock_shared_to_exclusive =
-        get_branch_dst_ptr(opcode_stream[4], opcode_stream + 4);
-    uint32_t *lck_rw_lock_exclusive = get_branch_dst_ptr(opcode_stream[7],
-            opcode_stream + 7);
+    uint32_t *lck_rw_lock_shared = get_branch_dst_ptr(opcode_stream);
+    uint32_t *lck_rw_lock_shared_to_exclusive = get_branch_dst_ptr(opcode_stream + 4);
+    uint32_t *lck_rw_lock_exclusive = get_branch_dst_ptr(opcode_stream + 7);
 
     g_lck_rw_lock_shared_addr = xnu_ptr_to_va(lck_rw_lock_shared);
     g_lck_rw_lock_shared_to_exclusive_addr =
@@ -1004,8 +933,7 @@ bool ipc_port_release_send_finder_13(xnu_pf_patch_t *patch,
 
     uint32_t *opcode_stream = cacheable_stream;
 
-    uint32_t *ipc_port_release_send = get_branch_dst_ptr(opcode_stream[3],
-            opcode_stream + 3);
+    uint32_t *ipc_port_release_send = get_branch_dst_ptr(opcode_stream + 3);
 
     g_ipc_port_release_send_addr = xnu_ptr_to_va(ipc_port_release_send);
 
@@ -1022,8 +950,7 @@ bool lck_rw_free_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
 
     uint32_t *opcode_stream = cacheable_stream;
 
-    uint32_t *lck_rw_free = get_branch_dst_ptr(opcode_stream[2],
-            opcode_stream + 2);
+    uint32_t *lck_rw_free = get_branch_dst_ptr(opcode_stream + 2);
 
     g_lck_rw_free_addr = xnu_ptr_to_va(lck_rw_free);
 
@@ -1040,8 +967,7 @@ bool lck_grp_free_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
 
     uint32_t *opcode_stream = cacheable_stream;
 
-    uint32_t *lck_grp_free = get_branch_dst_ptr(opcode_stream[5],
-            opcode_stream + 5);
+    uint32_t *lck_grp_free = get_branch_dst_ptr(opcode_stream + 5);
 
     g_lck_grp_free_addr = xnu_ptr_to_va(lck_grp_free);
 
@@ -1069,8 +995,7 @@ bool doprnt_hide_pointers_patcher_13(xnu_pf_patch_t *patch,
         opcode_stream++;
     }
 
-    uint64_t doprnt_hide_pointers = get_pc_rel_va_target(opcode_stream);
-    *(uint32_t *)xnu_va_to_ptr(doprnt_hide_pointers) = 0;
+    *(uint32_t *)get_pc_rel_target(opcode_stream) = 0;
 
     g_patched_doprnt_hide_pointers = 1;
 

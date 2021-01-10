@@ -1,7 +1,7 @@
 CC = clang
 SDK = $(shell xcrun --sdk iphoneos --show-sdk-path)
 CFLAGS = -isysroot $(SDK) -arch arm64 -Wno-string-plus-int -fno-stack-protector
-CFLAGS += -D_FORTIFY_SOURCE=0 -nostdlib
+CFLAGS += -Wno-shorten-64-to-32 -D_FORTIFY_SOURCE=0 -nostdlib
 LDFLAGS = -Xlinker -kext
 OPDUMP = $(realpath ../opdump/opdump)
 
@@ -28,5 +28,5 @@ preboot_hook.o : $(INSTR_FILES) preboot_hook.c preboot_hook.h \
 	$(CC) $(CFLAGS) preboot_hook.c -c
 
 xnuspy : $(OBJECT_FILES) xnuspy.c preboot_hook.o common/common.h \
-	pf/offsets.h pf/pfs.h
+	pf/offsets.h pf/pfs.h common/xnuspy_structs.h
 	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJECT_FILES) preboot_hook.o xnuspy.c -o xnuspy

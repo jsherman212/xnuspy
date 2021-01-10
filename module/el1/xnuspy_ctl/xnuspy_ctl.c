@@ -1,15 +1,13 @@
 #include <errno.h>
 #include <mach/mach.h>
-#include <mach/vm_statistics.h>
 #include <mach-o/loader.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <sys/queue.h>
 #include <unistd.h>
 
+#include "../../common/asm.h"
 #include "../../common/xnuspy_structs.h"
 
-#include "asm.h"
 #include "debug.h"
 #include "mem.h"
 #include "pte.h"
@@ -48,7 +46,7 @@
 #define UVTOPHYS                    (16)
 #define KPROTECT                    (17)
 #define UPROTECT                    (18)
-#define KWRITE                      (19)
+#define KWRITE_STATIC               (19)
 #define KWRITE_INSTR                (20)
 #define EL0_PTEP                    (21)
 #define EL1_PTEP                    (22)
@@ -722,13 +720,9 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
          * the OutputAddress */
         pte_t new_rp_pte = (*rp_ptep & ~0xfffffffff000uLL) | ma_physpage;
 
-        kwrite(rp_ptep, &new_rp_pte, sizeof(new_rp_pte));
+        kwrite_static(rp_ptep, &new_rp_pte, sizeof(new_rp_pte));
 
-        asm volatile("isb");
-        asm volatile("dsb sy");
-        asm volatile("tlbi vmalle1");
-        asm volatile("dsb sy");
-        asm volatile("isb");
+        pte_sync();
 
         cur->used = 1;
 
@@ -774,15 +768,15 @@ static const uint64_t g_gc_leaked_page_hardcap = 64;
 static void xnuspy_do_gc(void){
     SPYDBG("%s: doing gc\n", __func__);
 
-    int64_t dealloc_pages = (int64_t)(g_num_leaked_pages - g_gc_leaked_page_hardcap);
-
-    SPYDBG("%s: need to deallocate %lld pages to get back around hardcap\n",
-            __func__, dealloc_pages);
-
     if(STAILQ_EMPTY(&unmaplist)){
         SPYDBG("%s: unmap list is empty\n", __func__);
         return;
     }
+
+    int64_t dealloc_pages = (int64_t)(g_num_leaked_pages - g_gc_leaked_page_hardcap);
+
+    SPYDBG("%s: need to deallocate %lld pages to get back around hardcap\n",
+            __func__, dealloc_pages);
 
     struct stailq_entry *entry, *tmp;
 
@@ -833,7 +827,10 @@ static void xnuspy_do_gc(void){
         if(kret)
             didfail = 1;
 
-        SPYDBG("%s: didfail: %d\n", __func__, didfail);
+        if(didfail)
+            SPYDBG("%s: something failed :(\n", __func__);
+        else
+            SPYDBG("%s: okay\n", __func__);
 
         if(!didfail)
             g_num_leaked_pages -= om->mapping_size / PAGE_SIZE;
@@ -1085,8 +1082,8 @@ static int xnuspy_cache_read(uint64_t which, uint64_t /* __user */ outp){
         case UPROTECT:
             what = uprotect;
             break;
-        case KWRITE:
-            what = kwrite;
+        case KWRITE_STATIC:
+            what = kwrite_static;
             break;
         case KWRITE_INSTR:
             what = kwrite_instr;

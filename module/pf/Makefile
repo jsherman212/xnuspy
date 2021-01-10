@@ -1,9 +1,6 @@
 TARGET_DIRS = 13 14
 
-all : disas.o macho.o $(TARGET_DIRS)
-
-disas.o : disas.c disas.h
-	$(CC) $(CFLAGS) disas.c -c
+all : macho.o $(TARGET_DIRS)
 
 macho.o : macho.c macho.h
 	$(CC) $(CFLAGS) macho.c -c

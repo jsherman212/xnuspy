@@ -7,7 +7,7 @@ __attribute__((naked)) uint64_t uvtophys(uint64_t);
 int kprotect(void *, uint64_t, vm_prot_t);
 int uprotect(void *, uint64_t, vm_prot_t);
 
-void kwrite(void *, void *, size_t);
+void kwrite_static(void *, void *, size_t);
 void kwrite_instr(uint64_t, uint32_t);
 
 void *unified_kalloc(size_t);

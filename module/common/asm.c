@@ -1,6 +1,6 @@
 #include <stdint.h>
 
-static uint64_t sign_extend(uint64_t number, uint32_t numbits /* signbit */){
+uint64_t sign_extend(uint64_t number, uint32_t numbits /* signbit */){
     if(number & ((uint64_t)1 << (numbits - 1)))
         return number | ~(((uint64_t)1 << numbits) - 1);
 
@@ -63,37 +63,37 @@ uint64_t get_add_imm(uint32_t add){
     return imm;
 }
 
-uint64_t get_adr_va_target(uint32_t *adrp){
+uint64_t get_adr_target(uint32_t *adrp){
     uint32_t immlo = (uint32_t)bits(*adrp, 29, 30);
     uint32_t immhi = (uint32_t)bits(*adrp, 5, 23);
 
     return sign_extend((immhi << 2) | immlo, 21) + (uintptr_t)adrp;
 }
 
-uint64_t get_adrp_va_target(uint32_t *adrpp){
+uint64_t get_adrp_target(uint32_t *adrpp){
     uint32_t adrp = *adrpp;
 
     uint32_t immlo = (uint32_t)bits(adrp, 29, 30);
     uint32_t immhi = (uint32_t)bits(adrp, 5, 23);
 
-    return sign_extend(((immhi << 2) | immlo) << 12, 33) +
+    return sign_extend(((immhi << 2) | immlo) << 12, 32) +
         ((uintptr_t)adrpp & ~0xfffuLL);
 }
 
-uint64_t get_adrp_add_va_target(uint32_t *adrpp){
+uint64_t get_adrp_add_target(uint32_t *adrpp){
     uint32_t adrp = *adrpp;
     uint32_t add = *(adrpp + 1);
 
-    int64_t addr_va = (int64_t)get_adrp_va_target(adrpp);
+    int64_t addr = (int64_t)get_adrp_target(adrpp);
 
-    return (uint64_t)(addr_va + (int64_t)bits(add, 10, 21));
+    return (uint64_t)(addr + (int64_t)bits(add, 10, 21));
 }
 
-uint64_t get_adrp_ldr_va_target(uint32_t *adrpp){
+uint64_t get_adrp_ldr_target(uint32_t *adrpp){
     uint32_t adrp = *adrpp;
     uint32_t ldr = *(adrpp + 1);
 
-    int64_t addr_va = (int64_t)get_adrp_va_target(adrpp);
+    int64_t addr = (int64_t)get_adrp_target(adrpp);
 
     /* for LDR, assuming unsigned immediate
      *
@@ -124,7 +124,17 @@ uint64_t get_adrp_ldr_va_target(uint32_t *adrpp){
     /* takes care of LDR */
     int64_t pimm = (int64_t)sign_extend(imm12, 12) << shift;
 
-    return (uint64_t)(addr_va + pimm);
+    return (uint64_t)(addr + pimm);
+}
+
+uint64_t get_pc_rel_target(uint32_t *adrpp){
+    if(((adrpp[1] >> 25) & 5) == 4)
+        /* only ldr */
+        return get_adrp_ldr_target(adrpp);
+    else if(*adrpp & 0x80000000)
+        return get_adrp_add_target(adrpp);
+    else
+        return get_adr_target(adrpp);
 }
 
 uint64_t get_branch_dst(uint32_t branch, uint32_t *pc){
@@ -132,6 +142,15 @@ uint64_t get_branch_dst(uint32_t branch, uint32_t *pc){
     int32_t imm26 = (int32_t)sign_extend(bits(branch, 0, 25) << 2, 28);
 
     return (uint64_t)(signed_pc + imm26);
+}
+
+uint32_t *get_branch_dst_ptr(uint32_t *pc){
+    uint32_t branch = *pc;
+    intptr_t signed_pc = (intptr_t)pc;
+
+    int32_t imm26 = (int32_t)sign_extend(bits(branch, 0, 25) << 2, 28);
+
+    return (uint32_t *)(signed_pc + imm26);
 }
 
 uint64_t get_compare_and_branch_dst(uint32_t cab, uint32_t *pc){
@@ -153,4 +172,17 @@ uint64_t get_test_and_branch_dst(uint32_t tab, uint32_t *pc){
     int32_t imm14 = (int32_t)sign_extend(bits(tab, 5, 18) << 2, 16);
 
     return (uint64_t)(signed_pc + imm14);
+}
+
+void write_blr(uint32_t reg, uint32_t *from, uint64_t to){
+    /* movz */
+    *(from++) = (uint32_t)(0xd2800000 | ((to & 0xffff) << 5) | reg);
+    /* movk */
+    *(from++) = (uint32_t)(0xf2800000 | (1 << 21) | (((to >> 16) & 0xffff) << 5) | reg);
+    /* movk */
+    *(from++) = (uint32_t)(0xf2800000 | (2 << 21) | (((to >> 32) & 0xffff) << 5) | reg);
+    /* movk */
+    *(from++) = (uint32_t)(0xf2800000 | (3 << 21) | (((to >> 48) & 0xffff) << 5) | reg);
+    /* blr */
+    *(from++) = (uint32_t)(0xd63f0000 | (reg << 5));
 }

@@ -61,8 +61,7 @@
  *  kaddr: kernel virtual address of target.
  *  size:  the number of bytes in the target region.
  *  prot:  protections to apply. Only VM_PROT_READ, VM_PROT_WRITE, and
- *         VM_PROT_EXECUTE are respected. If VM_PROT_EXECUTE is set, both
- *         the XN & PXN bits of the page table are turned off.
+ *         VM_PROT_EXECUTE are respected.
  *
  * Returns:
  *  Zero if successful, non-zero otherwise.
@@ -77,25 +76,23 @@
  *  uaddr: user virtual address of target.
  *  size:  the number of bytes in the target region.
  *  prot:  protections to apply. Only VM_PROT_READ, VM_PROT_WRITE, and
- *         VM_PROT_EXECUTE are respected. If VM_PROT_EXECUTE is set, both
- *         the XN & PXN bits of the page table are turned off.
+ *         VM_PROT_EXECUTE are respected.
  *
  * Returns:
  *  Zero if successful, non-zero otherwise.
  */
 #define UPROTECT                    (18)
 
-/* void kwrite(void *dst, void *buf, size_t sz)
+/* void kwrite_static(void *dst, void *buf, size_t sz)
  *
- * Write to kernel memory, using bcopy_phys. Useful if you want to write
- * to static kernel memory.
+ * Write to static kernel memory, using bcopy_phys.
  *
  * Parameters:
  *  dst: kernel virtual address of destination.
  *  buf: kernel virtual address of data.
  *  sz:  how many bytes 'buf' is.
  */
-#define KWRITE                      (19)
+#define KWRITE_STATIC               (19)
 
 /* void kwrite_instr(uint64_t addr, uint32_t instr)
  *
