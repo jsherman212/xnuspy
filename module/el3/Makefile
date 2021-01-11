@@ -1,6 +1,6 @@
 all : kpp kpp.o
 
-kpp : kpp.s
+kpp : kpp.s ../common/asm_support.h
 	$(CC) -arch arm64 -e _kpp0 kpp.s -o kpp
 	$(OPDUMP) -td -i ./kpp -a kpp_patches -o kpp_patches.h
 
