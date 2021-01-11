@@ -1,0 +1,8 @@
+#ifndef ASM_SUPPORT
+#define ASM_SUPPORT
+
+#define OPCODE_PLACEHOLDER_BYTE     (0x41)
+#define OPCODE_PLACEHOLDER          (0x41414141)
+#define QWORD_PLACEHOLDER           (0x4142434445464748)
+
+#endif

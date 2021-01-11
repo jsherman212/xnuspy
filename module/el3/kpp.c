@@ -4,6 +4,7 @@
 #include "kpp_patches.h"
 
 #include "../common/asm.h"
+#include "../common/asm_support.h"
 #include "../common/common.h"
 #include "../common/pongo.h"
 
@@ -149,16 +150,17 @@ nope:
 
     uint64_t kpp_patches_len = g_kpp_patches_len / sizeof(uint32_t);
     uint32_t *kpp_patches_cursor = (uint32_t *)g_kpp_patches;
-
-    /* Set the space we reserved for kernEntry inside kpp.s */
-    uint64_t *_kernEntryp = (uint64_t *)(kpp_patches_cursor + (kpp_patches_len - 2));
-    *_kernEntryp = kpp_kernEntryp;
+    uint32_t *kpp_patches_end = kpp_patches_cursor + kpp_patches_len;
 
     kpp_stream = saved_prologue;
 
     /* Finally, replace this function */
-    for(uint64_t i=0; i<kpp_patches_len; i++)
-        *kpp_stream++ = kpp_patches_cursor[i];
+    while(kpp_patches_cursor < kpp_patches_end){
+        if(*(uint64_t *)kpp_patches_cursor == QWORD_PLACEHOLDER)
+            *(uint64_t *)kpp_patches_cursor = kpp_kernEntryp;
+
+        *kpp_stream++ = *kpp_patches_cursor++;
+    }
 }
 
 void patch_kpp(void){

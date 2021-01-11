@@ -8,7 +8,7 @@ Requires `libusb`: `brew install libusb`
 
 # Building
 Run `make` in the top level directory. It'll build the loader and the module.
-If you want debug output from xnuspy, run `XNUSPY_DEBUG=1 make`.
+If you want debug output from xnuspy to the kernel log, run`XNUSPY_DEBUG=1 make`.
 
 # Usage
 After you've built everything, have checkra1n boot your device to a pongo
@@ -20,12 +20,12 @@ in a few seconds your device will boot. `loader` will wait a couple more
 seconds after issuing `xnuspy-getkernelv` in case SEPROM needs to be exploited.
 
 # xnuspy_ctl
-`xnuspy` will patch the first `enosys` system call to point to `xnuspy_ctl_tramp`.
+xnuspy will patch the first `enosys` system call to point to `xnuspy_ctl_tramp`.
 This is a small trampoline which marks the compiled `xnuspy_ctl` code as
 executable and branches to it. You can find `xnuspy_ctl`'s implementation at
 `module/el1/xnuspy_ctl/xnuspy_ctl.c` and examples in the `example` directory.
-That directory also contains `xnuspy_ctl.h`. This header defines constants for
-`xnuspy_ctl` and is meant to be included in all programs which call it.
+That directory also contains `xnuspy_ctl.h`, a header which defines constants for
+`xnuspy_ctl`. It is meant to be included in all programs which call it.
 
 You can use `sysctlbyname` to figure out which system call was patched:
 
@@ -103,34 +103,53 @@ return value of the one-time initialization function.
 If this flavor returns an error, the pointer you passed for `arg2` was not
 initialized.
 
-# Debugging Panics
-When you write your replacement function, you are writing kernel code.
-You need to make sure the functions you call/pointers you dereference from your
-replacement can be done safely in the context of your hooked function (do I
-need to take a lock before doing something with some object? should I really be
-calling `kprintf` inside of a `kalloc` hook?). You cannot execute any user code
-that lives outside of your program's `__TEXT` segment from your replacement.
-Many macros that are safe for userspace are unsafe for your replacement. Macros
-like `PAGE_SIZE` actually evaluate to a stub when I compile with clang. If you
-do panic, it may not be a bug with xnuspy. Before opening an issue, please make
-sure that you still panic when you do nothing but call the original function
-and return its value (if needed). If you still panic, then it's most likely a
-bug with xnuspy. If you don't panic, then there's a bug in your replacement
-code. In this case, I recommend double checking your replacement code and
-throwing the binary inside your favorite disassembler to figure out how it was
-compiled.
-
 # Important Information
+
 ### Common Pitfalls
-While testing and writing examples, I found myself making a lot of the same
-mistakes
-Since your replacement is kernel code, you cannot execute *any* code which
-lives outside of your program's `__TEXT` segment.
+While writing replacement functions, it was easy to forget that I was writing
+kernel code. Here's a couple things to keep in mind when you're writing hooks:
+
+- *You cannot execute any code that lives outside your program's `__TEXT`
+segment*. You will panic if, for example, you accidentally call `printf`
+instead of `kprintf`. You need to re-implement any libc function you wish to call.
+- *Many macros commonly used in userspace code are unsafe for the kernel.* For
+example, `PAGE_SIZE` expands to `vm_page_size`, not a constant. You need to
+disable PAN (on A10+, which I also don't recommend doing) before reading this 
+variable or you will panic.
+
+Skimming https://developer.apple.com/library/archive/documentation/Darwin/Conceptual/KernelProgramming/style/style.html is also recommended.
+
+### Debugging Kernel Panics
+Bugs are inevitable when writing code, so eventually you're going to cause a
+kernel panic. A panic doesn't necessarily mean there's a bug with xnuspy, so
+before opening an issue, please make sure that you still panic when you do
+nothing but call the original function and return its value (if needed). If
+you still panic, then it's likely an xnuspy bug (and please open an issue),
+but if not, there's something wrong with your replacement.
+
+Since xnuspy does not actually redirect execution to EL0 pages, debugging
+a panic isn't as straightforward. Open up `module/el1/xnuspy_ctl/xnuspy_ctl.c`,
+and right before the only call to `kwrite_instr` in `xnuspy_install_hook`,
+add a call to `IOSleep` for a couple seconds. Re-compile xnuspy with
+`XNUSPY_DEBUG=1 make -B` and load the module again. After loading the module,
+if you haven't already, compile `klog` from `tools/`. Upload it to your device
+and do `stdbuf -o0 ./klog | grep find_replacement_kva`. Run your hook program again
+and watch for a line from `klog` that looks like this:
+
+`find_replacement_kva: dist 0x780c replacement 0x100cd780c umh 0x100cd0000 kmh 0xfffffff0311c0000`.
+
+If you're installing more than one hook, there will be more than one occurrence.
+In that case, `dist` and `replacement` will vary, but `umh` and `kmh` won't.
+Throw your hook program into your favorite disassembler and rebase it so its Mach-O
+header is at the address of `kmh`. For IDA Pro, that's `Edit -> Segments -> Rebase
+program...` with `Image base` bubbled. After your device panics and reboots again,
+if there are addresses which correspond to the kernel's mapping of your replacement
+in the panic log, they will match up with the disassembly. If there are none, then
+you probably have some sort of subtle memory corruption inside your replacement.
 
 ### Hook Uninstallation
 xnuspy will manage this for you. Once a process exits, all the kernel hooks
-that were installed by that process are uninstalled within a couple seconds of
-exiting.
+that were installed by that process are uninstalled within a second or so.
 
 ### Hookable Kernel Functions
 Most function hooking frameworks have some minimum length that makes a given
@@ -138,15 +157,14 @@ function hookable. xnuspy has this limit *only* if you plan to call the original
 function. In this case, the minimum length is eight bytes. Otherwise, there
 is no minimum length.
 
+Additionally, xnuspy uses `X16` and `X17` for its trampolines, so kernel functions
+which expect those to persist across function calls cannot be hooked.
+
 ### Thread-safety
 `xnuspy_ctl` will perform one-time initialization the first time it is called
 after a fresh boot. This is the only part of xnuspy which is raceable since
 I can't statically initialize the read/write lock I use. After the first call
 returns, any future calls are guarenteed to be thread-safe.
-
-### Clobbered Registers
-xnuspy uses `X16` and `X17` for its trampolines, so kernel functions which
-expect those to persist across function calls cannot be hooked.
 
 # How It Works
 This is simplified, but it captures the main idea well. Check out `xnuspy_ctl`'s

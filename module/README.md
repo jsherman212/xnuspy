@@ -7,11 +7,14 @@ el1/
 - kernel code
 
 el3/
-- KPP patchfinder for A9
+- KPP patchfinder for A9 and its variants
 
 pf/
 - patchfinder code for the kernel
 
 preboot_hook.c
-- patches the first `_enosys` sysent to point to the code in
-`el1/xnuspy_ctl_tramp.s`
+- sets everything up for xnuspy_ctl and installs it
+
+xnuspy.c
+- gets kernel version, either exploits SEPROM, patches KPP, or neither, and
+launches xnuspy's patchfinders

@@ -5,6 +5,7 @@
 #include <sys/sysctl.h>
 
 #include "common/asm.h"
+#include "common/asm_support.h"
 #include "common/common.h"
 #include "common/pongo.h"
 #include "common/xnuspy_structs.h"
@@ -271,9 +272,9 @@ static uint32_t *install_h_s_c_sbn_hook(uint32_t *scratch_space,
     uint32_t *h_s_c_sbn_branch_from_orig = h_s_c_sbn_branch_from;
 
     while(h_s_c_sbn_hook_cursor < h_s_c_sbn_hook_end){
-        if(*(uint64_t *)h_s_c_sbn_hook_cursor == 0x4142434445464748)
+        if(*(uint64_t *)h_s_c_sbn_hook_cursor == QWORD_PLACEHOLDER)
             *(uint64_t *)h_s_c_sbn_hook_cursor = xnu_ptr_to_va(xnuspy_cache_base);
-        else if(*h_s_c_sbn_hook_cursor == 0)
+        else if(*h_s_c_sbn_hook_cursor == OPCODE_PLACEHOLDER)
             *h_s_c_sbn_hook_cursor = *h_s_c_sbn_branch_from++;
 
         WRITE_INSTR_TO_SCRATCH_SPACE(*h_s_c_sbn_hook_cursor++);
@@ -296,18 +297,11 @@ static uint32_t *write_xnuspy_ctl_tramp_instrs(uint32_t *scratch_space,
     uint32_t *xnuspy_ctl_tramp_end = xnuspy_ctl_tramp_cursor + xnuspy_ctl_tramp_len;
 
     while(xnuspy_ctl_tramp_cursor < xnuspy_ctl_tramp_end){
-        if(*(uint64_t *)xnuspy_ctl_tramp_cursor == 0x4142434445464748)
+        if(*(uint64_t *)xnuspy_ctl_tramp_cursor == QWORD_PLACEHOLDER)
             *(uint64_t *)xnuspy_ctl_tramp_cursor = xnu_ptr_to_va(xnuspy_cache_base);
 
         WRITE_INSTR_TO_SCRATCH_SPACE(*xnuspy_ctl_tramp_cursor++);
     }
-
-    /* uint64_t *addrof_xnuspy_cache = */
-    /*     (uint64_t *)(xnuspy_ctl_tramp_cursor + (xnuspy_ctl_tramp_len - 2)); */
-    /* *addrof_xnuspy_cache = xnu_ptr_to_va(xnuspy_cache_base); */
-
-    /* for(uint64_t i=0; i<xnuspy_ctl_tramp_len; i++) */
-    /*     WRITE_INSTR_TO_SCRATCH_SPACE(*xnuspy_ctl_tramp_cursor++); */
 
     *num_free_instrsp = num_free_instrs;
 
@@ -319,10 +313,6 @@ static uint32_t *write_xnuspy_ctl_tramp_instrs(uint32_t *scratch_space,
  * module/el1/xnuspy_ctl_tramp.s */
 static uint32_t *install_xnuspy_ctl_tramp(uint32_t *scratch_space,
         uint64_t *num_free_instrsp){
-    /* uint8_t *sysent_stream = (uint8_t *)xnu_va_to_ptr(g_sysent_addr); */
-    /* uint8_t *sysent_stream = (uint8_t *)g_sysent_addr; */
-    /* size_t sizeof_struct_sysent = 0x18; */
-
     struct sysent *sysent_stream = (struct sysent *)g_sysent_addr;
 
     bool tagged_ptr = false;
@@ -331,7 +321,6 @@ static uint32_t *install_xnuspy_ctl_tramp(uint32_t *scratch_space,
     uint32_t limit = 1000;
 
     for(uint32_t i=0; i<limit; i++){
-        /* uint64_t sy_call = *(uint64_t *)sysent_stream; */
         uint64_t sy_call = sysent_stream->sy_call;
 
         /* tagged pointer */
@@ -352,42 +341,33 @@ static uint32_t *install_xnuspy_ctl_tramp(uint32_t *scratch_space,
 
             /* sy_call */
             if(!tagged_ptr)
-                /* *(uint64_t *)sysent_stream = xnu_ptr_to_va(scratch_space); */
                 new_sy_call = xnu_ptr_to_va(scratch_space);
-                /* sysent_stream->sy_call = xnu_ptr_to_va(scratch_space); */
             else{
                 uint64_t untagged = (xnu_ptr_to_va(scratch_space) &
                         0xffffffffffff) - kernel_slide;
 
                 /* re-tag */
                 new_sy_call = untagged | ((uint64_t)old_tag << 48);
-
-                /* *(uint64_t *)sysent_stream = new_sy_call; */
             }
 
             sysent_stream->sy_call = new_sy_call;
 
             /* no 32 bit processes on iOS 11+, so no argument munger */
-            /* *(uint64_t *)(sysent_stream + 0x8) = 0; */
             sysent_stream->sy_arg_munge32 = NULL;
 
             /* this syscall will return an integer */
-            /* *(int32_t *)(sysent_stream + 0x10) = 1; /1* _SYSCALL_RET_INT_T *1/ */
             sysent_stream->sy_return_type = 1; /* _SYSCALL_RET_INT_T */
 
             /* this syscall has four arguments */
-            /* *(int16_t *)(sysent_stream + 0x14) = 4; */
             sysent_stream->sy_narg = 4;
 
             /* four 64 bit arguments, so arguments total 32 bytes */
-            /* *(uint16_t *)(sysent_stream + 0x16) = 0x20; */
             sysent_stream->sy_arg_bytes = sizeof(uint64_t) * sysent_stream->sy_narg;
 
             return write_xnuspy_ctl_tramp_instrs(scratch_space,
                     num_free_instrsp);
         }
 
-        /* sysent_stream += sizeof_struct_sysent; */
         sysent_stream++;
     }
 

@@ -1,3 +1,4 @@
+#include "../common/asm_support.h"
 #include "../common/xnuspy_cache.h"
 
 #include "hook_system_check_sysctlbyname_hook.h"
@@ -142,7 +143,6 @@ Lregister:
     ldr x19, [x28, LCK_RW_LOCK_SHARED]
     blr x19
 
-    ; ldr x0, [x28, XNUSPY_SYSCTL_NAME_PTR]
     /* name2oid modifies the first parameter, so we need to deep copy */
     adr x0, oid_name
     add x1, sp, SYSCTL_NAME_SPACE
@@ -153,7 +153,6 @@ Lcopy_name:
     cmp w2, wzr
     b.ne Lcopy_name
 
-    ; adr x0, oid_name
     add x0, sp, SYSCTL_NAME_SPACE
     ldr x1, [x28, XNUSPY_SYSCTL_MIB_PTR]
     ldr x2, [x28, XNUSPY_SYSCTL_MIB_COUNT_PTR]
@@ -179,14 +178,14 @@ Lnot_ours:
     ldp x5, x4, [sp, #(STACK-0x90)]
     ldp x7, x6, [sp, #(STACK-0xa0)]
     add sp, sp, STACK
-    .zero (5*4)
+    .space (5*4), OPCODE_PLACEHOLDER_BYTE
     /* xnuspy will write back the instructions we overwrote in the space
-    above */
+    above inside install_h_s_c_sbn_hook (preboot_hook.c) */
     ret
 
 /* These are still in __text, so clang treats them as code. Four byte align
     them so clang doesn't complain */
-addrof_xnuspy_cache: .dword 0x4142434445464748
+addrof_xnuspy_cache: .dword QWORD_PLACEHOLDER
 oid_name: .asciz "kern.xnuspy_ctl_callnum"
 .align 2
 oid_descr: .asciz "query for xnuspy_ctl's call number"

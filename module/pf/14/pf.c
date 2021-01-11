@@ -130,9 +130,6 @@ bool sysctl__kern_children_and_register_oid_finder_14(xnu_pf_patch_t *patch,
     g_sysctl__kern_children_addr |= ((uint64_t)0xffff << 48);
     g_sysctl__kern_children_addr = kext_rebase_va(g_sysctl__kern_children_addr);
 
-    printf("%s: sysctl_kern_children addr %#llx\n", __func__,
-            g_sysctl__kern_children_addr);
-
     uint32_t *sysctl_register_oid = get_branch_dst_ptr(opcode_stream + 2);
 
     g_sysctl_register_oid_addr = xnu_ptr_to_va(sysctl_register_oid);

@@ -1,3 +1,4 @@
+#include "../common/asm_support.h"
 #include "../common/xnuspy_cache.h"
 
 #include "xnuspy_ctl_tramp.h"
@@ -129,4 +130,4 @@ _kvtophys:
 1:
     ret
 
-addrof_xnuspy_cache: .dword 0x4142434445464748
+addrof_xnuspy_cache: .dword QWORD_PLACEHOLDER

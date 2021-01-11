@@ -1,6 +1,8 @@
 /* The code in this file replaces the function which is called by KPP's
     lower EL synchronous exception handler */
 
+#include "../common/asm_support.h"
+
 #define MONITOR_SET_ENTRY 0x800
 
 .align 2
@@ -41,4 +43,4 @@ _kpp0:
     ldp x19, x20, [sp], 0x10
     ret
 
-kernEntry: .dword 0x4142434445464748
+kernEntry: .dword QWORD_PLACEHOLDER

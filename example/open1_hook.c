@@ -272,14 +272,14 @@ int main(int argc, char **argv){
     /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xfffffff007d99c1c, */
     /*         open1, &open1_orig); */
     /* iphone x 13.3.1 */
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF007D70534,
-            open1, &open1_orig);
+    /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF007D70534, */
+    /*         open1, &open1_orig); */
     /* iphone 7 14.1 */
     /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF00730AA64, */
     /*         open1, &open1_orig); */
     /* iphone se 14.3 */
-    /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF0072DA190, */
-    /*         open1, &open1_orig); */
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF0072DA190,
+            open1, &open1_orig);
 
     if(ret){
         printf("Could not hook open1: %s\n", strerror(errno));

@@ -551,8 +551,6 @@ nextcmd:
     struct xnuspy_reflector_page *found = NULL;
     struct xnuspy_reflector_page *cur = first_reflector_page;
 
-    /* This needs to be locked because we check the used flag of more
-     * than one reflector page */
     lck_rw_lock_exclusive(xnuspy_rw_lck);
 
     while(cur){
@@ -659,14 +657,14 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
     generate_replacement_tramp(tramp->tramp);
     generate_original_tramp(target + 4, tramp->orig, &orig_tramp_len);
 
-    /* copyout the original function trampoline before the replacement
-     * is called, if necessary */
+    /* copyout the original function trampoline before the target
+     * function is hooked, if necessary */
     if(origp){
         uint32_t *orig_tramp = tramp->orig;
         res = copyout(&orig_tramp, origp, sizeof(origp));
 
         if(res){
-            SPYDBG("%s: copyout failed\n", __func__);
+            SPYDBG("%s: copyout orig trampoline failed: %d\n", __func__, res);
             goto out_free_tramp_entry;
         }
     }
