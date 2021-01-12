@@ -63,7 +63,7 @@ static void generate_tbz_or_tbnz_equivalent(uint32_t orig_instr, uint32_t **tram
      *
      * For tst[n]:
      *  n < 32: tst[n] == TST W0, (1 << (n-1))
-     *  n > 32: tst[n] == TST X0, (1 << (n-1))
+     *  n >= 32: tst[n] == TST X0, (1uLL << (n-1))
      */
     static const uint32_t tst[] = {
         0x7200001f, 0x721f001f, 0x721e001f, 0x721d001f, 0x721c001f, 0x721b001f,
@@ -116,11 +116,10 @@ static void generate_tbz_or_tbnz_equivalent(uint32_t orig_instr, uint32_t **tram
     *len_out += 5;
 }
 
-static void generate_adr_equivalent(uint32_t orig_instr, uint32_t *orig_instr_pc,
-        uint32_t **tramp, uint32_t *len_out){
+static void generate_adr_equivalent(uint32_t orig_instr,
+        uint32_t *orig_instr_pc, uint32_t **tramp, uint32_t *len_out){
     uint64_t adr_target = get_adr_target(orig_instr_pc);
     uint32_t Rd = orig_instr & 0x1f;
-
     uint64_t new_pc = (uint64_t)*tramp;
 
     /* ADRP Rn, #n@PAGE */
@@ -146,7 +145,6 @@ static void generate_load_register_literal_equivalent(uint32_t orig_instr,
     int32_t offset = sign_extend(bits(orig_instr, 5, 23) << 2, 21);
     uint32_t Rt = orig_instr & 0x1f;
     uint64_t label = (uint64_t)((int64_t)orig_instr_pc + offset);
-
     uint64_t new_pc = (uint64_t)*tramp;
 
     /* ADRP X16, <label>@PAGE */
@@ -273,15 +271,6 @@ void generate_original_tramp(uint64_t addrof_second_instr,
         *tramp++ = 0x580000b0;
         /* BLR X16 */
         *tramp++ = 0xd63f0200;
-
-        /* XXX START TESTS */
-        /* /1* LDR X30, [SP] *1/ */
-        /* *tramp++ = 0xf94003fe; */
-        /* /1* BRK 0 *1/ */
-        /* *tramp++ = 0xd4200000; */
-
-        /* XXX END TESTS */
-        
         /* MOV X30, X17 */
         *tramp++ = 0xaa1103fe;
         /* LDR X16, #0x10 */
@@ -322,7 +311,6 @@ void generate_original_tramp(uint64_t addrof_second_instr,
         /* BR X16 */
         *tramp++ = 0xd61f0200;
 
-        /* ((uint64_t *)tramp)[0] = addrof_second_instr; */
         *(uint64_t *)tramp = addrof_second_instr;
 
         tramp_len += 5;

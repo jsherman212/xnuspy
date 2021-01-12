@@ -3,7 +3,7 @@ OBJECT_FILES = debug.o mem.o pte.o tramp.o
 ASM_DEP = ../../common/asm.o
 EXTERNAL_DEPS = externs.h ../../common/xnuspy_structs.h
 
-CFLAGS += -mkernel
+CFLAGS += -mkernel -Wswitch-enum
 
 ifeq ($(XNUSPY_DEBUG), 1)
 	CFLAGS += -DXNUSPY_DEBUG

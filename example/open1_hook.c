@@ -14,10 +14,6 @@ static int (*copyin)(const void *uaddr, void *kaddr, size_t len);
 static int (*copyinstr)(const void *uaddr, void *kaddr, size_t len, size_t *done);
 static int (*copyout)(const void *kaddr, void *uaddr, size_t len);
 static void *(*current_proc)(void);
-static void *(*kalloc_canblock)(size_t *, int, void *);
-static void (*kfree_addr)(void *);
-static void *(*kalloc_external)(size_t);
-static void (*kfree_ext)(void *, void *, size_t);
 static void (*kprintf)(const char *, ...);
 static void (*kwrite_instr)(uint64_t, uint32_t);
 static pid_t (*proc_pid)(void *);
@@ -144,36 +140,6 @@ static int gather_kernel_offsets(void){
         return ret;
     }
 
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, KALLOC_CANBLOCK,
-            &kalloc_canblock, 0);
-
-    if(ret){
-        printf("Failed getting kalloc_canblock\n");
-        return ret;
-    }
-
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, KFREE_ADDR, &kfree_addr, 0);
-
-    if(ret){
-        printf("Failed getting kfree_addr\n");
-        return ret;
-    }
-
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, KALLOC_EXTERNAL,
-            &kalloc_external, 0);
-
-    if(ret){
-        printf("Failed getting kalloc_externaln");
-        return ret;
-    }
-
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, KFREE_EXT, &kfree_ext, 0);
-
-    if(ret){
-        printf("Failed getting kfree_ext\n");
-        return ret;
-    }
-
     ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, KPRINTF, &kprintf, 0);
 
     if(ret){
@@ -248,10 +214,6 @@ int main(int argc, char **argv){
     }
 
     printf("kernel slide: %#llx\n", kernel_slide);
-    printf("kalloc_canblock @ %#llx\n", (uint64_t)kalloc_canblock);
-    printf("kfree_addr @ %#llx\n", (uint64_t)kfree_addr);
-    printf("kalloc_external @ %#llx\n", (uint64_t)kalloc_external);
-    printf("kfree_ext @ %#llx\n", (uint64_t)kfree_ext);
     printf("copyin @ %#llx\n", (uint64_t)copyin);
     printf("copyinstr @ %#llx\n", (uint64_t)copyinstr);
     printf("copyout @ %#llx\n", (uint64_t)copyout);

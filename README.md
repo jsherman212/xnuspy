@@ -83,10 +83,10 @@ calling process.
 of the calling processes' `__TEXT` and `__DATA` segments.
 
 `errno` also depends on the return value of `vm_map_wire_external`,
-`vm_map_unwire`, `vm_deallocate`, `mach_make_memory_entry_64`,
-`mach_vm_map_external`, `copyin`, `copyout`, and if applicable, the one-time
-initialization function. An `errno` of `10000` represents a `kern_return_t`
-value that I haven't yet taken into account for.
+`vm_map_unwire`, `vm_deallocate`, `mach_vm_map_external`, `copyin`,
+`copyout`, and if applicable, the one-time initialization function. An `errno`
+of `10000` represents a `kern_return_t` value that I haven't yet taken into
+account for.
 
 If this flavor returns an error, the target kernel function was not hooked.
 If you passed a non-NULL pointer for `arg3`, it may or may not have been
@@ -96,6 +96,10 @@ initialized. It's unsafe to use if it was.
 `errno` is set to...
 - `EINVAL` if:
   - The constant denoted by `arg1` does not represent anything in the cache.
+  - You requested `KALLOC_EXTERNAL` while running iOS 13.x.
+  - You requested `KALLOC_CANBLOCK` while running iOS 14.x.
+  - You requested `KFREE_EXT` while running iOS 13.x.
+  - You requested `KFREE_ADDR` while running iOS 14.x.
 
 `errno` also depends on the return value of `copyout` and if applicable, the
 return value of the one-time initialization function.

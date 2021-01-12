@@ -9,6 +9,9 @@
 
 void desc_freelist(void);
 void desc_orphan_mapping(struct orphan_mapping *);
+/* XXX ONLY meant to be called from xnuspy_gc_thread, hence the lack
+ * of locking. */
+void desc_unmaplist(void);
 void desc_usedlist(void);
 
 void desc_xnuspy_mapping_metadata(struct xnuspy_mapping_metadata *);

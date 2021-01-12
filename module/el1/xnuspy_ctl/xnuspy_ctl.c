@@ -18,41 +18,73 @@
 
 #define PAGE_SIZE                   (0x4000)
 
-#define VM_KERN_MEMORY_OSFMK		(1)
+#define iOS_13_x                    (19)
+#define iOS_14_x                    (20)
 
 /* THIS NEEDS TO STAY IN SYNC WITH example/xnuspy_ctl.h */
-#define XNUSPY_INSTALL_HOOK         (0)
-#define XNUSPY_CHECK_IF_PATCHED     (1)
-#define XNUSPY_CACHE_READ           (2)
-#define XNUSPY_MAX_FLAVOR           XNUSPY_CACHE_READ
+enum {
+    XNUSPY_CHECK_IF_PATCHED = 0,
+    XNUSPY_INSTALL_HOOK,
+    XNUSPY_CACHE_READ,
+    XNUSPY_MAX_FLAVOR = XNUSPY_CACHE_READ,
+};
 
-/* values for XNUSPY_CACHE_READ */
-#define KERNEL_SLIDE                (0)
-#define KPRINTF                     (1)
-#define KALLOC_CANBLOCK             (2)
-#define KALLOC_EXTERNAL             (3)
-#define KFREE_ADDR                  (4)
-#define KFREE_EXT                   (5)
-#define BCOPY_PHYS                  (6)
-#define PHYSTOKV                    (7)
-#define COPYIN                      (8)
-#define COPYINSTR                   (9)
-#define COPYOUT                     (10)
-#define CURRENT_PROC                (11)
-#define PROC_PID                    (12)
-#define KERNEL_THREAD_START         (13)
-#define THREAD_DEALLOCATE           (14)
-#define KVTOPHYS                    (15)
-#define UVTOPHYS                    (16)
-#define KPROTECT                    (17)
-#define UPROTECT                    (18)
-#define KWRITE_STATIC               (19)
-#define KWRITE_INSTR                (20)
-#define EL0_PTEP                    (21)
-#define EL1_PTEP                    (22)
-#define UNIFIED_KALLOC              (23)
-#define UNIFIED_KFREE               (24)
-#define MAX_CACHE                   UNIFIED_KFREE
+/* Values for XNUSPY_CACHE_READ */
+enum xnuspy_cache_id {
+    KERNEL_SLIDE = 0,
+    KPRINTF,
+    KALLOC_CANBLOCK,
+    KALLOC_EXTERNAL,
+    KFREE_ADDR,
+    KFREE_EXT,
+    BCOPY_PHYS,
+    PHYSTOKV,
+    COPYIN,
+    COPYINSTR,
+    COPYOUT,
+    CURRENT_PROC,
+    PROC_PID,
+    KERNEL_THREAD_START,
+    THREAD_DEALLOCATE,
+    ALLPROC,
+    IPC_PORT_RELEASE_SEND,
+    KERNEL_MAP,
+    LCK_GRP_ALLOC_INIT,
+    LCK_GRP_FREE,
+    LCK_MTX_UNLOCK,
+    LCK_RW_ALLOC_INIT,
+    LCK_RW_DONE,
+    LCK_RW_FREE,
+    LCK_RW_LOCK_EXCLUSIVE,
+    LCK_RW_LOCK_SHARED,
+    LCK_RW_LOCK_SHARED_TO_EXCLUSIVE,
+    MACH_MAKE_MEMORY_ENTRY_64,
+    MACH_VM_MAP_EXTERNAL,
+    OFFSETOF_STRUCT_THREAD_MAP,
+    PROC_LIST_LOCK,
+    PROC_LIST_UNLOCK,
+    PROC_LIST_MLOCK,
+    PROC_REF_LOCKED,
+    PROC_RELE_LOCKED,
+    PROC_UNIQUEID,
+    VM_DEALLOCATE,
+    VM_MAP_UNWIRE,
+    VM_MAP_WIRE_EXTERNAL,
+    CURRENT_MAP,
+    IOS_VERSION,
+    KVTOPHYS,
+    UVTOPHYS,
+    KPROTECT,
+    UPROTECT,
+    KWRITE_STATIC,
+    KWRITE_INSTR,
+    EL0_PTEP,
+    EL1_PTEP,
+    PTE_SYNC,
+    UNIFIED_KALLOC,
+    UNIFIED_KFREE,
+    MAX_CACHE = UNIFIED_KFREE
+};
 
 #define MAP_MEM_VM_SHARE            0x400000 /* extract a VM range for remap */
 
@@ -162,6 +194,9 @@ static int kern_return_to_errno(kern_return_t kret){
             return EEXIST;
     };
 
+    SPYDBG("%s: unhandled kern_return_t %#x, returning 10000\n",
+            __func__, kret);
+
     /* Not a valid errno */
     return 10000;
 }
@@ -184,11 +219,10 @@ lck_rw_t *xnuspy_rw_lck = NULL;
  * Freed structs will be pushed to the end of the freelist, and we allocate
  * from the front of the freelist. The usedlist is used as a normal linked
  * list, but has to be an STAILQ so I can insert objects from the freelist
- * and into the usedlist and vice versa. The unmaplist contain shared mappings
- * from recently freed xnuspy_tramp structs which are pending unmapping.
- * Shared mappings from newly-freed xnuspy_tramp structs are pushed to the
- * end of the unmaplist, and we unmap from the start of the unmaplist for
- * garbage collection.
+ * and into the usedlist and vice versa. The unmaplist contains shared mappings
+ * from recently freed xnuspy_tramp structs. The mapping from the most
+ * recently freed xnuspy_tramp struct is pushed to the end of the unmaplist,
+ * and we pull from the start of the unmaplist for garbage collection.
  *
  * freelist and usedlist are protected by xnuspy_rw_lck, unmaplist isn't
  * because it's only touched by xnuspy_gc_thread.
@@ -356,7 +390,7 @@ static uint64_t find_replacement_kva(struct mach_header_64 *kmh,
  */
 static struct xnuspy_mapping_metadata *
 map_caller_segments(struct mach_header_64 * /* __user */ umh,
-        void *current_map, int *retval){
+        struct _vm_map *current_map, int *retval){
     uint64_t aslr_slide = (uintptr_t)umh - 0x100000000;
     uint64_t copystart = 0, copysz = 0;
     int seen_text = 0, seen_data = 0;
@@ -723,7 +757,6 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
         pte_sync();
 
         cur->used = 1;
-
         cur = cur->next;
         mapping_addr += PAGE_SIZE;
     }
@@ -850,138 +883,6 @@ static void xnuspy_consider_gc(void){
     xnuspy_do_gc();
 }
 
-__attribute__ ((naked)) void adrp_test(void){
-    asm(""
-        "adrp x0, fmt@PAGE\n"
-        "add x0, x0, fmt@PAGEOFF\n"
-        "adrp x1, _kprintf@PAGE\n"
-        "add x1, x1, _kprintf@PAGEOFF\n"
-        "ldr x1, [x1]\n"
-        "stp x29, x30, [sp, -0x10]!\n"
-        "adrp x2, fxn@PAGE\n"
-        "add x2, x2, fxn@PAGEOFF\n"
-        "str x2, [sp, -0x10]!\n"
-        "blr x1\n"
-        "ldp x29, x30, [sp, 0x10]\n"
-        "add sp, sp, 0x20\n"
-        "ret\n"
-        ".align 14\n"
-        ".align 14\n"
-        "fmt: .asciz \"%s: hello there\n\"\n"
-        "fxn: .asciz \"adrp_test\"\n"
-       );
-}
-
-__attribute__ ((naked)) void adr_test(void){
-    asm(""
-        "adr x0, 0x30\n"
-        "adrp x1, _kprintf@PAGE\n"
-        "add x1, x1, _kprintf@PAGEOFF\n"
-        "ldr x1, [x1]\n"
-        "stp x29, x30, [sp, -0x10]!\n"
-        "adrp x2, fxn0@PAGE\n"
-        "add x2, x2, fxn0@PAGEOFF\n"
-        "str x2, [sp, -0x10]!\n"
-        "blr x1\n"
-        "ldp x29, x30, [sp, 0x10]\n"
-        "add sp, sp, 0x20\n"
-        "ret\n"
-        "fmt0: .asciz \"%s: adr_test called\n\"\n"
-        "fxn0: .asciz \"adr_test\"\n"
-       );
-}
-
-/* iphone se 14.3 */
-__attribute__ ((naked)) void ldr_pc_rel_test(void){
-    asm(""
-        /* "ldr q23, 0x80\n" */
-        /* "ldrsw x4, 0x90\n" */
-        "prfm #0, 0x88\n"
-        "ldr x4, 0x84\n"
-        "ldr x0, 0x68\n"
-        "adrp x1, _kernel_slide@PAGE\n"
-        "add x1, x1, _kernel_slide@PAGEOFF\n"
-        "ldr x1, [x1]\n"
-        "add x0, x0, x1\n"
-        "adrp x1, _kprintf@PAGE\n"
-        "add x1, x1, _kprintf@PAGEOFF\n"
-        "ldr x1, [x1]\n"
-        "stp x29, x30, [sp, -0x10]!\n"
-        "adrp x2, fxn1@PAGE\n"
-        "add x2, x2, fxn1@PAGEOFF\n"
-        /* "adrp x3, num@PAGE\n" */
-        /* "add x3, x3, num@PAGEOFF\n" */
-        /* "ldr x3, [x3]\n" */
-        /* "stp x2, x3, [sp, -0x10]!\n" */
-        /* "fcvt d4, s4\n" */
-        "stp x2, x4, [sp, -0x10]!\n"
-        /* "sub sp, sp, 0x10\n" */
-        /* "str x2, [sp]\n" */
-        /* "str d14, [sp, 0x8]\n" */
-        /* "stp x2, d4, [sp, -0x10]!\n" */
-        "blr x1\n"
-        "ldp x29, x30, [sp, 0x10]\n"
-        "add sp, sp, 0x20\n"
-        "ret\n"
-        "fmt1: .asciz \"%s: ldr_pc_rel_test called, num: %lld\n\"\n"
-        ".align 2\n"
-        "fmt1_ptr: .dword (0xfffffff007fa4000+fmt1)\n"
-        "fxn1: .asciz \"ldr_pc_rel_test\"\n"
-        "num: .dword 0x4142434445464748\n"
-        "num_4: .word 0x8899aabb\n"
-        "negative: .word -4321\n"
-        "float: .single 123.0\n"
-        "double: .double 1556.0\n"
-       );
-}
-
-/* Takes one param */
-__attribute__ ((naked)) void test_and_branch_test(uint64_t x0){
-    asm(""
-        /* "tbnz x0, #0x0, Lset\n" */
-        "mov x13, x0\n"
-        "tbnz x13, #63, Lset\n"
-        "Lnotset:\n"
-        "adrp x0, bitnotsetfmt@PAGE\n"
-        "add x0, x0, bitnotsetfmt@PAGEOFF\n"
-        "b Lreport\n"
-        "Lset:\n"
-        "adrp x0, bitsetfmt@PAGE\n"
-        "add x0, x0, bitsetfmt@PAGEOFF\n"
-        "Lreport:\n"
-        "stp x29, x30, [sp, -0x10]!\n"
-        "adrp x1, _kprintf@PAGE\n"
-        "add x1, x1, _kprintf@PAGEOFF\n"
-        "ldr x1, [x1]\n"
-        "adrp x2, fxn2@PAGE\n"
-        "add x2, x2, fxn2@PAGEOFF\n"
-        "sub sp, sp, 0x10\n"
-        "str x2, [sp]\n"
-        "blr x1\n"
-        "ldp x29, x30, [sp, 0x10]\n"
-        "add sp, sp, 0x20\n"
-        "ret\n"
-        "fxn2: .asciz \"test_and_branch_test\"\n"
-        "bitsetfmt: .asciz \"%s: this bit is set\n\"\n"
-        "bitnotsetfmt: .asciz \"%s: this bit is not set\n\"\n"
-       );
-}
-
-void bl_dispatched_to(void){
-    /* kprintf("%s: we're here\n", __func__); */
-
-    return;
-}
-
-__attribute__ ((naked)) void bl_dispatcher_test(void){
-    asm(""
-        "bl _bl_dispatched_to\n"
-        /* "ldr x30, [sp]\n" */
-        "mov x30, x17\n"
-        "ret\n"
-       );
-}
-
 /* Every second, this thread loops through the proc list, and checks
  * if the owner of a given xnuspy_mapping_metadata struct is no longer present.
  * If so, all the hooks associated with that metadata struct are uninstalled
@@ -991,37 +892,7 @@ __attribute__ ((naked)) void bl_dispatcher_test(void){
  * freed a long time ago so we don't end up leaking a ridiculous amount of
  * memory. */
 static void xnuspy_gc_thread(void *param, int wait_result){
-    /* size_t (*kernel_strnlen)(const char *s1, size_t n) = (size_t (*)(const char *, size_t))(0xFFFFFFF00710BE60 + kernel_slide); */
     for(;;){
-        /* kernel_strnlen("Hello", 0); */
-
-        /* adrp_test(); */
-        /* adr_test(); */
-        /* ldr_pc_rel_test(); */
-
-        /* asm volatile("mov x0, 0b1101"); */
-        /* int bitnum = 63; */
-        /* test_and_branch_test(1uLL<<bitnum); */
-        /* asm volatile("mov x0, 0b1100"); */
-        /* test_and_branch_test(1uLL<<(bitnum-1)); */
-
-        /* asm volatile("" */
-        /*         "stp x29, x30, [sp, -0x10]!\n" */
-        /*         "adr x30, .\n" */
-        /*         "add x30, x30, 0x10\n" */
-        /*         "str x30, [sp, -0x10]!\n" */
-        /*         "bl _bl_dispatcher_test\n" */
-        /*         "ldp x29, x30, [sp, 0x10]\n" */
-        /*         "add sp, sp, 0x20\n" */
-        /*         ); */
-        asm volatile(""
-                "str x17, [sp, -0x10]!\n"
-                "adr x17, .\n"
-                "add x17, x17, 0xc\n"
-                "bl _bl_dispatcher_test\n"
-                "ldr x17, [sp], 0x10\n"
-                );
-
         lck_rw_lock_shared(xnuspy_rw_lck);
 
         if(STAILQ_EMPTY(&usedlist))
@@ -1178,8 +1049,9 @@ out:
     return res;
 }
 
-static int xnuspy_cache_read(uint64_t which, uint64_t /* __user */ outp){
-    SPYDBG("%s: XNUSPY_CACHE_READ called with which %lld origp %#llx\n",
+static int xnuspy_cache_read(enum xnuspy_cache_id which,
+        uint64_t /* __user */ outp){
+    SPYDBG("%s: XNUSPY_CACHE_READ called with which %d origp %#llx\n",
             __func__, which, outp);
 
     void *what;
@@ -1192,15 +1064,27 @@ static int xnuspy_cache_read(uint64_t which, uint64_t /* __user */ outp){
             what = kprintf;
             break;
         case KALLOC_CANBLOCK:
+            if(iOS_version == iOS_14_x)
+                return EINVAL;
+
             what = kalloc_canblock;
             break;
         case KALLOC_EXTERNAL:
+            if(iOS_version == iOS_13_x)
+                return EINVAL;
+
             what = kalloc_external;
             break;
         case KFREE_ADDR:
+            if(iOS_version == iOS_14_x)
+                return EINVAL;
+
             what = kfree_addr;
             break;
         case KFREE_EXT:
+            if(iOS_version == iOS_13_x)
+                return EINVAL;
+
             what = kfree_ext;
             break;
         case BCOPY_PHYS:
@@ -1230,6 +1114,84 @@ static int xnuspy_cache_read(uint64_t which, uint64_t /* __user */ outp){
         case THREAD_DEALLOCATE:
             what = thread_deallocate;
             break;
+        case ALLPROC:
+            what = *allprocp;
+            break;
+        case IPC_PORT_RELEASE_SEND:
+            what = ipc_port_release_send;
+            break;
+        case KERNEL_MAP:
+            what = *kernel_mapp;
+            break;
+        case LCK_GRP_ALLOC_INIT:
+            what = lck_grp_alloc_init;
+            break;
+        case LCK_GRP_FREE:
+            what = lck_grp_free;
+            break;
+        case LCK_MTX_UNLOCK:
+            what = lck_mtx_unlock;
+            break;
+        case LCK_RW_ALLOC_INIT:
+            what = lck_rw_alloc_init;
+            break;
+        case LCK_RW_DONE:
+            what = lck_rw_done;
+            break;
+        case LCK_RW_FREE:
+            what = lck_rw_free;
+            break;
+        case LCK_RW_LOCK_EXCLUSIVE:
+            what = lck_rw_lock_exclusive;
+            break;
+        case LCK_RW_LOCK_SHARED:
+            what = lck_rw_lock_shared;
+            break;
+        case LCK_RW_LOCK_SHARED_TO_EXCLUSIVE:
+            what = lck_rw_lock_shared_to_exclusive;
+            break;
+        case MACH_MAKE_MEMORY_ENTRY_64:
+            what = _mach_make_memory_entry_64;
+            break;
+        case MACH_VM_MAP_EXTERNAL:
+            what = mach_vm_map_external;
+            break;
+        case OFFSETOF_STRUCT_THREAD_MAP:
+            what = (void *)offsetof_struct_thread_map;
+            break;
+        case PROC_LIST_LOCK:
+            what = proc_list_lock;
+            break;
+        case PROC_LIST_UNLOCK:
+            what = proc_list_unlock;
+            break;
+        case PROC_LIST_MLOCK:
+            what = *proc_list_mlockp;
+            break;
+        case PROC_REF_LOCKED:
+            what = proc_ref_locked;
+            break;
+        case PROC_RELE_LOCKED:
+            what = proc_rele_locked;
+            break;
+        case PROC_UNIQUEID:
+            what = proc_uniqueid;
+            break;
+        case VM_DEALLOCATE:
+            what = _vm_deallocate;
+            break;
+        case VM_MAP_UNWIRE:
+            what = vm_map_unwire;
+            break;
+        case VM_MAP_WIRE_EXTERNAL:
+            what = vm_map_wire_external;
+            break;
+        case CURRENT_MAP:
+            what = current_map;
+            break;
+        case IOS_VERSION:
+            what = (void *)iOS_version;
+            break;
         case KVTOPHYS:
             what = kvtophys;
             break;
@@ -1254,26 +1216,14 @@ static int xnuspy_cache_read(uint64_t which, uint64_t /* __user */ outp){
         case EL1_PTEP:
             what = el1_ptep;
             break;
+        case PTE_SYNC:
+            what = pte_sync;
+            break;
         case UNIFIED_KALLOC:
             what = unified_kalloc;
             break;
         case UNIFIED_KFREE:
             what = unified_kfree;
-            break;
-        case 995:
-            what = adrp_test;
-            break;
-        case 996:
-            what = adr_test;
-            break;
-        case 997:
-            what = ldr_pc_rel_test;
-            break;
-        case 998:
-            what = test_and_branch_test;
-            break;
-        case 999:
-            what = bl_dispatcher_test;
             break;
         default:
             return EINVAL;
@@ -1299,6 +1249,7 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
     }
 
     if(flavor == XNUSPY_CHECK_IF_PATCHED){
+        SPYDBG("%s: we exist!\n", __func__);
         *retval = 999;
         return 0;
     }
@@ -1309,7 +1260,7 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
         res = xnuspy_init();
 
         if(res)
-            goto out1;
+            goto out;
     }
 
     switch(flavor){
@@ -1317,16 +1268,18 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
             res = xnuspy_install_hook(uap->arg1, uap->arg2, uap->arg3);
             break;
         case XNUSPY_CACHE_READ:
-            res = xnuspy_cache_read(uap->arg1, uap->arg2);
-            break;
+            {
+                enum xnuspy_cache_id xcid = (enum xnuspy_cache_id)uap->arg1;
+                res = xnuspy_cache_read(xcid, uap->arg2);
+                break;
+            }
         default:
             *retval = -1;
             return EINVAL;
     };
 
-out:
     if(res)
-out1:
+out:
         *retval = -1;
 
     return res;

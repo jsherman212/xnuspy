@@ -27,7 +27,7 @@ struct orphan_mapping {
 struct xnuspy_mapping_metadata {
     /* Reference count for metadata, NOT the xnuspy_tramp */
     _Atomic uint64_t refcnt;
-    /* Process which owns this mapping (p_uniqueid of calling process) */
+    /* Process which owns this mapping (p_uniqueid) */
     uint64_t owner;
     /* Pointer to the first reflector page used for this mapping */
     struct xnuspy_reflector_page *first_reflector_page;

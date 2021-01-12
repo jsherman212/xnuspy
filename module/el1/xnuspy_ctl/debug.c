@@ -25,7 +25,7 @@ void desc_freelist(void){
         return;
     }
 
-    SPYDBG("FIRST: ");
+    SPYDBG("FRONT: ");
 
     struct stailq_entry *entry;
 
@@ -59,6 +59,26 @@ void desc_orphan_mapping(struct orphan_mapping *om){
         _desc_xnuspy_reflector_page("    ", cur);
         cur = cur->next;
     }
+}
+
+/* XXX ONLY meant to be called from xnuspy_gc_thread, hence the lack
+ * of locking. */
+void desc_unmaplist(void){
+    SPYDBG("[Unmaplist] ");
+
+    if(STAILQ_EMPTY(&unmaplist)){
+        SPYDBG("Empty\n");
+        return;
+    }
+
+    SPYDBG("FRONT: ");
+
+    struct stailq_entry *entry;
+
+    STAILQ_FOREACH(entry, &unmaplist, link)
+        SPYDBG("%#llx <- ", entry->elem);
+
+    SPYDBG("\n");
 }
 
 void desc_usedlist(void){
