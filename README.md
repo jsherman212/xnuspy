@@ -46,12 +46,12 @@ flavor will cause it to return `999`. The values of the other arguments are
 ignored.
 
 ## `XNUSPY_INSTALL_HOOK`
-I designed this flavor to match `MSHookFunction`'s API. `arg1` is the *UNSLID*
-address of the kernel function you wish to hook. If you supply a slid address,
-you will most likely panic. `arg2` is a pointer to your ABI-compatible replacement
-function. `arg3` is a pointer for `xnuspy_ctl` to `copyout` the address of a
-trampoline that represents the original kernel function. This can be NULL if
-you don't intend to call the original.
+I designed this flavor to match [`MSHookFunction`](http://www.cydiasubstrate.com/api/c/MSHookFunction/)'s API.
+`arg1` is the *UNSLID* address of the kernel function you wish to hook. If you
+supply a slid address, you will most likely panic. `arg2` is a pointer to your
+ABI-compatible replacement function. `arg3` is a pointer for `xnuspy_ctl` to
+`copyout` the address of a trampoline that represents the original kernel
+function. This can be NULL if you don't intend to call the original.
 
 ## `XNUSPY_CACHE_READ`
 `arg1` is one of the constants defined in `xnuspy_ctl.h` and `arg2` is a
@@ -139,7 +139,8 @@ and watch for a line from `klog` that looks like this:
 `find_replacement_kva: dist 0x780c replacement 0x100cd780c umh 0x100cd0000 kmh 0xfffffff0311c0000`.
 
 If you're installing more than one hook, there will be more than one occurrence.
-In that case, `dist` and `replacement` will vary, but `umh` and `kmh` won't.
+In that case, `dist` and `replacement` will vary, but `umh` and `kmh` won't. `kmh`
+points to the beginning of the kernel's mapping of your program's `__TEXT` segment.
 Throw your hook program into your favorite disassembler and rebase it so its Mach-O
 header is at the address of `kmh`. For IDA Pro, that's `Edit -> Segments -> Rebase
 program...` with `Image base` bubbled. After your device panics and reboots again,
@@ -154,11 +155,14 @@ that were installed by that process are uninstalled within a second or so.
 ### Hookable Kernel Functions
 Most function hooking frameworks have some minimum length that makes a given
 function hookable. xnuspy has this limit *only* if you plan to call the original
-function. In this case, the minimum length is eight bytes. Otherwise, there
-is no minimum length.
+function *and* the first instruction of the hooked function is not `B`. In this
+case, the minimum length is eight bytes. Otherwise, there is no minimum length.
 
-Additionally, xnuspy uses `X16` and `X17` for its trampolines, so kernel functions
-which expect those to persist across function calls cannot be hooked.
+xnuspy uses `X16` and `X17` for its trampolines, so kernel functions which
+expect those to persist across function calls cannot be hooked. There aren't
+many which expect this. If the function you want to hook begins with `BL`,
+and you intend to call the original, you can only do so if executing the
+original function does not modify `X17`.
 
 ### Thread-safety
 `xnuspy_ctl` will perform one-time initialization the first time it is called

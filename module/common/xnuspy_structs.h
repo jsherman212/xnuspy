@@ -60,69 +60,91 @@ struct xnuspy_tramp {
     /* The trampoline for a hooked function. When the user installs a hook
      * on a function, the first instruction of that function is replaced
      * with a branch to here. An xnuspy trampoline looks like this:
-     *  tramp[0]    ADR X16, <replacementp>
-     *  tramp[1]    LDR X16, [X16]
-     *  tramp[2]    BR X16
+     *  tramp[0]    LDR X16, #-0x8      (replacement)
+     *  tramp[1]    BR X16
      */
-    uint32_t tramp[3];
+    uint32_t tramp[2];
     /* An abstraction that represents the original function. It's just another
-     * trampoline, but it can take on one of five forms. The most common
+     * trampoline, but it can take on one of seven forms. The most common
      * form is this:
      *  orig[0]     <original first instruction of the hooked function>
-     *  orig[1]     ADR X16, #0xc
-     *  orig[2]     LDR X16, [X16]
-     *  orig[3]     BR X16
-     *  orig[4]     <address of second instruction of the hooked function>[31:0]
-     *  orig[5]     <address of second instruction of the hooked function>[63:32]
+     *  orig[1]     LDR X16, #0x8
+     *  orig[2]     BR X16
+     *  orig[3]     <address of second instruction of the hooked function>[31:0]
+     *  orig[4]     <address of second instruction of the hooked function>[63:32]
      *
      * The above form is taken when the original first instruction of the hooked
      * function is not an immediate conditional branch (b.cond), an immediate
      * compare and branch (cbz/cbnz), an immediate test and branch (tbz/tbnz),
-     * or an ADR.
-     * These are special cases because the immediates do not contain enough
-     * bits for me to just "fix up", so I need to emit an equivalent sequence
-     * of instructions.
+     * an immediate unconditional branch (b), an immediate unconditional
+     * branch with link (bl), load register (literal), or an ADR. These are
+     * special cases because the immediates do not contain enough bits for me
+     * to just "fix up" or assume we'll always be in range once we do, so I
+     * need to emit an equivalent sequence of instructions.
      *
      * If the first instruction was B.cond <label>
-     *  orig[0]     ADR X16, #0x14
-     *  orig[1]     ADR X17, #0x18
+     *  orig[0]     LDR X16, #0x10
+     *  orig[1]     LDR X17, #0x14
      *  orig[2]     CSEL X16, X16, X17, <cond>
-     *  orig[3]     LDR X16, [X16]
+     *  orig[3]     BR X16
+     *  orig[4]     <destination if condition holds>[31:0]
+     *  orig[5]     <destination if condition holds>[63:32]
+     *  orig[6]     <address of second instruction of the hooked function>[31:0]
+     *  orig[7]     <address of second instruction of the hooked function>[63:32]
+     *
+     * If the first instruction was CBZ Rn, <label> or CBNZ Rn, <label>
+     *  orig[0]     LDR X16, #0x14
+     *  orig[1]     LDR X17, #0x18
+     *  orig[2]     CMP Rn, #0
+     *  orig[3]     CSEL X16, X16, X17, <if CBZ, eq, if CBNZ, ne>
      *  orig[4]     BR X16
      *  orig[5]     <destination if condition holds>[31:0]
      *  orig[6]     <destination if condition holds>[63:32]
      *  orig[7]     <address of second instruction of the hooked function>[31:0]
      *  orig[8]     <address of second instruction of the hooked function>[63:32]
      *
-     * If the first instruction was CBZ Rn, <label> or CBNZ Rn, <label>
-     *  orig[0]     ADR X16, #0x18
-     *  orig[1]     ADR X17, #0x1c
-     *  orig[2]     CMP Rn, #0
-     *  orig[3]     CSEL X16, X16, X17, <if CBZ, eq, if CBNZ, ne>
-     *  orig[4]     LDR X16, [X16]
-     *  orig[5]     BR X16
-     *  orig[6]     <destination if condition holds>[31:0]
-     *  orig[7]     <destination if condition holds>[63:32]
-     *  orig[8]     <address of second instruction of the hooked function>[31:0]
-     *  orig[9]     <address of second instruction of the hooked function>[63:32]
-     *
      * If the first instruction was TBZ Rn, #n, <label> or TBNZ Rn, #n, <label>
-     *  orig[0]     ADR X16, #0x18
-     *  orig[1]     ADR X17, #0x1c
+     *  orig[0]     LDR X16, #0x14
+     *  orig[1]     LDR X17, #0x18
      *  orig[2]     TST Rn, #(1 << n)
      *  orig[3]     CSEL X16, X16, X17, <if TBZ, eq, if TBNZ, ne>
-     *  orig[4]     LDR X16, [X16]
-     *  orig[5]     BR X16
-     *  orig[6]     <destination if condition holds>[31:0]
-     *  orig[7]     <destination if condition holds>[63:32]
-     *  orig[8]     <address of second instruction of the hooked function>[31:0]
-     *  orig[9]     <address of second instruction of the hooked function>[63:32]
+     *  orig[4]     BR X16
+     *  orig[5]     <destination if condition holds>[31:0]
+     *  orig[6]     <destination if condition holds>[63:32]
+     *  orig[7]     <address of second instruction of the hooked function>[31:0]
+     *  orig[8]     <address of second instruction of the hooked function>[63:32]
      *
      * If the first instruction was ADR Rn, #n
      *  orig[0]     ADRP Rn, #n@PAGE
      *  orig[1]     ADD Rn, Rn, #n@PAGEOFF
-     *  orig[2]     ADR X16, #0xc
-     *  orig[3]     LDR X16, [X16]
+     *  orig[2]     LDR X16, #0x8
+     *  orig[3]     BR X16
+     *  orig[4]     <address of second instruction of the hooked function>[31:0]
+     *  orig[5]     <address of second instruction of the hooked function>[63:32]
+     *
+     * If the first instruction was B <label>
+     *  orig[0]     LDR X16, 0x8
+     *  orig[1]     BR X16
+     *  orig[2]     <address of branch destination>[31:0]
+     *  orig[3]     <address of branch destination>[63:32]
+     *
+     * If the first instruction was BL <label>
+     *  orig[0]     MOV X17, X30
+     *  orig[1]     LDR X16, #0x14
+     *  orig[2]     BLR X16
+     *  orig[3]     MOV X30, X17
+     *  orig[4]     LDR X16, #0x10
+     *  orig[5]     BR X16
+     *  orig[6]     <address of branch destination>[31:0]
+     *  orig[7]     <address of branch destination>[63:32]
+     *  orig[8]     <address of second instruction of the hooked function>[31:0]
+     *  orig[9]     <address of second instruction of the hooked function>[63:32]
+     *
+     * If the first instruction belongs to the "Load register (literal)" class
+     *  orig[0]     ADRP X16, <label>@PAGE
+     *  orig[1]     ADD X16, X16, <label>@PAGEOFF
+     *  orig[2]     LDR{SW} Rn, [X16] or PRFM <prfop>, [X16]
+     *  orig[3]     LDR X16, 0x8
      *  orig[4]     BR X16
      *  orig[5]     <address of second instruction of the hooked function>[31:0]
      *  orig[6]     <address of second instruction of the hooked function>[63:32]

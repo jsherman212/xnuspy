@@ -12,18 +12,16 @@ static void generate_b_cond_equivalent(uint32_t orig_instr, uint32_t **tramp,
      * the CSEL */
     uint32_t cond = orig_instr & 0xf;
 
-    /* ADR X16, #0x14 */
-    *(*tramp)++ = 0x100000b0;
-    /* ADR X17, #0x18 */
-    *(*tramp)++ = 0x100000d1;
+    /* LDR X16, #0x10 */
+    *(*tramp)++ = 0x58000090;
+    /* LDR X17, #0x14 */
+    *(*tramp)++ = 0x580000b1;
     /* CSEL X16, X16, X17, <cond> */
     *(*tramp)++ = assemble_csel(1, 17, cond, 16, 16);
-    /* LDR X16, [X16] */
-    *(*tramp)++ = 0xf9400210;
     /* BR X16 */
     *(*tramp)++ = 0xd61f0200;
 
-    *len_out += 5;
+    *len_out += 4;
 }
 
 static void generate_cbz_or_cbnz_equivalent(uint32_t orig_instr, uint32_t **tramp,
@@ -31,30 +29,29 @@ static void generate_cbz_or_cbnz_equivalent(uint32_t orig_instr, uint32_t **tram
     uint8_t sf = orig_instr >> 31;
     uint32_t Rn = orig_instr & 0x1f;
 
-    /* assume cond for CSEL will be eq (orig_instr == CBZ) */
     uint32_t cond;
 
-    if(orig_instr & (1 << 24))
+    if(orig_instr & (1 << 24)){
         /* ne, because original instr is CBNZ */
         cond = 1;
-    else
+    }
+    else{
         /* eq, because original instr is CBZ */
         cond = 0;
+    }
 
-    /* ADR X16, #0x18 */
-    *(*tramp)++ = 0x100000d0;
-    /* ADR X17, #0x1c */
-    *(*tramp)++ = 0x100000f1;
+    /* LDR X16, #0x14 */
+    *(*tramp)++ = 0x580000b0;
+    /* LDR X17, #0x18 */
+    *(*tramp)++ = 0x580000d1;
     /* CMP Rn, #0 */
     *(*tramp)++ = assemble_immediate_cmp(sf, 0, 0, Rn);
     /* CSEL X16, X16, X17, <cond> */
     *(*tramp)++ = assemble_csel(1, 17, cond, 16, 16);
-    /* LDR X16, [X16] */
-    *(*tramp)++ = 0xf9400210;
     /* BR X16 */
     *(*tramp)++ = 0xd61f0200;
 
-    *len_out += 6;
+    *len_out += 5;
 }
 
 static void generate_tbz_or_tbnz_equivalent(uint32_t orig_instr, uint32_t **tramp,
@@ -89,12 +86,14 @@ static void generate_tbz_or_tbnz_equivalent(uint32_t orig_instr, uint32_t **tram
 
     uint32_t cond;
 
-    if(orig_instr & (1 << 24))
+    if(orig_instr & (1 << 24)){
         /* ne, because original instr is TBNZ */
         cond = 1;
-    else
+    }
+    else{
         /* eq, because original instr is TBZ */
         cond = 0;
+    }
 
     uint32_t tst_instr = tst[tested_bit];
 
@@ -103,38 +102,103 @@ static void generate_tbz_or_tbnz_equivalent(uint32_t orig_instr, uint32_t **tram
 
     tst_instr |= (Rt << 5);
 
-    /* ADR X16, #0x18 */
-    *(*tramp)++ = 0x100000d0;
-    /* ADR X17, #0x1c */
-    *(*tramp)++ = 0x100000f1;
+    /* LDR X16, #0x14 */
+    *(*tramp)++ = 0x580000b0;
+    /* LDR X17, #0x18 */
+    *(*tramp)++ = 0x580000d1;
     /* TST Rn, #(1 << n) */
     *(*tramp)++ = tst_instr;
     /* CSEL X16, X16, X17, <cond> */
     *(*tramp)++ = assemble_csel(1, 17, cond, 16, 16);
-    /* LDR X16, [X16] */
-    *(*tramp)++ = 0xf9400210;
     /* BR X16 */
     *(*tramp)++ = 0xd61f0200;
 
-    *len_out += 6;
+    *len_out += 5;
 }
 
-static void generate_adr_equivalent(uint32_t orig_instr, uint64_t orig_instr_pc,
+static void generate_adr_equivalent(uint32_t orig_instr, uint32_t *orig_instr_pc,
         uint32_t **tramp, uint32_t *len_out){
-    uint64_t adr_target = get_adr_target((uint32_t *)orig_instr_pc);
-    uint64_t dist = (adr_target & ~0xfffuLL) - ((uintptr_t)tramp & ~0xfffuLL);
+    uint64_t adr_target = get_adr_target(orig_instr_pc);
+    /* uint64_t dist = (adr_target & ~0xfffuLL) - ((uintptr_t)tramp & ~0xfffuLL); */
     uint32_t Rd = orig_instr & 0x1f;
-    uint32_t adrp = (1u << 31) | (1 << 28) | ((dist & 0x3000) << 17) |
-        ((dist & 0x1ffffc000uLL) >> 9) | Rd;
+    /* uint32_t adrp = (1u << 31) | (1 << 28) | ((dist & 0x3000) << 17) | */
+    /*     ((dist & 0x1ffffc000uLL) >> 9) | Rd; */
+
+    uint64_t new_pc = (uint64_t)*tramp;
 
     /* ADRP Rn, #n@PAGE */
-    *(*tramp)++ = adrp;
+    /* *(*tramp)++ = adrp; */
+    *(*tramp)++ = assemble_adrp(adr_target, new_pc, Rd);
     /* ADD Rn, Rn, #n@PAGEOFF */
     *(*tramp)++ = assemble_immediate_add(1, 0, adr_target & 0xfff, Rd, Rd);
-    /* ADR X16, #0xc */
-    *(*tramp)++ = 0x10000070;
-    /* LDR X16, [X16] */
-    *(*tramp)++ = 0xf9400210;
+    /* LDR X16, #0x8 */
+    *(*tramp)++ = 0x58000050;
+    /* BR X16 */
+    *(*tramp)++ = 0xd61f0200;
+
+    *len_out += 4;
+}
+
+static void generate_load_register_literal_equivalent(uint32_t orig_instr,
+        uint64_t orig_instr_pc, uint32_t **tramp, uint32_t *len_out){
+    uint32_t opc = orig_instr >> 30;
+    uint8_t V = (orig_instr >> 26) & 1;
+    int fp = V;
+    int need_64bit = opc == 1 && !fp;
+    int sw = opc == 2 && !fp;
+    int prfm = opc == 3 && !fp;
+    int32_t offset = sign_extend(bits(orig_instr, 5, 23) << 2, 21);
+    uint32_t Rt = orig_instr & 0x1f;
+    uint64_t label = (uint64_t)((int64_t)orig_instr_pc + offset);
+
+    uint64_t new_pc = (uint64_t)*tramp;
+
+    /* ADRP X16, <label>@PAGE */
+    *(*tramp)++ = assemble_adrp(label, new_pc, 16);
+    /* ADD X16, X16, <label>@PAGEOFF */
+    *(*tramp)++ = assemble_immediate_add(1, 0, label & 0xfff, 16, 16);
+
+    if(fp){
+        uint32_t size;
+
+        if(opc == 0 || opc == 1){
+            if(opc == 0){
+                /* Sn */
+                size = 2;
+            }
+            else{
+                /* Dn */
+                size = 3;
+            }
+
+            /* Must be 1 for both Sn and Dn for immediate simd&fp ldr */
+            opc = 1;
+        }
+        else if(opc == 2){
+            /* Qn */
+            size = 0;
+            /* Must be 3 for immediate simd&fp ldr */
+            opc = 3;
+        }
+
+        /* LDR (S|D|Q)n, [X16] */
+        *(*tramp)++ = assemble_simd_fp_ldr(size, opc, 16, Rt);
+    }
+    else if(sw){
+        /* LDRSW Rn, [X16] */
+        *(*tramp)++ = assemble_ldrsw(16, Rt);
+    }
+    else if(prfm){
+        /* PRFM <prfop>, [X16], Rt == prfop */
+        *(*tramp)++ = assemble_immediate_prfm(16, Rt);
+    }
+    else{
+        /* LDR Rn, [X16] */
+        *(*tramp)++ = assemble_immediate_ldr(opc + 2, 16, Rt);
+    }
+
+    /* LDR X16, 0x8 */
+    *(*tramp)++ = 0x58000050;
     /* BR X16 */
     *(*tramp)++ = 0xd61f0200;
 
@@ -148,15 +212,15 @@ static void generate_adr_equivalent(uint32_t orig_instr, uint64_t orig_instr_pc,
  * 'addrof_second_instr' is to know where to branch back to. */
 void generate_original_tramp(uint64_t addrof_second_instr,
         uint32_t *tramp, uint32_t *tramp_len_out){
-    uint32_t orig_instr = *(uint32_t *)(addrof_second_instr - 4);
+    uint32_t *orig_instr_pc = (uint32_t *)(addrof_second_instr - 4);
+    uint32_t orig_instr = *(uint32_t *)orig_instr_pc;
 
     uint32_t tramp_len = 0;
 
     if((orig_instr & 0xff000010) == 0x54000000){
         generate_b_cond_equivalent(orig_instr, &tramp, &tramp_len);
 
-        uint64_t dst = get_cond_branch_dst(orig_instr,
-                (uint32_t *)(addrof_second_instr - 4));
+        uint64_t dst = get_cond_branch_dst(orig_instr, orig_instr_pc);
 
         ((uint64_t *)tramp)[0] = dst;
         ((uint64_t *)tramp)[1] = addrof_second_instr;
@@ -166,8 +230,7 @@ void generate_original_tramp(uint64_t addrof_second_instr,
     else if((orig_instr & 0x7e000000) == 0x34000000){
         generate_cbz_or_cbnz_equivalent(orig_instr, &tramp, &tramp_len);
 
-        uint64_t dst = get_compare_and_branch_dst(orig_instr,
-                (uint32_t *)(addrof_second_instr - 4));
+        uint64_t dst = get_compare_and_branch_dst(orig_instr, orig_instr_pc);
 
         ((uint64_t *)tramp)[0] = dst;
         ((uint64_t *)tramp)[1] = addrof_second_instr;
@@ -177,8 +240,7 @@ void generate_original_tramp(uint64_t addrof_second_instr,
     else if((orig_instr & 0x7e000000) == 0x36000000){
         generate_tbz_or_tbnz_equivalent(orig_instr, &tramp, &tramp_len);
 
-        uint64_t dst = get_test_and_branch_dst(orig_instr,
-                (uint32_t *)(addrof_second_instr - 4));
+        uint64_t dst = get_test_and_branch_dst(orig_instr, orig_instr_pc);
 
         ((uint64_t *)tramp)[0] = dst;
         ((uint64_t *)tramp)[1] = addrof_second_instr;
@@ -186,71 +248,95 @@ void generate_original_tramp(uint64_t addrof_second_instr,
         tramp_len += 4;
     }
     else if((orig_instr & 0x9f000000) == 0x10000000){
-        /* turn adr into adrp/add pair */
-        generate_adr_equivalent(orig_instr, addrof_second_instr - 4,
-                &tramp, &tramp_len);
+        generate_adr_equivalent(orig_instr, orig_instr_pc, &tramp, &tramp_len);
 
-        ((uint64_t *)tramp)[0] = addrof_second_instr;
+        *(uint64_t *)tramp = addrof_second_instr;
+        /* ((uint64_t *)tramp)[0] = addrof_second_instr; */
+
+        tramp_len += 2;
+    }
+    else if((orig_instr & 0xfc000000) == 0x14000000){
+        /* B */
+        uint64_t dst = get_branch_dst(orig_instr, orig_instr_pc);
+
+        /* LDR X16, #0x8 */
+        *tramp++ = 0x58000050;
+        /* BR X16 */
+        *tramp++ = 0xd61f0200;
+
+        *(uint64_t *)tramp = dst;
+        /* ((uint64_t *)tramp)[0] = dst; */
+
+        tramp_len += 4;
+    }
+    else if((orig_instr & 0xfc000000) == 0x94000000){
+        /* BL */
+        uint64_t dst = get_branch_dst(orig_instr, orig_instr_pc);
+
+        /* MOV X17, X30 */
+        *tramp++ = 0xaa1e03f1;
+        /* LDR X16, #0x14 */
+        *tramp++ = 0x580000b0;
+        /* BLR X16 */
+        *tramp++ = 0xd63f0200;
+        /* MOV X30, X17 */
+        *tramp++ = 0xaa1103fe;
+        /* LDR X16, #0x10 */
+        *tramp++ = 0x58000090;
+        /* BR X16 */
+        *tramp++ = 0xd61f0200;
+
+        ((uint64_t *)tramp)[0] = dst;
+        ((uint64_t *)tramp)[1] = addrof_second_instr;
+
+        tramp_len += 10;
+    }
+    else if((orig_instr & 0x38000000) == 0x18000000){
+        generate_load_register_literal_equivalent(orig_instr,
+                (uint64_t)orig_instr_pc, &tramp, &tramp_len);
+
+        *(uint64_t *)tramp = addrof_second_instr;
 
         tramp_len += 2;
     }
     else{
-        /* Otherwise, we have to fix up an immediate if any of the
-         * following were the original instruction:
-         *  - ADRP
-         *  - B
-         *  - BL
-         */
+        /* We have to fix up the immediate if we have an ADRP as the
+         * original instruction. Otherwise, we just write the original
+         * instruction to the trampoline. */
         uint32_t fixed_instr = orig_instr;
 
         if((orig_instr & 0x9f000000) == 0x90000000){
-            uint64_t adrp_target =
-                get_adrp_target((uint32_t *)(addrof_second_instr - 4));
+            /* page */
+            uint64_t adrp_target = get_adrp_target(orig_instr_pc);
 
-            uint64_t dist = (adrp_target & ~0xfffuLL) - ((uintptr_t)tramp & ~0xfffuLL);
+            /* uint64_t dist = (adrp_target & ~0xfffuLL) - ((uintptr_t)tramp & ~0xfffuLL); */
 
             uint32_t Rd = orig_instr & 0x1f;
-            uint32_t adrp = (1u << 31) | (1 << 28) | ((dist & 0x3000) << 17) |
-                ((dist & 0x1ffffc000) >> 9) | Rd;
+            /* uint32_t adrp = (1u << 31) | (1 << 28) | ((dist & 0x3000) << 17) | */
+            /*     ((dist & 0x1ffffc000) >> 9) | Rd; */
 
-            fixed_instr = adrp;
-        }
-        else if((orig_instr & 0xfc000000) == 0x14000000){
-            uint64_t dst = get_branch_dst(orig_instr,
-                    (uint32_t *)(addrof_second_instr - 4));
-
-            fixed_instr = assemble_b((uint64_t)tramp, dst);
-        }
-        else if((orig_instr & 0xfc000000) == 0x94000000){
-            uint64_t dst = get_branch_dst(orig_instr,
-                    (uint32_t *)(addrof_second_instr - 4));
-
-            fixed_instr = assemble_bl((uint64_t)tramp, dst);
+            fixed_instr = assemble_adrp(adrp_target, (uint64_t)tramp, Rd);
         }
 
         *tramp++ = fixed_instr;
-        /* ADR X16, #0xc */
-        *tramp++ = 0x10000070;
-        /* LDR X16, [X16] */
-        *tramp++ = 0xf9400210;
+        /* LDR X16, #0x8 */
+        *tramp++ = 0x58000050;
         /* BR X16 */
         *tramp++ = 0xd61f0200;
 
         ((uint64_t *)tramp)[0] = addrof_second_instr;
 
-        tramp_len += 6;
+        tramp_len += 5;
     }
 
     *tramp_len_out = tramp_len;
 }
 
 /* this function generates a replacement trampoline and returns it through
- * the 'tramp' parameter. 'tramp' is expected to be an array of 3 uint32_t's */
+ * the 'tramp' parameter. 'tramp' is expected to be an array of 2 uint32_t's */
 void generate_replacement_tramp(uint32_t *tramp){
-    /* ADR X16, #-0x8 */
-    tramp[0] = 0x10ffffd0;
-    /* LDR X16, [X16] */
-    tramp[1] = 0xf9400210;
+    /* LDR X16, #-0x8 */
+    tramp[0] = 0x58ffffd0;
     /* BR X16 */
-    tramp[2] = 0xd61f0200;
+    tramp[1] = 0xd61f0200;
 }

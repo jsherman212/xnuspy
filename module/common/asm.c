@@ -14,9 +14,19 @@ uint64_t bits(uint64_t number, uint64_t start, uint64_t end){
     return (number & mask) >> start;
 }
 
+uint32_t assemble_adrp(uint64_t label, uint64_t pc, uint32_t Rd){
+    label &= ~0xfffuLL;
+    pc &= ~0xfffuLL;
+
+    uint64_t dist = label - pc;
+
+    return (1u << 31) | (1 << 28) | ((dist & 0x3000) << 17) |
+        ((dist & 0x1ffffc000uLL) >> 9) | Rd;
+}
+
 uint32_t assemble_b(uint64_t from, uint64_t to){
     uint32_t imm26 = ((to - from) >> 2) & 0x3ffffff;
-    return (5u << 26) | imm26;
+    return (5 << 26) | imm26;
 }
 
 uint32_t assemble_bl(uint64_t from, uint64_t to){
@@ -24,34 +34,54 @@ uint32_t assemble_bl(uint64_t from, uint64_t to){
     return (37u << 26) | imm26;
 }
 
-uint32_t assemble_csel(uint8_t sf, uint32_t Rm, uint32_t cond,
+uint32_t assemble_csel(uint32_t sf, uint32_t Rm, uint32_t cond,
         uint32_t Rn, uint32_t Rd){
-    return (((uint32_t)sf << 31) | (0xd4 << 21) | (Rm << 16) | (cond << 12) | (Rn << 5) | Rd);
+    return (sf << 31) | (0xd4 << 21) | (Rm << 16) | (cond << 12) | (Rn << 5) | Rd;
 }
 
-uint32_t assemble_immediate_add(uint8_t sf, uint8_t sh, uint32_t imm12,
+uint32_t assemble_immediate_add(uint32_t sf, uint32_t sh, uint32_t imm12,
         uint32_t Rn, uint32_t Rd){
-    return (((uint32_t)sf << 31) | (0x22 << 23) | ((uint32_t)sh << 22) | (imm12 << 10) | (Rn << 5) | Rd);
+    return (sf << 31) | (0x22 << 23) | (sh << 22) | (imm12 << 10) | (Rn << 5) | Rd;
 }
 
 /* this is really just SUBS RZR, Rn, #imm */
-uint32_t assemble_immediate_cmp(uint8_t sf, uint8_t sh, uint32_t imm12,
+uint32_t assemble_immediate_cmp(uint32_t sf, uint32_t sh, uint32_t imm12,
         uint32_t Rn){
-    return (((uint32_t)sf << 31) | (0xe2 << 23) | ((uint32_t)sh << 22) | (imm12 << 10) | (Rn << 5) | 0x1f);
+    return (sf << 31) | (0xe2 << 23) | (sh << 22) | (imm12 << 10) | (Rn << 5) | 0x1f;
 }
 
-uint32_t assemble_mov(uint8_t sf, uint32_t imm, uint32_t Rd){
-    uint32_t imm16 = imm & 0xffff;
-    uint16_t hw = (uint16_t)(imm & 0x30000);
+/* No offset */
+uint32_t assemble_immediate_ldr(uint32_t size, uint32_t Rn, uint32_t Rt){
+    return (size << 30) | (0xe5 << 22) | (Rn << 5) | Rt;
+}
 
-    return (((uint32_t)sf << 31) | (0xa5 << 23) | ((uint32_t)hw << 21) | (imm16 << 5) | Rd);
+/* No offset */
+uint32_t assemble_immediate_prfm(uint32_t Rn, uint32_t Rt){
+    return (0x3e6u << 22) | (Rn << 5) | Rt;
+}
+
+/* No offset */
+uint32_t assemble_ldrsw(uint32_t Rn, uint32_t Rt){
+    return (0x2e6u << 22) | (Rn << 5) | Rt;
+}
+
+/* No offset */
+uint32_t assemble_simd_fp_ldr(uint32_t size, uint32_t opc, uint32_t Rn,
+        uint32_t Rt){
+    return (size << 30) | (0x3d << 24) | (opc << 22) | (Rn << 5) | Rt;
+}
+
+uint32_t assemble_mov(uint32_t sf, uint32_t imm, uint32_t Rd){
+    uint32_t imm16 = imm & 0xffff;
+    uint32_t hw = (imm & 0x30000);
+
+    return (sf << 31) | (0xa5 << 23) | (hw << 21) | (imm16 << 5) | Rd;
 }
 
 /* resolves shift also */
 uint64_t get_add_imm(uint32_t add){
     uint64_t imm = 0;
 
-    uint8_t sf = (uint8_t)(add & 0x80000000);
     uint8_t sh = (add & 0x200000) >> 22;
     uint32_t imm12 = (add & 0x3ffc00) >> 10;
 

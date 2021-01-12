@@ -859,7 +859,10 @@ static void xnuspy_consider_gc(void){
  * freed a long time ago so we don't end up leaking a ridiculous amount of
  * memory. */
 static void xnuspy_gc_thread(void *param, int wait_result){
+    /* size_t (*kernel_strnlen)(const char *s1, size_t n) = (size_t (*)(const char *, size_t))(0xFFFFFFF00710BE60 + kernel_slide); */
     for(;;){
+        /* kernel_strnlen("Hello", 0); */
+
         lck_rw_lock_shared(xnuspy_rw_lck);
 
         if(STAILQ_EMPTY(&usedlist))
