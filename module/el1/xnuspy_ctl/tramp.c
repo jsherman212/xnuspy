@@ -119,15 +119,11 @@ static void generate_tbz_or_tbnz_equivalent(uint32_t orig_instr, uint32_t **tram
 static void generate_adr_equivalent(uint32_t orig_instr, uint32_t *orig_instr_pc,
         uint32_t **tramp, uint32_t *len_out){
     uint64_t adr_target = get_adr_target(orig_instr_pc);
-    /* uint64_t dist = (adr_target & ~0xfffuLL) - ((uintptr_t)tramp & ~0xfffuLL); */
     uint32_t Rd = orig_instr & 0x1f;
-    /* uint32_t adrp = (1u << 31) | (1 << 28) | ((dist & 0x3000) << 17) | */
-    /*     ((dist & 0x1ffffc000uLL) >> 9) | Rd; */
 
     uint64_t new_pc = (uint64_t)*tramp;
 
     /* ADRP Rn, #n@PAGE */
-    /* *(*tramp)++ = adrp; */
     *(*tramp)++ = assemble_adrp(adr_target, new_pc, Rd);
     /* ADD Rn, Rn, #n@PAGEOFF */
     *(*tramp)++ = assemble_immediate_add(1, 0, adr_target & 0xfff, Rd, Rd);
@@ -251,7 +247,6 @@ void generate_original_tramp(uint64_t addrof_second_instr,
         generate_adr_equivalent(orig_instr, orig_instr_pc, &tramp, &tramp_len);
 
         *(uint64_t *)tramp = addrof_second_instr;
-        /* ((uint64_t *)tramp)[0] = addrof_second_instr; */
 
         tramp_len += 2;
     }
@@ -265,7 +260,6 @@ void generate_original_tramp(uint64_t addrof_second_instr,
         *tramp++ = 0xd61f0200;
 
         *(uint64_t *)tramp = dst;
-        /* ((uint64_t *)tramp)[0] = dst; */
 
         tramp_len += 4;
     }
@@ -279,6 +273,15 @@ void generate_original_tramp(uint64_t addrof_second_instr,
         *tramp++ = 0x580000b0;
         /* BLR X16 */
         *tramp++ = 0xd63f0200;
+
+        /* XXX START TESTS */
+        /* /1* LDR X30, [SP] *1/ */
+        /* *tramp++ = 0xf94003fe; */
+        /* /1* BRK 0 *1/ */
+        /* *tramp++ = 0xd4200000; */
+
+        /* XXX END TESTS */
+        
         /* MOV X30, X17 */
         *tramp++ = 0xaa1103fe;
         /* LDR X16, #0x10 */
@@ -308,12 +311,7 @@ void generate_original_tramp(uint64_t addrof_second_instr,
         if((orig_instr & 0x9f000000) == 0x90000000){
             /* page */
             uint64_t adrp_target = get_adrp_target(orig_instr_pc);
-
-            /* uint64_t dist = (adrp_target & ~0xfffuLL) - ((uintptr_t)tramp & ~0xfffuLL); */
-
             uint32_t Rd = orig_instr & 0x1f;
-            /* uint32_t adrp = (1u << 31) | (1 << 28) | ((dist & 0x3000) << 17) | */
-            /*     ((dist & 0x1ffffc000) >> 9) | Rd; */
 
             fixed_instr = assemble_adrp(adrp_target, (uint64_t)tramp, Rd);
         }
@@ -324,7 +322,8 @@ void generate_original_tramp(uint64_t addrof_second_instr,
         /* BR X16 */
         *tramp++ = 0xd61f0200;
 
-        ((uint64_t *)tramp)[0] = addrof_second_instr;
+        /* ((uint64_t *)tramp)[0] = addrof_second_instr; */
+        *(uint64_t *)tramp = addrof_second_instr;
 
         tramp_len += 5;
     }

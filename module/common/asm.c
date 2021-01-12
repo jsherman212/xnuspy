@@ -94,8 +94,8 @@ uint64_t get_add_imm(uint32_t add){
 }
 
 uint64_t get_adr_target(uint32_t *adrp){
-    uint32_t immlo = (uint32_t)bits(*adrp, 29, 30);
-    uint32_t immhi = (uint32_t)bits(*adrp, 5, 23);
+    uint32_t immlo = bits(*adrp, 29, 30);
+    uint32_t immhi = bits(*adrp, 5, 23);
 
     return sign_extend((immhi << 2) | immlo, 21) + (uintptr_t)adrp;
 }
@@ -103,8 +103,8 @@ uint64_t get_adr_target(uint32_t *adrp){
 uint64_t get_adrp_target(uint32_t *adrpp){
     uint32_t adrp = *adrpp;
 
-    uint32_t immlo = (uint32_t)bits(adrp, 29, 30);
-    uint32_t immhi = (uint32_t)bits(adrp, 5, 23);
+    uint32_t immlo = bits(adrp, 29, 30);
+    uint32_t immhi = bits(adrp, 5, 23);
 
     return sign_extend(((immhi << 2) | immlo) << 12, 32) +
         ((uintptr_t)adrpp & ~0xfffuLL);
@@ -131,10 +131,10 @@ uint64_t get_adrp_ldr_target(uint32_t *adrpp){
      */
     uint32_t shift = 0;
 
-    uint32_t size = (uint32_t)bits(ldr, 30, 31);
-    uint32_t V = (uint32_t)bits(ldr, 26, 26);
-    uint32_t opc = (uint32_t)bits(ldr, 22, 23);
-    uint32_t imm12 = (uint32_t)bits(ldr, 10, 21);
+    uint32_t size = bits(ldr, 30, 31);
+    uint32_t V = bits(ldr, 26, 26);
+    uint32_t opc = bits(ldr, 22, 23);
+    uint32_t imm12 = bits(ldr, 10, 21);
 
     uint32_t ldr_type = (size << 3) | (V << 2) | opc;
 

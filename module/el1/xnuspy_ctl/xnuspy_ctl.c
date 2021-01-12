@@ -850,6 +850,138 @@ static void xnuspy_consider_gc(void){
     xnuspy_do_gc();
 }
 
+__attribute__ ((naked)) void adrp_test(void){
+    asm(""
+        "adrp x0, fmt@PAGE\n"
+        "add x0, x0, fmt@PAGEOFF\n"
+        "adrp x1, _kprintf@PAGE\n"
+        "add x1, x1, _kprintf@PAGEOFF\n"
+        "ldr x1, [x1]\n"
+        "stp x29, x30, [sp, -0x10]!\n"
+        "adrp x2, fxn@PAGE\n"
+        "add x2, x2, fxn@PAGEOFF\n"
+        "str x2, [sp, -0x10]!\n"
+        "blr x1\n"
+        "ldp x29, x30, [sp, 0x10]\n"
+        "add sp, sp, 0x20\n"
+        "ret\n"
+        ".align 14\n"
+        ".align 14\n"
+        "fmt: .asciz \"%s: hello there\n\"\n"
+        "fxn: .asciz \"adrp_test\"\n"
+       );
+}
+
+__attribute__ ((naked)) void adr_test(void){
+    asm(""
+        "adr x0, 0x30\n"
+        "adrp x1, _kprintf@PAGE\n"
+        "add x1, x1, _kprintf@PAGEOFF\n"
+        "ldr x1, [x1]\n"
+        "stp x29, x30, [sp, -0x10]!\n"
+        "adrp x2, fxn0@PAGE\n"
+        "add x2, x2, fxn0@PAGEOFF\n"
+        "str x2, [sp, -0x10]!\n"
+        "blr x1\n"
+        "ldp x29, x30, [sp, 0x10]\n"
+        "add sp, sp, 0x20\n"
+        "ret\n"
+        "fmt0: .asciz \"%s: adr_test called\n\"\n"
+        "fxn0: .asciz \"adr_test\"\n"
+       );
+}
+
+/* iphone se 14.3 */
+__attribute__ ((naked)) void ldr_pc_rel_test(void){
+    asm(""
+        /* "ldr q23, 0x80\n" */
+        /* "ldrsw x4, 0x90\n" */
+        "prfm #0, 0x88\n"
+        "ldr x4, 0x84\n"
+        "ldr x0, 0x68\n"
+        "adrp x1, _kernel_slide@PAGE\n"
+        "add x1, x1, _kernel_slide@PAGEOFF\n"
+        "ldr x1, [x1]\n"
+        "add x0, x0, x1\n"
+        "adrp x1, _kprintf@PAGE\n"
+        "add x1, x1, _kprintf@PAGEOFF\n"
+        "ldr x1, [x1]\n"
+        "stp x29, x30, [sp, -0x10]!\n"
+        "adrp x2, fxn1@PAGE\n"
+        "add x2, x2, fxn1@PAGEOFF\n"
+        /* "adrp x3, num@PAGE\n" */
+        /* "add x3, x3, num@PAGEOFF\n" */
+        /* "ldr x3, [x3]\n" */
+        /* "stp x2, x3, [sp, -0x10]!\n" */
+        /* "fcvt d4, s4\n" */
+        "stp x2, x4, [sp, -0x10]!\n"
+        /* "sub sp, sp, 0x10\n" */
+        /* "str x2, [sp]\n" */
+        /* "str d14, [sp, 0x8]\n" */
+        /* "stp x2, d4, [sp, -0x10]!\n" */
+        "blr x1\n"
+        "ldp x29, x30, [sp, 0x10]\n"
+        "add sp, sp, 0x20\n"
+        "ret\n"
+        "fmt1: .asciz \"%s: ldr_pc_rel_test called, num: %lld\n\"\n"
+        ".align 2\n"
+        "fmt1_ptr: .dword (0xfffffff007fa4000+fmt1)\n"
+        "fxn1: .asciz \"ldr_pc_rel_test\"\n"
+        "num: .dword 0x4142434445464748\n"
+        "num_4: .word 0x8899aabb\n"
+        "negative: .word -4321\n"
+        "float: .single 123.0\n"
+        "double: .double 1556.0\n"
+       );
+}
+
+/* Takes one param */
+__attribute__ ((naked)) void test_and_branch_test(uint64_t x0){
+    asm(""
+        /* "tbnz x0, #0x0, Lset\n" */
+        "mov x13, x0\n"
+        "tbnz x13, #63, Lset\n"
+        "Lnotset:\n"
+        "adrp x0, bitnotsetfmt@PAGE\n"
+        "add x0, x0, bitnotsetfmt@PAGEOFF\n"
+        "b Lreport\n"
+        "Lset:\n"
+        "adrp x0, bitsetfmt@PAGE\n"
+        "add x0, x0, bitsetfmt@PAGEOFF\n"
+        "Lreport:\n"
+        "stp x29, x30, [sp, -0x10]!\n"
+        "adrp x1, _kprintf@PAGE\n"
+        "add x1, x1, _kprintf@PAGEOFF\n"
+        "ldr x1, [x1]\n"
+        "adrp x2, fxn2@PAGE\n"
+        "add x2, x2, fxn2@PAGEOFF\n"
+        "sub sp, sp, 0x10\n"
+        "str x2, [sp]\n"
+        "blr x1\n"
+        "ldp x29, x30, [sp, 0x10]\n"
+        "add sp, sp, 0x20\n"
+        "ret\n"
+        "fxn2: .asciz \"test_and_branch_test\"\n"
+        "bitsetfmt: .asciz \"%s: this bit is set\n\"\n"
+        "bitnotsetfmt: .asciz \"%s: this bit is not set\n\"\n"
+       );
+}
+
+void bl_dispatched_to(void){
+    /* kprintf("%s: we're here\n", __func__); */
+
+    return;
+}
+
+__attribute__ ((naked)) void bl_dispatcher_test(void){
+    asm(""
+        "bl _bl_dispatched_to\n"
+        /* "ldr x30, [sp]\n" */
+        "mov x30, x17\n"
+        "ret\n"
+       );
+}
+
 /* Every second, this thread loops through the proc list, and checks
  * if the owner of a given xnuspy_mapping_metadata struct is no longer present.
  * If so, all the hooks associated with that metadata struct are uninstalled
@@ -862,6 +994,33 @@ static void xnuspy_gc_thread(void *param, int wait_result){
     /* size_t (*kernel_strnlen)(const char *s1, size_t n) = (size_t (*)(const char *, size_t))(0xFFFFFFF00710BE60 + kernel_slide); */
     for(;;){
         /* kernel_strnlen("Hello", 0); */
+
+        /* adrp_test(); */
+        /* adr_test(); */
+        /* ldr_pc_rel_test(); */
+
+        /* asm volatile("mov x0, 0b1101"); */
+        /* int bitnum = 63; */
+        /* test_and_branch_test(1uLL<<bitnum); */
+        /* asm volatile("mov x0, 0b1100"); */
+        /* test_and_branch_test(1uLL<<(bitnum-1)); */
+
+        /* asm volatile("" */
+        /*         "stp x29, x30, [sp, -0x10]!\n" */
+        /*         "adr x30, .\n" */
+        /*         "add x30, x30, 0x10\n" */
+        /*         "str x30, [sp, -0x10]!\n" */
+        /*         "bl _bl_dispatcher_test\n" */
+        /*         "ldp x29, x30, [sp, 0x10]\n" */
+        /*         "add sp, sp, 0x20\n" */
+        /*         ); */
+        asm volatile(""
+                "str x17, [sp, -0x10]!\n"
+                "adr x17, .\n"
+                "add x17, x17, 0xc\n"
+                "bl _bl_dispatcher_test\n"
+                "ldr x17, [sp], 0x10\n"
+                );
 
         lck_rw_lock_shared(xnuspy_rw_lck);
 
@@ -1100,6 +1259,21 @@ static int xnuspy_cache_read(uint64_t which, uint64_t /* __user */ outp){
             break;
         case UNIFIED_KFREE:
             what = unified_kfree;
+            break;
+        case 995:
+            what = adrp_test;
+            break;
+        case 996:
+            what = adr_test;
+            break;
+        case 997:
+            what = ldr_pc_rel_test;
+            break;
+        case 998:
+            what = test_and_branch_test;
+            break;
+        case 999:
+            what = bl_dispatcher_test;
             break;
         default:
             return EINVAL;

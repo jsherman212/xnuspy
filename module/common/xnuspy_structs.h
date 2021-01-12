@@ -23,7 +23,7 @@ struct orphan_mapping {
 };
 
 /* This structure represents a shared __TEXT and __DATA mapping. There is
- * one xnuspy_mapping_metadata struct per-process. */
+ * one xnuspy_mapping_metadata struct per process. */
 struct xnuspy_mapping_metadata {
     /* Reference count for metadata, NOT the xnuspy_tramp */
     _Atomic uint64_t refcnt;
@@ -52,8 +52,7 @@ struct xnuspy_tramp_metadata {
 };
 
 /* This structure represents a function hook. Every xnuspy_tramp struct resides
- * on writeable, executable memory. xnuspy_tramp structs are considered free
- * when their tramp_metadata is NULL. */
+ * on writeable, executable memory. */
 struct xnuspy_tramp {
     /* Kernel virtual address of reflected userland replacement */
     uint64_t replacement;

@@ -97,12 +97,6 @@ static int open1(void *vfsctx, struct nameidata *ndp, int uflags,
     kprintf("%s: (CPU %d): process %d wants to open '%s'\n", __func__, cpu,
             caller, path);
 
-    /* asm volatile(".long 0xd500409f"); */
-    /* asm volatile("isb sy"); */
-    /* kprintf("%#llx\n", PAGE_SIZE); */
-    /* asm volatile(".long 0xd500419f"); */
-    /* asm volatile("isb sy"); */
-
     if(strcmp_(path, "/var/mobile/testfile.txt") == 0){
         kprintf("%s: denying open for '%s'\n", __func__, path);
         unified_kfree(path);
@@ -267,6 +261,11 @@ int main(int argc, char **argv){
     printf("proc_pid @ %#llx\n", (uint64_t)proc_pid);
     printf("unified_kalloc @ %#llx\n", (uint64_t)unified_kalloc);
     printf("unified_kfree @ %#llx\n", (uint64_t)unified_kfree);
+
+    if(ret){
+        printf("Couldnt get adrp_test addr: %s\n", strerror(errno));
+        return 1;
+    }
 
     /* open1 for iphone 8 13.6.1 */
     /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xfffffff007d99c1c, */
