@@ -1,5 +1,9 @@
 # xnuspy
 
+![alt text](https://github.com/jsherman212/xnuspy/blob/master/open1_hook.png)
+
+<sup>Output from the kernel log after compiling and running `example/open1_hook.c`</sup>
+
 xnuspy is a pongoOS module which installs a new system call, `xnuspy_ctl`,
 allowing you to hook kernel functions from userspace. It supports iOS 13.x and
 14.x on checkra1n 0.12.2 and up.
@@ -8,7 +12,7 @@ Requires `libusb`: `brew install libusb`
 
 # Building
 Run `make` in the top level directory. It'll build the loader and the module.
-If you want debug output from xnuspy to the kernel log, run`XNUSPY_DEBUG=1 make`.
+If you want debug output from xnuspy to the kernel log, run `XNUSPY_DEBUG=1 make`.
 
 # Usage
 After you've built everything, have checkra1n boot your device to a pongo
@@ -150,7 +154,7 @@ if you haven't already, compile `klog` from `tools/`. Upload it to your device
 and do `stdbuf -o0 ./klog | grep find_replacement_kva`. Run your hook program again
 and watch for a line from `klog` that looks like this:
 
-`find_replacement_kva: dist 0x780c replacement 0x100cd780c umh 0x100cd0000 kmh 0xfffffff0311c0000`.
+`find_replacement_kva: dist 0x780c replacement 0x100cd780c umh 0x100cd0000 kmh 0xfffffff0311c0000`
 
 If you're installing more than one hook, there will be more than one occurrence.
 In that case, `dist` and `replacement` will vary, but `umh` and `kmh` won't. `kmh`
@@ -237,7 +241,7 @@ from a given kernel function. xnuspy does check for this scenario before booting
 and falls back to unused code already in the kernelcache for the hook structures
 to reside on instead if it finds that this could happen.
 
-<sup>*not exactly what happens, but what actually happens produces that effect</sup>
+<sup>*not exactly what happens, what actually happens produces that effect</sup>
 
 # Device Security
 This module completely neuters KTRR/AMCC lockdown and KPP. I don't

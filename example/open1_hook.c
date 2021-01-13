@@ -213,33 +213,8 @@ int main(int argc, char **argv){
         return 1;
     }
 
-    printf("kernel slide: %#llx\n", kernel_slide);
-    printf("copyin @ %#llx\n", (uint64_t)copyin);
-    printf("copyinstr @ %#llx\n", (uint64_t)copyinstr);
-    printf("copyout @ %#llx\n", (uint64_t)copyout);
-    printf("current_proc @ %#llx\n", (uint64_t)current_proc);
-    printf("kprintf @ %#llx\n", (uint64_t)kprintf);
-    printf("kwrite_instr @ %#llx\n", (uint64_t)kwrite_instr);
-    printf("proc_pid @ %#llx\n", (uint64_t)proc_pid);
-    printf("unified_kalloc @ %#llx\n", (uint64_t)unified_kalloc);
-    printf("unified_kfree @ %#llx\n", (uint64_t)unified_kfree);
-
-    if(ret){
-        printf("Couldnt get adrp_test addr: %s\n", strerror(errno));
-        return 1;
-    }
-
-    /* open1 for iphone 8 13.6.1 */
-    /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xfffffff007d99c1c, */
-    /*         open1, &open1_orig); */
-    /* iphone x 13.3.1 */
-    /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF007D70534, */
-    /*         open1, &open1_orig); */
-    /* iphone 7 14.1 */
-    /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF00730AA64, */
-    /*         open1, &open1_orig); */
     /* iphone se 14.3 */
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF0072DA190,
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xfffffff0072da190,
             open1, &open1_orig);
 
     if(ret){

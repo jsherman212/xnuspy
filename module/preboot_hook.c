@@ -16,48 +16,6 @@
 #include "pf/offsets.h"
 #include "pf/pf_common.h"
 
-static void DumpMemory(void *startaddr, void *data, size_t size){
-    char ascii[17];
-    size_t i, j;
-    ascii[16] = '\0';
-    int putloc = 0;
-    void *curaddr = startaddr;
-    for (i = 0; i < size; ++i) {
-        if(!putloc){
-            if(startaddr != (void *)-1){
-                printf("%#llx: ", (uint64_t)curaddr);
-                curaddr += 0x10;
-            }
-
-            putloc = 1;
-        }
-
-        printf("%02X ", ((unsigned char*)data)[i]);
-        if (((unsigned char*)data)[i] >= ' ' && ((unsigned char*)data)[i] <= '~') {
-            ascii[i % 16] = ((unsigned char*)data)[i];
-        } else {
-            ascii[i % 16] = '.';
-        }
-        if ((i+1) % 8 == 0 || i+1 == size) {
-            printf(" ");
-            if ((i+1) % 16 == 0) {
-                printf("|  %s \n", ascii);
-                putloc = 0;
-            } else if (i+1 == size) {
-                ascii[(i+1) % 16] = '\0';
-                if ((i+1) % 16 <= 8) {
-                    printf(" ");
-                }
-                for (j = (i+1) % 16; j < 16; ++j) {
-                    printf("   ");
-                }
-                printf("|  %s \n", ascii);
-                putloc = 0;
-            }
-        }
-    }
-}
-
 static uint64_t g_xnuspy_ctl_addr = 0;
 /* address of start of __TEXT_EXEC in xnuspy_ctl image */
 static uint64_t g_xnuspy_ctl_img_codestart = 0;
@@ -449,12 +407,6 @@ static void process_xnuspy_ctl_image(void *xnuspy_ctl_image){
         else
             initialize_xnuspy_ctl_image_koff(sym, va);
     }
-
-    printf("%s: g_xnuspy_ctl_addr @ %#llx, code start @ %#llx, code size %#llx\n",
-            __func__, g_xnuspy_ctl_addr, g_xnuspy_ctl_img_codestart,
-            g_xnuspy_ctl_img_codesz);
-    printf("%s: image @ %#llx [unslid %#llx]\n", __func__, xnu_ptr_to_va(mh),
-            xnu_ptr_to_va(mh) - kernel_slide);
 }
 
 void (*next_preboot_hook)(void);
@@ -483,13 +435,7 @@ void xnuspy_preboot_hook(void){
     if(alloc_static_end > alloc_static_hardcap)
         alloc_static_end = alloc_static_hardcap;
 
-    printf("%s: alloc static current %#llx hardcap %#llx end %#llx\n", __func__,
-            alloc_static_current, alloc_static_hardcap, alloc_static_end);
-
     uint64_t free_static_memory = alloc_static_end - alloc_static_current;
-
-    printf("%s: starting with %#llx bytes of static memory\n", __func__,
-            free_static_memory);
 
     /* make sure the ramdisk is accounted for, +- a couple pages for safety */
     free_static_memory -= 0x110000 + (PAGE_SIZE * 6);
@@ -508,9 +454,6 @@ void xnuspy_preboot_hook(void){
     }
 
     memset(xnuspy_tramp_page, 0, PAGE_SIZE);
-
-    printf("%s: xnuspy tramp page @ %#llx\n", __func__,
-            xnu_ptr_to_va(xnuspy_tramp_page)-kernel_slide);
 
     /* For every function which gets hooked, a single unconditional
      * immediate branch is written targeting some point on the
@@ -537,16 +480,9 @@ void xnuspy_preboot_hook(void){
 
         sec64++;
     }
-    /* struct section_64 *__text = macho_get_section(__TEXT_EXEC, "__text"); */
-
-    /* printf("%s: kslide %#llx\n", __func__, kernel_slide); */
 
     /* Old style kc */
     if(__PRELINK_TEXT && __PRELINK_TEXT->vmsize > 0){
-        /* printf("%s: prelink text %#llx mh %#llx\n", __func__, */
-        /*         __PRELINK_TEXT->vmaddr - kernel_slide, */
-        /*         xnu_ptr_to_va(mh_execute_header)-kernel_slide); */
-
         struct segment_command_64 *__PRELINK_INFO = macho_get_segment(mh_execute_header,
                 "__PRELINK_INFO");
 
@@ -568,17 +504,6 @@ void xnuspy_preboot_hook(void){
 
         /* __info->addr already slid */
         char *infodict = xnu_va_to_ptr(__info->addr);
-
-        /* uint64_t infodict_va = __info->addr + kernel_slide; */
-
-        /* printf("%s: infodict @ %#llx %#llx\n", __func__, infodict_va, */
-        /*         infodict_va - kernel_slide); */
-
-        /* char *infodict = xnu_va_to_ptr(__PRELINK_INFO->vmaddr + kernel_slide); */
-
-        /* DumpMemory(infodict, infodict, 0x100); */
-        /* puts(""); */
-
         char *cursor;
 
         while((cursor = strstr(infodict, "_PrelinkExecutableLoadAddr"))){
@@ -598,10 +523,6 @@ next:
             infodict = cursor + 1;
         }
 
-        /* printf("%s: first kext @ %#llx %#llx\n", __func__, xnu_ptr_to_va(__TEXT_EXEC), */
-        /*         xnu_ptr_to_va(__TEXT_EXEC)-kernel_slide); */
-        /* printf("%s: codestart before %#llx\n", __func__, codestart); */
-
         struct section_64 *__text = macho_get_section(__TEXT_EXEC, "__text");
 
         if(!__text){
@@ -614,16 +535,7 @@ next:
         /* __text->addr not slid */
         if(__text->addr + kernel_slide < codestart)
             codestart = __text->addr + kernel_slide;
-
-        /* printf("%s: codestart after %#llx\n", __func__, codestart); */
-
-        /* for(;;); */
     }
-
-    /* void *c = xnu_va_to_ptr(codestart); */
-    /* DumpMemory(c,c,sizeof(uint32_t)*10); */
-
-    /* printf("%s: codestart %#llx %#llx\n", __func__, codestart, codestart-kernel_slide); */
 
     uint64_t ceil = xnu_ptr_to_va(xnuspy_tramp_page) + PAGE_SIZE;
     uint64_t dist = ceil - codestart;
@@ -646,12 +558,6 @@ next:
         g_xnuspy_tramp_page_end = g_xnuspy_tramp_page_addr + PAGE_SIZE;
     }
 
-    printf("%s: trampoline page is %#llx bytes away from kc base\n", __func__,
-            dist);
-
-    /* for(;;); */
-
-
     xnuspy_cache_base = alloc_static(PAGE_SIZE);
 
     free_static_memory -= PAGE_SIZE;
@@ -664,11 +570,6 @@ next:
 
         xnuspy_fatal_error();
     }
-
-    printf("%s: xnuspy_ctl img is %#x bytes\n", __func__,
-            loader_xfer_recv_count);
-
-    /* DumpMemory(loader_xfer_recv_data, loader_xfer_recv_data, 0x100); */
 
     void *xnuspy_ctl_image = alloc_static(loader_xfer_recv_count);
 
@@ -683,24 +584,13 @@ next:
 
     free_static_memory -= (loader_xfer_recv_count + PAGE_SIZE) & ~(PAGE_SIZE - 1);
 
-    printf("%s: xnuspy_ctl image %#llx loader_xfer_recv_data %#llx\n", __func__,
-            xnuspy_ctl_image, loader_xfer_recv_data);
-
     memcpy(xnuspy_ctl_image, loader_xfer_recv_data, loader_xfer_recv_count);
 
-    printf("%s: left with %#llx bytes of static memory\n", __func__,
-            free_static_memory);
-
-    if(free_static_memory > 0x800000){
-        printf("%s: too much static memory left, defaulting to 512 more pages\n",
-                __func__);
+    if(free_static_memory > 0x800000)
         free_static_memory = 0x800000;
-    }
 
     uint64_t reflector_pages_allocsz = (free_static_memory / PAGE_SIZE) *
         sizeof(struct xnuspy_reflector_page);
-
-    printf("%s: reflector_pages_allocsz %#llx\n", __func__, reflector_pages_allocsz);
 
     /* Now we can start to create the linked list of pages xnuspy will
      * use to hold user code. alloc_static rounds up to the nearest page */
@@ -720,8 +610,6 @@ next:
     /* Build the linked list of reflector pages */
     uint64_t num_reflector_pages = free_static_memory / PAGE_SIZE;
     struct xnuspy_reflector_page *curpage = reflector_pages;
-
-    printf("%s: %lld pages for reflection\n", __func__, num_reflector_pages);
 
     while(num_reflector_pages > 0){
         curpage->next = (struct xnuspy_reflector_page *)xnu_ptr_to_va(curpage + 1);
@@ -755,8 +643,6 @@ next:
     uint32_t *scratch_space = xnu_va_to_ptr(g_exec_scratch_space_addr);
 
     scratch_space = install_h_s_c_sbn_hook(scratch_space, &num_free_instrs);
-    printf("%s: xnuspy_ctl_tramp @ %#llx\n", __func__,
-            xnu_ptr_to_va(scratch_space)-kernel_slide);
     scratch_space = install_xnuspy_ctl_tramp(scratch_space, &num_free_instrs);
 
     if(fallback){
@@ -766,21 +652,8 @@ next:
         uint8_t *rxpage = (uint8_t *)(((uintptr_t)rxpage_unaligned + 8) & ~7);
         uint8_t *rxpage_end = (uint8_t *)(((uintptr_t)rxpage + PAGE_SIZE) & ~(PAGE_SIZE - 1));
 
-        printf("%s: rxpage %p %p %p rxpage_end %p %p %p\n", __func__, rxpage,
-                xnu_ptr_to_va(rxpage), xnu_ptr_to_va(rxpage)-kernel_slide,
-                rxpage_end, xnu_ptr_to_va(rxpage_end),
-                xnu_ptr_to_va(rxpage_end)-kernel_slide);
-
-        /* DumpMemory(rxpage-4, rxpage-4, 0x100); */
-        DumpMemory(rxpage_unaligned-4, rxpage_unaligned-4, 0x100);
-        puts("");
         /* We do this so checkra1n kpf doesn't use this space for shellcode */
-        /* memset(rxpage, '$', rxpage_end - rxpage); */
         memset(rxpage_unaligned, '$', rxpage_end - rxpage_unaligned);
-
-        /* DumpMemory(rxpage-4, rxpage-4, 0x100); */
-        DumpMemory(rxpage_unaligned-4, rxpage_unaligned-4, 0x100);
-        puts("");
 
         g_xnuspy_tramp_page_addr = xnu_ptr_to_va(rxpage);
         g_xnuspy_tramp_page_end = xnu_ptr_to_va(rxpage_end);
@@ -788,12 +661,8 @@ next:
 
     process_xnuspy_ctl_image(xnuspy_ctl_image);
 
-    /* for(;;); */
-
     initialize_xnuspy_callnum_sysctl_offsets();
     initialize_xnuspy_cache();
-
-    printf("%s: KERNEL SLIDE %#llx\n", __func__, kernel_slide);
 
     if(next_preboot_hook)
         next_preboot_hook();

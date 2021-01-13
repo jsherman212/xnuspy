@@ -371,10 +371,9 @@ static uint64_t find_replacement_kva(struct mach_header_64 *kmh,
     uint64_t u = (uint64_t)umh, k = (uint64_t)kmh;
     uint64_t dist = replacement - u;
 
-    /* uint64_t dist = replacement - (uintptr_t)umh; */
     SPYDBG("%s: dist %#llx replacement %#llx umh %#llx kmh %#llx\n", __func__,
-            dist, replacement, (uint64_t)umh, (uint64_t)kmh);
-    /* return (uint64_t)((uintptr_t)kmh + dist); */
+            dist, replacement, u, k);
+
     return k + dist;
 }
 
@@ -420,7 +419,7 @@ map_caller_segments(struct mach_header_64 * /* __user */ umh,
     }
 
     struct load_command *lc_orig = lc;
-    struct load_command *ulc = (struct load_command *)((uintptr_t)umh + sizeof(*umh));
+    struct load_command *ulc = (struct load_command *)(umh + 1);
 
     res = copyin(ulc, lc, sizeofcmds);
 
