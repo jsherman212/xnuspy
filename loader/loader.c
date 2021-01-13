@@ -196,8 +196,6 @@ int main(int argc, char **argv, const char **envp){
         goto err2;
     }
 
-    /* goto err2; */
-
     /* we may have had to pwn SEPROM or patch KPP, so wait a bit longer
      * before we continue */
     sleep(3);
@@ -225,8 +223,6 @@ int main(int argc, char **argv, const char **envp){
         printf("pongo_send_command: %s\n", libusb_error_name(err));
         goto err2;
     }
-
-    /* goto err2; */
 
     sleep(2);
 

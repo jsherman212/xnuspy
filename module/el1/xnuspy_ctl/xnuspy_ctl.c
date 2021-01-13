@@ -368,10 +368,14 @@ static int hook_already_exists(uint64_t target){
 static uint64_t find_replacement_kva(struct mach_header_64 *kmh,
         struct mach_header_64 * /* __user */ umh,
         uint64_t /* __user */ replacement){
-    uint64_t dist = replacement - (uintptr_t)umh;
+    uint64_t u = (uint64_t)umh, k = (uint64_t)kmh;
+    uint64_t dist = replacement - u;
+
+    /* uint64_t dist = replacement - (uintptr_t)umh; */
     SPYDBG("%s: dist %#llx replacement %#llx umh %#llx kmh %#llx\n", __func__,
             dist, replacement, (uint64_t)umh, (uint64_t)kmh);
-    return (uint64_t)((uintptr_t)kmh + dist);
+    /* return (uint64_t)((uintptr_t)kmh + dist); */
+    return k + dist;
 }
 
 /* Create a shared mapping of the calling process' __TEXT and __DATA and

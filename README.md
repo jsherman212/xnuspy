@@ -20,7 +20,7 @@ in a few seconds your device will boot. `loader` will wait a couple more
 seconds after issuing `xnuspy-getkernelv` in case SEPROM needs to be exploited.
 
 # xnuspy_ctl
-xnuspy will patch the first `enosys` system call to point to `xnuspy_ctl_tramp`.
+xnuspy will patch an `enosys` system call to point to `xnuspy_ctl_tramp`.
 This is a small trampoline which marks the compiled `xnuspy_ctl` code as
 executable and branches to it. You can find `xnuspy_ctl`'s implementation at
 `module/el1/xnuspy_ctl/xnuspy_ctl.c` and examples in the `example` directory.
@@ -96,10 +96,10 @@ initialized. It's unsafe to use if it was.
 `errno` is set to...
 - `EINVAL` if:
   - The constant denoted by `arg1` does not represent anything in the cache.
-  - You requested `KALLOC_EXTERNAL` while running iOS 13.x.
-  - You requested `KALLOC_CANBLOCK` while running iOS 14.x.
-  - You requested `KFREE_EXT` while running iOS 13.x.
-  - You requested `KFREE_ADDR` while running iOS 14.x.
+  - `arg1` was `KALLOC_EXTERNAL`, but the kernel is iOS 13.x.
+  - `arg1` was `KALLOC_CANBLOCK`, but the kernel is iOS 14.x.
+  - `arg1` was `KFREE_EXT`, but the kernel is iOS 13.x.
+  - `arg1` was `KFREE_ADDR`, but the kernel is iOS 14.x.
 
 `errno` also depends on the return value of `copyout` and if applicable, the
 return value of the one-time initialization function.
@@ -120,8 +120,17 @@ instead of `kprintf`. You need to re-implement any libc function you wish to cal
 example, `PAGE_SIZE` expands to `vm_page_size`, not a constant. You need to
 disable PAN (on A10+, which I also don't recommend doing) before reading this 
 variable or you will panic.
+- *Just to be safe, don't compile your hook programs with compiler optimizations.*
 
 Skimming https://developer.apple.com/library/archive/documentation/Darwin/Conceptual/KernelProgramming/style/style.html is also recommended.
+
+### Logging
+For some reason, logs from `os_log_with_args` don't show up in the stream
+outputted from the command line tool `oslog`. Logs from `kprintf` don't
+make it there either, but they *can* be seen with `dmesg`. However, `dmesg`
+isn't a live feed, so I wrote `klog`, a tool which shows `kprintf` logs
+in real time. Find it in `klog/`. I strongly recommend using that instead
+of spamming `dmesg` for your `kprintf` messages.
 
 ### Debugging Kernel Panics
 Bugs are inevitable when writing code, so eventually you're going to cause a
@@ -134,7 +143,8 @@ but if not, there's something wrong with your replacement.
 Since xnuspy does not actually redirect execution to EL0 pages, debugging
 a panic isn't as straightforward. Open up `module/el1/xnuspy_ctl/xnuspy_ctl.c`,
 and right before the only call to `kwrite_instr` in `xnuspy_install_hook`,
-add a call to `IOSleep` for a couple seconds. Re-compile xnuspy with
+add a call to `IOSleep` for a couple seconds. This is done to make sure there's
+enough time before the device panics for logs to propagate. Re-compile xnuspy with
 `XNUSPY_DEBUG=1 make -B` and load the module again. After loading the module,
 if you haven't already, compile `klog` from `tools/`. Upload it to your device
 and do `stdbuf -o0 ./klog | grep find_replacement_kva`. Run your hook program again
@@ -163,8 +173,8 @@ function *and* the first instruction of the hooked function is not `B`. In this
 case, the minimum length is eight bytes. Otherwise, there is no minimum length.
 
 xnuspy uses `X16` and `X17` for its trampolines, so kernel functions which
-expect those to persist across function calls cannot be hooked. There aren't
-many which expect this. If the function you want to hook begins with `BL`,
+expect those to persist across function calls cannot be hooked (there aren't
+many which expect this). If the function you want to hook begins with `BL`,
 and you intend to call the original, you can only do so if executing the
 original function does not modify `X17`.
 
@@ -175,19 +185,59 @@ I can't statically initialize the read/write lock I use. After the first call
 returns, any future calls are guarenteed to be thread-safe.
 
 # How It Works
-This is simplified, but it captures the main idea well. Check out `xnuspy_ctl`'s
-source code for more information.
+This is simplified, but it captures the main idea well. A function hook in xnuspy
+is a structure that resides on writeable, executable kernel memory. In most cases,
+this is memory returned by `alloc_static` inside of pongoOS. It can be boiled down
+to this:
 
-In order to hook a kernel function, xnuspy will generate a small trampoline to
-jump to its replacement. After, it will create a shared user-kernel mapping of
-the calling processes' `__TEXT` and `__DATA` segments. `__TEXT` is shared so
-you can call other functions from your hooks. `__DATA` is shared so changes to
-global variables are seen by both EL1 and EL0. This is done only once per
-process. The kernel virtual address of the replacement function on this mapping
-is figured out and is saved right before the address of the replacement
-trampoline. Finally, an unconditional immediate branch from the kernel
-function to the replacement trampoline is assembled and is what replaces the
-first instruction of that function.
+
+```
+struct {
+	uint64_t replacement;
+	uint32_t tramp[2];
+	uint32_t orig[10];
+};
+```
+
+Where `replacement` is the kernel virtual address (elaborated on later) of the
+replacement function, `tramp` is a small trampoline that re-directs execution to
+`replacement`, and `orig` is a larger, more complicated trampoline that represents
+the original function.
+
+Before a function is hooked, xnuspy creates a shared user-kernel mapping of the
+calling processes' `__TEXT` and `__DATA` segments (as well as any segment in
+between those, if any). `__TEXT` is shared so you can call other functions from
+your hooks. `__DATA` is shared so changes to global variables are seen by both
+EL1 and EL0. This is done only once per process.
+
+Since this mapping is a one-to-one copy of `__TEXT` and `__DATA`, it's easy to
+figure out the address of the user's replacement function on it. Given the address of
+the calling processes' Mach-O header `u`, the address of the start of the
+shared mapping `k`, and the address of the user's replacement function `r`, we
+apply the following formula:
+
+
+```
+replacement = k + (r - u)
+```
+
+After that, `replacement` is the kernel virtual address of the user's replacement
+function on the shared mapping, and is written to the function hook structure.
+xnuspy does not re-direct execution to the EL0 address of the replacement
+function because that's extremely unsafe: not only does that put us at the
+mercy of the scheduler, it gives us no control over the scenario where a process
+with a kernel hook dies while a kernel thread is still executing on the
+replacement.
+
+Finally, the shared mapping is marked as executable<sup>*</sup> and a unconditional
+immediate branch (`B`) is assembled. It directs execution to the start of `tramp`,
+and is what replaces the first instruction of the now-hooked kernel function.
+Unfortunately, this limits us from branching to hook structures more than 128 MB away
+from a given kernel function. xnuspy does check for this scenario before booting
+and falls back to unused code already in the kernelcache for the hook structures
+to reside on instead if it finds that this could happen.
+
+<sup>*not exactly what happens, but what actually happens produces that effect</sup>
 
 # Device Security
 This module completely neuters KTRR/AMCC lockdown and KPP. I don't

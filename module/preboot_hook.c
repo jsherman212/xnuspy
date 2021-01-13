@@ -13,7 +13,6 @@
 #include "el1/hook_system_check_sysctlbyname_hook_instrs.h"
 #include "el1/xnuspy_ctl_tramp_instrs.h"
 
-#include "pf/macho.h"
 #include "pf/offsets.h"
 #include "pf/pf_common.h"
 

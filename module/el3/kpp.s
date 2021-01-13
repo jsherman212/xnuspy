@@ -17,7 +17,7 @@ _kpp0:
     mov x20, #0x11
     movk x20, #0x5e00, lsl 16
     cmp x19, x20
-    b.eq 2f
+    b.eq Lsetentry
 
     /* Otherwise, we are here because the kernel touched CPACR_EL1, so we
     need to get off that instruction before we ERET */
@@ -30,15 +30,15 @@ _kpp0:
     add x19, x19, #0x4
     msr elr_el3, x19
 
-    b 1f
+    b Lreturn
 
-2:
+Lsetentry:
     cmp x0, MONITOR_SET_ENTRY
-    b.ne 1f
+    b.ne Lreturn
     ldr x19, kernEntry
     str x1, [x19]
 
-1:
+Lreturn:
     ldp x19, x20, [sp], #0x10
     ret
 

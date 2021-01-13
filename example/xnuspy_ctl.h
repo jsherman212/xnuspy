@@ -64,7 +64,10 @@ enum {
 
     PROC_LIST_LOCK,
     PROC_LIST_UNLOCK,
+
+    /* lck_mtx_t *proc_list_mlock @ bsd/sys/proc_internal.h */
     PROC_LIST_MLOCK,
+
     PROC_REF_LOCKED,
     PROC_RELE_LOCKED,
     PROC_UNIQUEID,

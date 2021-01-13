@@ -3,7 +3,6 @@
 #include <stdint.h>
 #include <sys/sysctl.h>
 
-#include "../macho.h"
 #include "../offsets.h"
 #include "../pf_common.h"
 

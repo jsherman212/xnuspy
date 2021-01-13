@@ -6,9 +6,6 @@ Directory structure:
 14/
 - patchfinder code for iOS 14.x
 
-macho.c
-- functions to work with Mach-O files
-
 offsets.h
 - offsets needed for the xnuspy cache and `xnuspy_ctl`
 
