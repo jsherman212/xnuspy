@@ -1,3 +1,5 @@
+all : asm.o common.o
+
 asm.o : asm.c asm.h
 	$(CC) $(CFLAGS) asm.c -c
 
