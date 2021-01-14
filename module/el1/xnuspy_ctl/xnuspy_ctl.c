@@ -80,7 +80,7 @@ enum xnuspy_cache_id {
     KWRITE_INSTR,
     EL0_PTEP,
     EL1_PTEP,
-    PTE_SYNC,
+    TLB_FLUSH,
     UNIFIED_KALLOC,
     UNIFIED_KFREE,
     MAX_CACHE = UNIFIED_KFREE
@@ -764,7 +764,7 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
 
         kwrite_static(rp_ptep, &new_rp_pte, sizeof(new_rp_pte));
 
-        pte_sync();
+        tlb_flush();
 
         cur->used = 1;
         cur = cur->next;
@@ -1226,8 +1226,8 @@ static int xnuspy_cache_read(enum xnuspy_cache_id which,
         case EL1_PTEP:
             what = el1_ptep;
             break;
-        case PTE_SYNC:
-            what = pte_sync;
+        case TLB_FLUSH:
+            what = tlb_flush;
             break;
         case UNIFIED_KALLOC:
             what = unified_kalloc;

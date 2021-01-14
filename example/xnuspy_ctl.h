@@ -197,12 +197,12 @@ enum {
      */
     EL1_PTEP,
 
-    /* void pte_sync(void)
+    /* void tlb_flush(void)
      *
      * After modifying a page table, call this function to invalidate
      * the TLB.
      */
-    PTE_SYNC,
+    TLB_FLUSH,
 
     /* The next two functions abstract away the different kalloc/kfree pairs
      * for different iOS versions and keeps track of allocation sizes. This

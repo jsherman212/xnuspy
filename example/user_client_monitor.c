@@ -185,7 +185,6 @@ int main(int argc, char **argv){
     printf("kprintf @ %#llx\n", (uint64_t)kprintf);
     printf("proc_pid @ %#llx\n", (uint64_t)proc_pid);
 
-    /* iphone se 14.3 */
     ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xfffffff0076e3104,
             is_io_service_open_extended, &is_io_service_open_extended_orig);
 

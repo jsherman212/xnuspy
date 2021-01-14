@@ -6,7 +6,7 @@ typedef uint64_t pte_t;
 pte_t *el0_ptep(void *);
 pte_t *el1_ptep(void *);
 
-void pte_sync(void);
+void tlb_flush(void);
 
 #define ARM_TTE_TABLE_MASK          (0x0000ffffffffc000)
 

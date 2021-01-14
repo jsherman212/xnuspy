@@ -113,7 +113,7 @@ static int protect_common(uint64_t vaddr, uint64_t size, vm_prot_t prot,
         target_region_cur += PAGE_SIZE;
     }
 
-    pte_sync();
+    tlb_flush();
 
     return 0;
 }

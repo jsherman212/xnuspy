@@ -26,7 +26,11 @@ seconds after issuing `xnuspy-getkernelv` in case SEPROM needs to be exploited.
 # Known Issues
 Sometimes a couple of my phones would get stuck at "Booting" after checkra1n's KPF
 runs. I have yet to figure out what causes this, but if it happens, try again.
-Also, if the device hangs after `bootx`, try again.
+Also, if the device hangs after `bootx`, try again. Finally, marking the
+compiled `xnuspy_ctl` code as executable on my iPhone X running iOS 13.3.1 is
+a bit spotty, but succeeds 100% of the time on my other phones. If you panic
+with a kernel instruction fetch abort when you execute your hook program,
+try again.
 
 # xnuspy_ctl
 xnuspy will patch an `enosys` system call to point to `xnuspy_ctl_tramp`.

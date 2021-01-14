@@ -88,11 +88,11 @@ Lnextpage:
     cmp x20, x19
     b.ne Lpteloop
 
-    isb
+    isb sy
     dsb sy
     tlbi vmalle1
     dsb sy
-    isb
+    isb sy
 
     str x22, [x27, XNUSPY_CTL_IS_RX]
 

@@ -30,13 +30,13 @@ pte_t *el1_ptep(void *kaddr){
     return ptep(ttbr1_el1, (uint64_t)kaddr);
 }
 
-__attribute__ ((naked)) void pte_sync(void){
+__attribute__ ((naked)) void tlb_flush(void){
     asm(""
-        "isb\n"
+        "isb sy\n"
         "dsb sy\n"
         "tlbi vmalle1\n"
         "dsb sy\n"
-        "isb\n"
+        "isb sy\n"
         "ret\n"
        );
 }
