@@ -6,7 +6,7 @@
 
 xnuspy is a pongoOS module which installs a new system call, `xnuspy_ctl`,
 allowing you to hook kernel functions from userspace. It supports iOS 13.x and
-14.x on checkra1n 0.12.2 and up.
+14.x on checkra1n 0.12.2 and up. 4K devices are not supported.
 
 Requires `libusb`: `brew install libusb`
 
@@ -22,6 +22,11 @@ In the same directory you built the loader and the module, do
 `loader/loader module/xnuspy`. After doing that, xnuspy will do its thing and
 in a few seconds your device will boot. `loader` will wait a couple more
 seconds after issuing `xnuspy-getkernelv` in case SEPROM needs to be exploited.
+
+# Known Issues
+Sometimes a couple of my phones would get stuck at "Booting" after checkra1n's KPF
+runs. I have yet to figure out what causes this, but if it happens, try again.
+Also, if the device hangs after `bootx`, try again.
 
 # xnuspy_ctl
 xnuspy will patch an `enosys` system call to point to `xnuspy_ctl_tramp`.
@@ -79,6 +84,9 @@ does not return any errors.
   - There are no free `xnuspy_tramp` structs or reflector pages. These data
 structures are internal to xnuspy. This should never happen unless you are
 hooking hundreds of kernel functions at the same time.
+- `EFAULT` if:
+  - `current_map()->hdr.vme_start` is not a pointer to the calling processes'
+Mach-O header.
 - `ENOENT` if:
   - `map_caller_segments` was unable to find `__TEXT` and `__DATA` for the
 calling process.
@@ -87,10 +95,10 @@ calling process.
 of the calling processes' `__TEXT` and `__DATA` segments.
 
 `errno` also depends on the return value of `vm_map_wire_external`,
-`vm_map_unwire`, `vm_deallocate`, `mach_vm_map_external`, `copyin`,
-`copyout`, and if applicable, the one-time initialization function. An `errno`
-of `10000` represents a `kern_return_t` value that I haven't yet taken into
-account for.
+`mach_vm_map_external`, `copyin`, `copyout`, and if applicable, the one-time
+initialization function. An `errno` of `10000` represents a `kern_return_t`
+value that I haven't yet taken into account for (and a message is printed
+to the kernel log about it).
 
 If this flavor returns an error, the target kernel function was not hooked.
 If you passed a non-NULL pointer for `arg3`, it may or may not have been
@@ -150,7 +158,7 @@ and right before the only call to `kwrite_instr` in `xnuspy_install_hook`,
 add a call to `IOSleep` for a couple seconds. This is done to make sure there's
 enough time before the device panics for logs to propagate. Re-compile xnuspy with
 `XNUSPY_DEBUG=1 make -B` and load the module again. After loading the module,
-if you haven't already, compile `klog` from `tools/`. Upload it to your device
+if you haven't already, compile `klog` from `klog/`. Upload it to your device
 and do `stdbuf -o0 ./klog | grep find_replacement_kva`. Run your hook program again
 and watch for a line from `klog` that looks like this:
 
@@ -218,15 +226,10 @@ Since this mapping is a one-to-one copy of `__TEXT` and `__DATA`, it's easy to
 figure out the address of the user's replacement function on it. Given the address of
 the calling processes' Mach-O header `u`, the address of the start of the
 shared mapping `k`, and the address of the user's replacement function `r`, we
-apply the following formula:
-
-
-```
-replacement = k + (r - u)
-```
+apply the following formula: `replacement = k + (r - u)`
 
 After that, `replacement` is the kernel virtual address of the user's replacement
-function on the shared mapping, and is written to the function hook structure.
+function on the shared mapping and it is written to the function hook structure.
 xnuspy does not re-direct execution to the EL0 address of the replacement
 function because that's extremely unsafe: not only does that put us at the
 mercy of the scheduler, it gives us no control over the scenario where a process

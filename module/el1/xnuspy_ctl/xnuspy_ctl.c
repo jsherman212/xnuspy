@@ -408,6 +408,13 @@ map_caller_segments(struct mach_header_64 * /* __user */ umh,
         return NULL;
     }
 
+    if(umh_kern.magic != MH_MAGIC_64){
+        SPYDBG("%s: %#llx is not a Mach-O header? Found %#x\n", __func__,
+                (uint64_t)umh, umh_kern.magic);
+        *retval = EFAULT;
+        return NULL;
+    }
+
     uint32_t sizeofcmds = umh_kern.sizeofcmds;
 
     struct load_command *lc = unified_kalloc(sizeofcmds);
