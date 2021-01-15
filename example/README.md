@@ -39,6 +39,10 @@ iPhone SE (2016) 14.3:
     is_io_service_open_extended: 0xfffffff0076e3104
 ```
 
+### kernel_thread
+This hooks `hookme`, invokes `xnuspy_ctl` to call it, starts up a kernel
+thread, and registers a death callback.
+
 ### Compiling (on device)
 ```
 clang-10 -Wno-deprecated-declarations -isysroot <your sdk> open1_hook.c -o open1_hook
@@ -48,4 +52,9 @@ ldid -Sent.xml -P ./open1_hook
 ```
 clang-10 -Wno-deprecated-declarations -isysroot <your sdk> user_client_monitor.c -o user_client_monitor
 ldid -Sent.xml -P ./user_client_monitor
+```
+
+```
+clang-10 -Wno-deprecated-declarations -isysroot <your sdk> kernel_thread.c -o kernel_thread
+ldid -Sent.xml -P ./kernel_thread
 ```

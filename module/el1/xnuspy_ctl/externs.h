@@ -34,6 +34,7 @@ extern int (*copyout)(const void *kaddr, uint64_t uaddr,
         vm_size_t nbytes);
 extern void *(*current_proc)(void);
 extern struct xnuspy_reflector_page *first_reflector_page;
+extern uint64_t hookme_in_range;
 extern uint64_t iOS_version;
 extern void (*IOSleep)(unsigned int millis);
 extern void (*ipc_port_release_send)(void *port);

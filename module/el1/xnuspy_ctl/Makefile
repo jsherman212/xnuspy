@@ -9,7 +9,7 @@ ifeq ($(XNUSPY_DEBUG), 1)
 	CFLAGS += -DXNUSPY_DEBUG
 endif
 
-LDFLAGS = -Xlinker -kext
+LDFLAGS = -Xlinker -kext 
 
 all : $(OBJECT_FILES) xnuspy_ctl
 

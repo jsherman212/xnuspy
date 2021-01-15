@@ -25,7 +25,6 @@
 enum {
     XNUSPY_CHECK_IF_PATCHED = 0,
     XNUSPY_INSTALL_HOOK,
-    /* XXX figure out a better name for this, something about cleaning up? */
     XNUSPY_REGISTER_DEATH_CALLBACK,
     XNUSPY_CALL_HOOKME,
     XNUSPY_CACHE_READ,
@@ -111,6 +110,8 @@ MARK_AS_KERNEL_OFFSET int (*copyout)(const void *kaddr, uint64_t uaddr,
         vm_size_t nbytes);
 MARK_AS_KERNEL_OFFSET void *(*current_proc)(void);
 MARK_AS_KERNEL_OFFSET struct xnuspy_reflector_page *first_reflector_page;
+/* Keep these all aligned 8 bytes */
+MARK_AS_KERNEL_OFFSET uint64_t hookme_in_range;
 MARK_AS_KERNEL_OFFSET uint64_t iOS_version;
 MARK_AS_KERNEL_OFFSET void (*IOSleep)(unsigned int millis);
 MARK_AS_KERNEL_OFFSET void (*ipc_port_release_send)(void *port);
@@ -251,8 +252,6 @@ static uint64_t g_num_leaked_pages = 0;
 
 static void xnuspy_mapping_metadata_release(struct xnuspy_mapping_metadata *mm){
     if(--mm->refcnt == 0){
-        /* Let the user know they should clean up any kernel resources
-         * their hooks allocated */
         if(mm->death_callback){
             SPYDBG("%s: invoking death callback\n", __func__);
             mm->death_callback();
@@ -1090,7 +1089,7 @@ static int xnuspy_register_death_callback(uint64_t /* __user */ addr){
     SPYDBG("%s: called with user address %#llx\n", __func__, addr);
 
     /* Find mapping metadata for this processes, if none, no hooks are
-     * installed */
+     * installed, so it doesn't make sense to install a callback */
     struct xnuspy_mapping_metadata *mm = find_mapping_metadata();
 
     if(!mm){
@@ -1104,35 +1103,31 @@ static int xnuspy_register_death_callback(uint64_t /* __user */ addr){
 
     uint64_t addr_kva = shared_mapping_kva(kmh, umh, addr);
 
-    SPYDBG("%s: user's death callback @ %#llx\n", __func__, addr_kva);
-
-    uint32_t *cursor = (uint32_t *)addr_kva;
-    for(int i=0; i<20; i++){
-        SPYDBG("%s: %#llx  %#x\n", __func__, (uint64_t)(cursor+i), cursor[i]);
-    }
-
     mm->death_callback = (void (*)(void))addr_kva;
 
-    SPYDBG("%s: set xnuspy death callback to %#llx for process %lld\n",
-            __func__, (uint64_t)mm->death_callback, mm->owner);
+    SPYDBG("%s: set death callback to %#llx for %lld\n", __func__,
+            (uint64_t)mm->death_callback, mm->owner);
 
     return 0;
 }
 
-/* This function is a stub for you to hook to easily gain kernel code
- * execution without having to hook an actual kernel function. This is
- * readable through XNUSPY_CACHE_READ, and is called through
- * XNUSPY_CALL_HOOKME.
- *
- * TODO: If we had to fallback to the unused code page already in the
- * kernelcache, then we can't assume this will be able to be hooked :(
- * how to notify?
- */
-__attribute__ ((naked)) static void hookme(void){
+__attribute__ ((naked)) static void _hookme(void){
     asm(""
         "nop\n"
         "ret\n"
        );
+}
+
+static int hookme(void){
+    if(!hookme_in_range){
+        SPYDBG("%s: _hookme is unable to be hooked, but if it was, calling"
+                " it would panic, bailing.\n", __func__);
+        return ENOTSUP;
+    }
+
+    _hookme();
+
+    return 0;
 }
 
 static int xnuspy_cache_read(enum xnuspy_cache_id which,
@@ -1279,7 +1274,7 @@ static int xnuspy_cache_read(enum xnuspy_cache_id which,
             what = IOSleep;
             break;
         case HOOKME:
-            what = hookme;
+            what = _hookme;
             break;
         case CURRENT_MAP:
             what = current_map;
@@ -1366,8 +1361,7 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
             res = xnuspy_register_death_callback(uap->arg1);
             break;
         case XNUSPY_CALL_HOOKME:
-            hookme();
-            res = 0;
+            res = hookme();
             break;
         case XNUSPY_CACHE_READ:
             {

@@ -49,9 +49,9 @@ sysctlbyname("kern.xnuspy_ctl_callnum", &SYS_xnuspy_ctl, &oldlen, NULL, 0);
 ```
 
 This system call takes four arguments, `flavor`, `arg1`, `arg2`, and `arg3`.
-The flavor can either be `XNUSPY_CHECK_IF_PATCHED`, `XNUSPY_INSTALL_HOOK` or
-`XNUSPY_CACHE_READ`. The meaning of the next three arguments depend on the
-flavor.
+The flavor can either be `XNUSPY_CHECK_IF_PATCHED`, `XNUSPY_INSTALL_HOOK`,
+`XNUSPY_REGISTER_DEATH_CALLBACK`, `XNUSPY_CALL_HOOKME`, or `XNUSPY_CACHE_READ`.
+The meaning of the next three arguments depend on the flavor.
 
 ## `XNUSPY_CHECK_IF_PATCHED`
 This exists so you can check if `xnuspy_ctl` is present. Invoking it with this
@@ -66,15 +66,37 @@ ABI-compatible replacement function. `arg3` is a pointer for `xnuspy_ctl` to
 `copyout` the address of a trampoline that represents the original kernel
 function. This can be NULL if you don't intend to call the original.
 
-## `XNUSPY_CACHE_READ`
-`arg1` is one of the constants defined in `xnuspy_ctl.h` and `arg2` is a
-pointer for `xnuspy_ctl` to `copyout` the address or value of what you requested.
-The cache contains many useful things like `kprintf`, `current_proc`, and the
-kernel slide so you don't have to look for them yourself.
+## `XNUSPY_REGISTER_DEATH_CALLBACK`
+This flavor allows you to register an optional "death callback", a function xnuspy
+will call when your hook program exits. It gives you a chance to clean up anything
+you created from your kernel hooks. If you created any kernel threads, you would
+tell them to terminate in this function.
 
-For `XNUSPY_INSTALL_HOOK` and `XNUSPY_CACHE_READ`, `0` is returned on success.
+Your callback is not invoked asynchronously, so if you block, you're preventing
+xnuspy's garbage collection thread from executing.
+
+`arg1` is a pointer to your callback function. The values of the other arguments
+are ignored.
+
+## `XNUSPY_CALL_HOOKME`
+`hookme` is a small assembly stub which xnuspy exports through the xnuspy cache
+for you to hook. Invoking `xnuspy_ctl` with this flavor will cause `hookme` to
+get called, providing a way for you to easily gain kernel code execution without
+having to hook an actual kernel function.
+
+There are no arguments for this flavor.
+
+## `XNUSPY_CACHE_READ`
+This flavor gives you a way to read from the xnuspy cache. It contains many useful
+things like `kprintf`, `current_proc`, `kernel_thread_start`, and the kernel slide
+so you don't have to find them yourself. For a complete list of cache IDs, check
+out `example/xnuspy_ctl.h`. 
+
+`arg1` is one of the cache IDs defined in `xnuspy_ctl.h` and `arg2` is a
+pointer for `xnuspy_ctl` to `copyout` the address or value of what you requested.
 
 ### Errors
+For all flavors except `XNUSPY_CHECK_IF_PATCHED`, `0` is returned on success.
 Upon error, `-1` is returned and `errno` is set. `XNUSPY_CHECK_IF_PATCHED`
 does not return any errors.
 
@@ -102,11 +124,29 @@ of the calling processes' `__TEXT` and `__DATA` segments.
 `mach_vm_map_external`, `copyin`, `copyout`, and if applicable, the one-time
 initialization function. An `errno` of `10000` represents a `kern_return_t`
 value that I haven't yet taken into account for (and a message is printed
-to the kernel log about it).
+to the kernel log about it if you compiled with `XNUSPY_DEBUG=1`).
 
 If this flavor returns an error, the target kernel function was not hooked.
 If you passed a non-NULL pointer for `arg3`, it may or may not have been
 initialized. It's unsafe to use if it was.
+
+#### Errors Pertaining to `XNUSPY_REGISTER_DEATH_CALLBACK`
+`errno` is set to...
+- `ENOENT` if:
+  - The calling process hasn't hooked any kernel functions.
+
+If this flavor returns an error, your death callback was not registered.
+
+#### Errors Pertaining to `XNUSPY_CALL_HOOKME`
+`errno` is set to...
+- `ENOTSUP` if:
+  - `hookme` is too far away from the page of `xnuspy_tramp` structures. This
+is determined inside of pongoOS, and can only happen if xnuspy had to
+fallback to unused code already inside of the kernelcache. In this case,
+calling `hookme` would almost certainly cause a kernel panic, and you'll
+have to figure out another kernel function to hook.
+
+If this flavor returns an error, `hookme` was not called.
 
 #### Errors Pertaining to `XNUSPY_CACHE_READ`
 `errno` is set to...
@@ -132,6 +172,7 @@ kernel code. Here's a couple things to keep in mind when you're writing hooks:
 - *You cannot execute any userspace code that lives outside your program's
 `__TEXT` segment*. You will panic if, for example, you accidentally call `printf`
 instead of `kprintf`. You need to re-implement any libc function you wish to call.
+You can create function pointers to other kernel functions and call those, though.
 - *Many macros commonly used in userspace code are unsafe for the kernel.* For
 example, `PAGE_SIZE` expands to `vm_page_size`, not a constant. You need to
 disable PAN (on A10+, which I also don't recommend doing) before reading this 

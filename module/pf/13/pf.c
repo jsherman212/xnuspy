@@ -1041,8 +1041,6 @@ bool thread_terminate_finder_13(xnu_pf_patch_t *patch,
     g_thread_terminate_addr = xnu_ptr_to_va(thread_terminate);
 
     puts("xnuspy: found thread_terminate");
-    printf("%s: thread_terminate @ %#llx\n", __func__,
-            g_thread_terminate_addr - kernel_slide);
 
     return true;
 }

@@ -24,6 +24,8 @@ static uint64_t g_xnuspy_ctl_img_codesz = 0;
 static uint64_t g_xnuspy_tramp_page_addr = 0;
 static uint64_t g_xnuspy_tramp_page_end = 0;
 static uint64_t g_first_reflector_page = 0;
+/* Assume we're in range until we do the check */
+static uint64_t g_hookme_in_range = 1;
 
 uint64_t *xnuspy_cache_base = NULL;
 
@@ -57,6 +59,7 @@ static struct xnuspy_ctl_kernel_symbol {
     { "_copyout", &g_copyout_addr },
     { "_current_proc", &g_current_proc_addr },
     { "_first_reflector_page", &g_first_reflector_page },
+    { "_hookme_in_range", &g_hookme_in_range },
     { "_iOS_version", &g_kern_version_major },
     { "_IOSleep", &g_IOSleep_addr },
     { "_ipc_port_release_send", &g_ipc_port_release_send_addr },
@@ -391,6 +394,12 @@ static void process_xnuspy_ctl_image(void *xnuspy_ctl_image){
         if(!g_xnuspy_ctl_img_codesz)
             printf("   g_xnuspy_ctl_img_codesz\n");
 
+        printf("  This may be happening\n"
+               "  due to a short read,\n"
+               "  try adding some code to\n"
+               "  module/el1/xnuspy_ctl/xnuspy_ctl.c\n"
+               "  to increase image size.\n");
+
         xnuspy_fatal_error();
     }
 
@@ -406,8 +415,30 @@ static void process_xnuspy_ctl_image(void *xnuspy_ctl_image){
 
         if(strcmp(sym, "_xnuspy_ctl") == 0)
             g_xnuspy_ctl_addr = xnu_ptr_to_va(va);
-        else
+        else if(strcmp(sym, "__hookme") == 0){
+            uint64_t _hookme_kva = xnu_ptr_to_va(va);
+            uint64_t ceil = g_xnuspy_tramp_page_end;
+            int64_t dist = ceil - _hookme_kva;
+
+            if(dist < 0)
+                dist = -dist;
+
+            if(dist > 0x8000000){
+                g_hookme_in_range = 0;
+
+                printf("xnuspy: hookme is unable\n"
+                       " to be hooked, XNUSPY_CALL_HOOKME\n"
+                       " is disabled.\n");
+            }
+
+            /* In case we've already seen _hookme_in_range, initialize this
+             * symbol again */
+            initialize_xnuspy_ctl_image_koff("_hookme_in_range",
+                    &g_hookme_in_range);
+        }
+        else{
             initialize_xnuspy_ctl_image_koff(sym, va);
+        }
     }
 }
 
