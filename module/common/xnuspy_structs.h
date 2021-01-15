@@ -39,6 +39,8 @@ struct xnuspy_mapping_metadata {
     uint64_t mapping_addr;
     /* Size of this mapping */
     uint64_t mapping_size;
+    /* Death callback */
+    void (*death_callback)(void);
 };
 
 /* This structure contains information for an xnuspy_tramp that isn't

@@ -5,6 +5,8 @@
 enum {
     XNUSPY_CHECK_IF_PATCHED = 0,
     XNUSPY_INSTALL_HOOK,
+    XNUSPY_REGISTER_DEATH_CALLBACK,
+    XNUSPY_CALL_HOOKME,
     XNUSPY_CACHE_READ,
 };
 
@@ -74,8 +76,18 @@ enum {
     VM_DEALLOCATE,
     VM_MAP_UNWIRE,
     VM_MAP_WIRE_EXTERNAL,
+    IOSLEEP,
     
     /* Everything below is from xnuspy, everything above is from XNU */
+
+    /* void hookme(void)
+     *
+     * This function is a stub for you to hook to easily gain kernel code
+     * execution without having to hook an actual kernel function. You can
+     * get xnuspy to call it by invoking xnuspy_ctl with the
+     * XNUSPY_CALL_HOOKME flavor.
+     */
+    HOOKME,
 
     /* void *current_map(void)
      *

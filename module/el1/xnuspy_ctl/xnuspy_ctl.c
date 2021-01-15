@@ -25,6 +25,9 @@
 enum {
     XNUSPY_CHECK_IF_PATCHED = 0,
     XNUSPY_INSTALL_HOOK,
+    /* XXX figure out a better name for this, something about cleaning up? */
+    XNUSPY_REGISTER_DEATH_CALLBACK,
+    XNUSPY_CALL_HOOKME,
     XNUSPY_CACHE_READ,
     XNUSPY_MAX_FLAVOR = XNUSPY_CACHE_READ,
 };
@@ -70,6 +73,8 @@ enum xnuspy_cache_id {
     VM_DEALLOCATE,
     VM_MAP_UNWIRE,
     VM_MAP_WIRE_EXTERNAL,
+    IOSLEEP,
+    HOOKME,
     CURRENT_MAP,
     IOS_VERSION,
     KVTOPHYS,
@@ -166,6 +171,14 @@ int strcmp(const char *s1, const char *s2){
     return *(const unsigned char *)s1 - *(const unsigned char *)s2;
 }
 
+void bzero(void *p, size_t n){
+    uint8_t *p0 = p;
+    uint8_t *p_end = p0 + n;
+
+    while(p0 < p_end)
+        *p0++ = '\0';
+}
+
 __attribute__ ((naked)) static uint64_t current_thread(void){
     asm(""
         "mrs x0, tpidr_el1\n"
@@ -235,6 +248,13 @@ static uint64_t g_num_leaked_pages = 0;
 
 static void xnuspy_mapping_metadata_release(struct xnuspy_mapping_metadata *mm){
     if(--mm->refcnt == 0){
+        /* Let the user know they should clean up any kernel resources
+         * their hooks allocated */
+        if(mm->death_callback){
+            SPYDBG("%s: invoking death callback\n", __func__);
+            mm->death_callback();
+        }
+
         g_num_leaked_pages += mm->mapping_size / PAGE_SIZE;
 
         struct orphan_mapping *om = unified_kalloc(sizeof(*om));
@@ -365,17 +385,31 @@ static int hook_already_exists(uint64_t target){
     return 0;
 }
 
-static uint64_t find_replacement_kva(struct mach_header_64 *kmh,
+/* Figure out the kernel virtual address of a user address on the
+ * shared mapping for this process */
+static uint64_t shared_mapping_kva(struct mach_header_64 *kmh,
         struct mach_header_64 * /* __user */ umh,
-        uint64_t /* __user */ replacement){
+        uint64_t /* __user */ useraddr){
     uint64_t u = (uint64_t)umh, k = (uint64_t)kmh;
-    uint64_t dist = replacement - u;
+    uint64_t dist = useraddr - u;
 
-    SPYDBG("%s: dist %#llx replacement %#llx umh %#llx kmh %#llx\n", __func__,
-            dist, replacement, u, k);
+    SPYDBG("%s: dist %#llx useraddr %#llx umh %#llx kmh %#llx\n", __func__,
+            dist, useraddr, u, k);
 
     return k + dist;
 }
+
+/* static uint64_t find_replacement_kva(struct mach_header_64 *kmh, */
+/*         struct mach_header_64 * /1* __user *1/ umh, */
+/*         uint64_t /1* __user *1/ replacement){ */
+/*     uint64_t u = (uint64_t)umh, k = (uint64_t)kmh; */
+/*     uint64_t dist = replacement - u; */
+
+/*     SPYDBG("%s: dist %#llx replacement %#llx umh %#llx kmh %#llx\n", __func__, */
+/*             dist, replacement, u, k); */
+
+/*     return k + dist; */
+/* } */
 
 /* Create a shared mapping of the calling process' __TEXT and __DATA and
  * then find a contiguous set of pages we reserved before booting XNU to
@@ -506,6 +540,8 @@ nextcmd:
     }
 
     need_free_on_error = 1;
+
+    bzero(metadata, sizeof(*metadata));
 
     /* A reference for this will be taken if we end up committing the tramp
      * struct we allocated */
@@ -743,7 +779,7 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
     /* Mach-O header of the calling process, but the kernel's mapping of it */
     struct mach_header_64 *kmh = mm->first_reflector_page->page;
 
-    tramp->replacement = find_replacement_kva(kmh, umh, replacement);
+    tramp->replacement = shared_mapping_kva(kmh, umh, replacement);
 
     struct xnuspy_reflector_page *cur = mm->first_reflector_page;
 
@@ -1059,6 +1095,55 @@ out:
     return res;
 }
 
+static int xnuspy_register_death_callback(uint64_t /* __user */ addr){
+    SPYDBG("%s: called with user address %#llx\n", __func__, addr);
+
+    /* Find mapping metadata for this processes, if none, no hooks are
+     * installed */
+    struct xnuspy_mapping_metadata *mm = find_mapping_metadata();
+
+    if(!mm){
+        SPYDBG("%s: no hooks, not installing callback\n", __func__);
+        return ENOENT;
+    }
+
+    struct _vm_map *cm = current_map();
+    struct mach_header_64 *kmh = mm->first_reflector_page->page;
+    struct mach_header_64 *umh = cm->hdr.vme_start;
+
+    uint64_t addr_kva = shared_mapping_kva(kmh, umh, addr);
+
+    SPYDBG("%s: user's death callback @ %#llx\n", __func__, addr_kva);
+
+    uint32_t *cursor = (uint32_t *)addr_kva;
+    for(int i=0; i<20; i++){
+        SPYDBG("%s: %#llx  %#x\n", __func__, (uint64_t)(cursor+i), cursor[i]);
+    }
+
+    mm->death_callback = (void (*)(void))addr_kva;
+
+    SPYDBG("%s: set xnuspy death callback to %#llx for process %lld\n",
+            __func__, (uint64_t)mm->death_callback, mm->owner);
+
+    return 0;
+}
+
+/* This function is a stub for you to hook to easily gain kernel code
+ * execution without having to hook an actual kernel function. This is
+ * readable through XNUSPY_CACHE_READ, and is called through
+ * XNUSPY_CALL_HOOKME.
+ *
+ * TODO: If we had to fallback to the unused code page already in the
+ * kernelcache, then we can't assume this will be able to be hooked :(
+ * how to notify?
+ */
+__attribute__ ((naked)) static void hookme(void){
+    asm(""
+        "nop\n"
+        "ret\n"
+       );
+}
+
 static int xnuspy_cache_read(enum xnuspy_cache_id which,
         uint64_t /* __user */ outp){
     SPYDBG("%s: XNUSPY_CACHE_READ called with which %d origp %#llx\n",
@@ -1196,6 +1281,12 @@ static int xnuspy_cache_read(enum xnuspy_cache_id which,
         case VM_MAP_WIRE_EXTERNAL:
             what = vm_map_wire_external;
             break;
+        case IOSLEEP:
+            what = IOSleep;
+            break;
+        case HOOKME:
+            what = hookme;
+            break;
         case CURRENT_MAP:
             what = current_map;
             break;
@@ -1276,6 +1367,13 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
     switch(flavor){
         case XNUSPY_INSTALL_HOOK:
             res = xnuspy_install_hook(uap->arg1, uap->arg2, uap->arg3);
+            break;
+        case XNUSPY_REGISTER_DEATH_CALLBACK:
+            res = xnuspy_register_death_callback(uap->arg1);
+            break;
+        case XNUSPY_CALL_HOOKME:
+            hookme();
+            res = 0;
             break;
         case XNUSPY_CACHE_READ:
             {

@@ -129,8 +129,8 @@ initialized.
 While writing replacement functions, it was easy to forget that I was writing
 kernel code. Here's a couple things to keep in mind when you're writing hooks:
 
-- *You cannot execute any code that lives outside your program's `__TEXT`
-segment*. You will panic if, for example, you accidentally call `printf`
+- *You cannot execute any userspace code that lives outside your program's
+`__TEXT` segment*. You will panic if, for example, you accidentally call `printf`
 instead of `kprintf`. You need to re-implement any libc function you wish to call.
 - *Many macros commonly used in userspace code are unsafe for the kernel.* For
 example, `PAGE_SIZE` expands to `vm_page_size`, not a constant. You need to
