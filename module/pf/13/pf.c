@@ -59,6 +59,7 @@ uint64_t g_lck_rw_free_addr = 0;
 uint64_t g_lck_grp_free_addr = 0;
 int g_patched_doprnt_hide_pointers = 0;
 uint64_t g_copyinstr_addr = 0;
+uint64_t g_thread_terminate_addr = 0;
 uint64_t g_xnuspy_sysctl_mib_ptr = 0;
 uint64_t g_xnuspy_sysctl_mib_count_ptr = 0;
 uint64_t g_xnuspy_ctl_callnum = 0;
@@ -1022,6 +1023,26 @@ bool copyinstr_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     g_copyinstr_addr = xnu_ptr_to_va(opcode_stream);
 
     puts("xnuspy: found copyinstr");
+
+    return true;
+}
+
+/* confirmed working on all kernels 13.0-14.3 */
+bool thread_terminate_finder_13(xnu_pf_patch_t *patch,
+        void *cacheable_stream){
+    /* We landed inside of _Call_continuation, the branch four
+     * instructions down is for thread_terminate */
+    xnu_pf_disable_patch(patch);
+
+    uint32_t *opcode_stream = cacheable_stream;
+
+    uint32_t *thread_terminate = get_branch_dst_ptr(opcode_stream + 4);
+
+    g_thread_terminate_addr = xnu_ptr_to_va(thread_terminate);
+
+    puts("xnuspy: found thread_terminate");
+    printf("%s: thread_terminate @ %#llx\n", __func__,
+            g_thread_terminate_addr - kernel_slide);
 
     return true;
 }

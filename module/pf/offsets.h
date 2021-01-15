@@ -64,6 +64,7 @@ extern uint64_t g_lck_rw_free_addr;
 extern uint64_t g_lck_grp_free_addr;
 extern int g_patched_doprnt_hide_pointers;
 extern uint64_t g_copyinstr_addr;
+extern uint64_t g_thread_terminate_addr;
 extern uint64_t g_xnuspy_sysctl_mib_ptr;
 extern uint64_t g_xnuspy_sysctl_mib_count_ptr;
 extern uint64_t g_xnuspy_ctl_callnum;

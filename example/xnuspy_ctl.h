@@ -40,6 +40,7 @@ enum {
     PROC_PID,
     KERNEL_THREAD_START,
     THREAD_DEALLOCATE,
+    THREAD_TERMINATE,
 
     /* struct proclist allproc @ bsd/sys/proc_internal.h */
     ALLPROC,

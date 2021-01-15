@@ -49,6 +49,7 @@ enum xnuspy_cache_id {
     PROC_PID,
     KERNEL_THREAD_START,
     THREAD_DEALLOCATE,
+    THREAD_TERMINATE,
     ALLPROC,
     IPC_PORT_RELEASE_SEND,
     KERNEL_MAP,
@@ -152,6 +153,8 @@ MARK_AS_KERNEL_OFFSET void (*proc_ref_locked)(void *proc);
 MARK_AS_KERNEL_OFFSET void (*proc_rele_locked)(void *proc);
 MARK_AS_KERNEL_OFFSET uint64_t (*proc_uniqueid)(void *proc);
 MARK_AS_KERNEL_OFFSET void (*thread_deallocate)(void *thread);
+/* Extra underscore so compiler stops complaining */
+MARK_AS_KERNEL_OFFSET void (*_thread_terminate)(void *thread);
 /* Extra underscore so compiler stops complaining */
 MARK_AS_KERNEL_OFFSET kern_return_t (*_vm_deallocate)(void *map,
         uint64_t start, uint64_t size);
@@ -398,18 +401,6 @@ static uint64_t shared_mapping_kva(struct mach_header_64 *kmh,
 
     return k + dist;
 }
-
-/* static uint64_t find_replacement_kva(struct mach_header_64 *kmh, */
-/*         struct mach_header_64 * /1* __user *1/ umh, */
-/*         uint64_t /1* __user *1/ replacement){ */
-/*     uint64_t u = (uint64_t)umh, k = (uint64_t)kmh; */
-/*     uint64_t dist = replacement - u; */
-
-/*     SPYDBG("%s: dist %#llx replacement %#llx umh %#llx kmh %#llx\n", __func__, */
-/*             dist, replacement, u, k); */
-
-/*     return k + dist; */
-/* } */
 
 /* Create a shared mapping of the calling process' __TEXT and __DATA and
  * then find a contiguous set of pages we reserved before booting XNU to
@@ -1208,6 +1199,9 @@ static int xnuspy_cache_read(enum xnuspy_cache_id which,
             break;
         case THREAD_DEALLOCATE:
             what = thread_deallocate;
+            break;
+        case THREAD_TERMINATE:
+            what = _thread_terminate;
             break;
         case ALLPROC:
             what = *allprocp;

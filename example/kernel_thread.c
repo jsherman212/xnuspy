@@ -30,6 +30,7 @@ static kern_return_t (*kernel_thread_start)(thread_continue_t cont, void *param,
 static void (*kprintf)(const char *fmt, ...);
 static pid_t (*proc_pid)(void *proc);
 static void (*thread_deallocate)(void *thread);
+static void (*_thread_terminate)(void *thread);
 static void *(*unified_kalloc)(size_t sz);
 static void (*unified_kfree)(void *ptr);
 
@@ -52,10 +53,10 @@ static void kernel_thread_fxn(void *param, int wait_result){
     kprintf("%s: this thread's refcnt is %d\n", __func__, refcnt);
 
     /* iphone 8 13.6.1, patchfind for this TODO */
-    void (*thread_terminate)(void *thread) =
-        (void (*)(void *))(0xfffffff007c3525c + kernel_slide);
+    /* void (*thread_terminate)(void *thread) = */
+    /*     (void (*)(void *))(0xfffffff007c3525c + kernel_slide); */
 
-    thread_terminate(thread);
+    _thread_terminate(thread);
 
     kprintf("%s: we are still alive??\n", __func__);
 }
@@ -138,6 +139,14 @@ static int gather_kernel_offsets(void){
 
     if(ret){
         printf("Failed getting thread_deallocate\n");
+        return ret;
+    }
+
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, THREAD_TERMINATE,
+            &_thread_terminate, 0);
+
+    if(ret){
+        printf("Failed getting thread_terminate\n");
         return ret;
     }
 

@@ -1202,6 +1202,40 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
             }),
             3, copyinstr_finder_13, "__TEXT_EXEC"),
     },
+    {
+        PF_DECL32("thread_terminate finder iOS 13",
+            LISTIZE({
+                0xaa1503e0,     /* mov x0, x21 */
+                0xaa1603e1,     /* mov x1, x22 */
+                0xd63f0280,     /* blr x20 */
+                0xd538d080,     /* mrs x0, tpidr_el1 */
+                0x14000000,     /* b n */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xfc000000,     /* ignore immediate */
+            }),
+            5, thread_terminate_finder_13, "__TEXT_EXEC"),
+        PF_DECL32("thread_terminate finder iOS 14",
+            LISTIZE({
+                0xaa1503e0,     /* mov x0, x21 */
+                0xaa1603e1,     /* mov x1, x22 */
+                0xd63f0280,     /* blr x20 */
+                0xd538d080,     /* mrs x0, tpidr_el1 */
+                0x14000000,     /* b n */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xfc000000,     /* ignore immediate */
+            }),
+            5, thread_terminate_finder_13, "__TEXT_EXEC"),
+    },
     { PF_END, PF_END },
 };
 

@@ -88,6 +88,7 @@ static struct xnuspy_ctl_kernel_symbol {
     { "_proc_rele_locked", &g_proc_rele_locked_addr },
     { "_proc_uniqueid", &g_proc_uniqueid_addr },
     { "_thread_deallocate", &g_thread_deallocate_addr },
+    { "__thread_terminate", &g_thread_terminate_addr },
     { "__vm_deallocate", &g_vm_deallocate_addr },
     { "_vm_map_unwire", &g_vm_map_unwire_addr },
     { "_vm_map_wire_external", &g_vm_map_wire_external_addr },
@@ -166,6 +167,7 @@ static void anything_missing(void){
     chk(!g_lck_grp_free_addr, "lck_grp_free not found\n");
     chk(!g_patched_doprnt_hide_pointers, "doprnt_hide_pointers wasn't patched\n");
     chk(!g_copyinstr_addr, "copyinstr not found\n");
+    chk(!g_thread_terminate_addr, "thread_terminate not found\n");
 
     /* if we printed the error header, something is missing */
     if(printed_err_hdr)

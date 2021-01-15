@@ -163,10 +163,10 @@ add a call to `IOSleep` for a couple seconds. This is done to make sure there's
 enough time before the device panics for logs to propagate. Re-compile xnuspy with
 `XNUSPY_DEBUG=1 make -B` and load the module again. After loading the module,
 if you haven't already, compile `klog` from `klog/`. Upload it to your device
-and do `stdbuf -o0 ./klog | grep find_replacement_kva`. Run your hook program again
+and do `stdbuf -o0 ./klog | grep shared_mapping_kva`. Run your hook program again
 and watch for a line from `klog` that looks like this:
 
-`find_replacement_kva: dist 0x780c replacement 0x100cd780c umh 0x100cd0000 kmh 0xfffffff0311c0000`
+`shared_mapping_kva: dist 0x780c replacement 0x100cd780c umh 0x100cd0000 kmh 0xfffffff0311c0000`
 
 If you're installing more than one hook, there will be more than one occurrence.
 In that case, `dist` and `replacement` will vary, but `umh` and `kmh` won't. `kmh`

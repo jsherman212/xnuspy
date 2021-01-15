@@ -77,6 +77,8 @@ extern void (*proc_rele_locked)(void *proc);
 extern uint64_t (*proc_uniqueid)(void *proc);
 extern void (*thread_deallocate)(void *thread);
 /* Extra underscore so compiler stops complaining */
+extern void (*_thread_terminate)(void *thread);
+/* Extra underscore so compiler stops complaining */
 extern kern_return_t (*_vm_deallocate)(void *map,
         uint64_t start, uint64_t size);
 extern kern_return_t (*vm_map_unwire)(void *map, uint64_t start,
