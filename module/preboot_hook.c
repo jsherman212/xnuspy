@@ -172,6 +172,13 @@ static void anything_missing(void){
     chk(!g_copyinstr_addr, "copyinstr not found\n");
     chk(!g_thread_terminate_addr, "thread_terminate not found\n");
 
+    /* Specific to A10+. On A9(x), we don't need to keep TCR_EL1.HPD0 and
+     * TCR_EL1.HPD1 set */
+    if(socnum >= 0x8010){
+        chk(!g_patched_pinst_set_tcr, "pinst_set_tcr wasn't patched\n");
+        chk(!g_patched_all_msr_tcr_el1_x18, "did not patch all msr tcr_el1, x18\n");
+    }
+
     /* if we printed the error header, something is missing */
     if(printed_err_hdr)
         xnuspy_fatal_error();

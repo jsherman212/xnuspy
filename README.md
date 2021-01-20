@@ -107,9 +107,10 @@ does not return any errors.
 - `ENOMEM` if:
   - `kalloc_canblock` or `kalloc_external` returned `NULL`.
 - `ENOSPC` if:
-  - There are no free `xnuspy_tramp` structs or reflector pages. These data
-structures are internal to xnuspy. This should never happen unless you are
-hooking hundreds of kernel functions at the same time.
+  - There are no free `xnuspy_tramp` structs, a data structure internal to
+xnuspy. This shouldn't happen unless you're hooking hundreds of kernel functions
+at the same time. If you need more function hooks, check out the section about
+limits under "Important Information".
 - `EFAULT` if:
   - `current_map()->hdr.vme_start` is not a pointer to the calling processes'
 Mach-O header.
@@ -207,7 +208,7 @@ if you haven't already, compile `klog` from `klog/`. Upload it to your device
 and do `stdbuf -o0 ./klog | grep shared_mapping_kva`. Run your hook program again
 and watch for a line from `klog` that looks like this:
 
-`shared_mapping_kva: dist 0x780c replacement 0x100cd780c umh 0x100cd0000 kmh 0xfffffff0311c0000`
+`shared_mapping_kva: dist 0x7af4 uaddr 0x104797af4 umh 0x104790000 kmh 0xfffffff00c90c000`
 
 If you're installing more than one hook, there will be more than one occurrence.
 In that case, `dist` and `replacement` will vary, but `umh` and `kmh` won't. `kmh`
@@ -240,6 +241,9 @@ original function does not modify `X17`.
 after a fresh boot. This is the only part of xnuspy which is raceable since
 I can't statically initialize the read/write lock I use. After the first call
 returns, any future calls are guarenteed to be thread-safe.
+
+### Limits
+TODO
 
 # How It Works
 This is simplified, but it captures the main idea well. A function hook in xnuspy
@@ -274,22 +278,20 @@ shared mapping `k`, and the address of the user's replacement function `r`, we
 apply the following formula: `replacement = k + (r - u)`
 
 After that, `replacement` is the kernel virtual address of the user's replacement
-function on the shared mapping and it is written to the function hook structure.
+function on the shared mapping and is written to the function hook structure.
 xnuspy does not re-direct execution to the EL0 address of the replacement
 function because that's extremely unsafe: not only does that put us at the
 mercy of the scheduler, it gives us no control over the scenario where a process
 with a kernel hook dies while a kernel thread is still executing on the
 replacement.
 
-Finally, the shared mapping is marked as executable<sup>*</sup> and a unconditional
+Finally, the shared mapping is marked as executable and a unconditional
 immediate branch (`B`) is assembled. It directs execution to the start of `tramp`,
 and is what replaces the first instruction of the now-hooked kernel function.
 Unfortunately, this limits us from branching to hook structures more than 128 MB away
 from a given kernel function. xnuspy does check for this scenario before booting
 and falls back to unused code already in the kernelcache for the hook structures
 to reside on instead if it finds that this could happen.
-
-<sup>*not exactly what happens, what actually happens produces that effect</sup>
 
 # Device Security
 This module completely neuters KTRR/AMCC lockdown and KPP. I don't

@@ -60,6 +60,8 @@ uint64_t g_lck_grp_free_addr = 0;
 int g_patched_doprnt_hide_pointers = 0;
 uint64_t g_copyinstr_addr = 0;
 uint64_t g_thread_terminate_addr = 0;
+int g_patched_pinst_set_tcr = 0;
+int g_patched_all_msr_tcr_el1_x18;
 uint64_t g_xnuspy_sysctl_mib_ptr = 0;
 uint64_t g_xnuspy_sysctl_mib_count_ptr = 0;
 uint64_t g_xnuspy_ctl_callnum = 0;
@@ -1041,6 +1043,69 @@ bool thread_terminate_finder_13(xnu_pf_patch_t *patch,
     g_thread_terminate_addr = xnu_ptr_to_va(thread_terminate);
 
     puts("xnuspy: found thread_terminate");
+
+    return true;
+}
+
+bool pinst_set_tcr_patcher_13(xnu_pf_patch_t *patch, void *cacheable_stream){
+    /* We need to keep TCR_EL1.HPD0 and TCR_EL1.HPD1 set if we want
+     * A10+ to respect PTE permission bits as they are. We landed inside
+     * of pinst_set_tcr, and we are replacing it with:
+     *  orr x0, x0, 0x60000000000
+     *  msr tcr_el1, x0
+     *  ret
+     *
+     * A9(x) does not contain a pinst segment.
+     */
+    xnu_pf_disable_patch(patch);
+
+    uint32_t *opcode_stream = cacheable_stream;
+
+    *opcode_stream++ = 0xb2570400;
+    *opcode_stream++ = 0xd5182040;
+    *opcode_stream++ = 0xd65f03c0;
+
+    g_patched_pinst_set_tcr = 1;
+
+    puts("xnuspy: patched pinst_set_tcr");
+
+    return true;
+}
+
+bool msr_tcr_el1_x18_patcher_13(xnu_pf_patch_t *patch,
+        void *cacheable_stream){
+    /* These patches don't need to be done on A9(x) */
+    if(socnum < 0x8010){
+        xnu_pf_disable_patch(patch);
+        return true;
+    }
+
+    static int count = 1;
+    uint32_t *opcode_stream = cacheable_stream;
+
+    /* We are either in exception_return_unint_tpidr_x3{_dont_trash_x18} or
+     * one of the exception vectors for exceptions from EL0. Either way,
+     * we are sitting at msr tcr_el1, x18, and the value copied to x18 is
+     * either TCR_EL1_USER or TCR_EL1_BOOT. Both of these constants don't
+     * have TCR_EL1.HPD0 or TCR_EL1.HPD1 set, so we need to modify the
+     * value copied to x18 ourselves. Right before where we are sitting is
+     * this:
+     *  movk x18, n, lsl 48
+     *  movk x18, n, lsl 32
+     *  movk x18, n, lsl 16
+     *  movk x18, n
+     *
+     * HPD0 is the 41st bit and HPD1 is the 42nd bit of TCR_EL1, so patch
+     * the immediate of the second movk. */
+    opcode_stream[-3] |= (0x600 << 5);
+
+    if(count == 5){
+        xnu_pf_disable_patch(patch);
+        puts("xnuspy: patched all occurrences of msr tcr_el1, x18");
+        g_patched_all_msr_tcr_el1_x18 = 1;
+    }
+
+    count++;
 
     return true;
 }

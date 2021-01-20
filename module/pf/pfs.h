@@ -1236,6 +1236,54 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
             }),
             5, thread_terminate_finder_13, "__TEXT_EXEC"),
     },
+    {
+        PF_DECL32("pinst_set_tcr patcher iOS 13",
+            LISTIZE({
+                0xd2facbe2,     /* movz x2, 0xd65f, lsl 48 */
+                0xf2c07802,     /* movk x2, 0x03c0, lsl 32 */
+                0xf2baa302,     /* movk x2, 0xd518, lsl 16 */
+                0xf2840802,     /* movk x2, 0x2040 */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+            }),
+            4, pinst_set_tcr_patcher_13, "__TEXT_EXEC"),
+        PF_DECL32("pinst_set_tcr patcher iOS 14",
+            LISTIZE({
+                0xd2facbe2,     /* movz x2, 0xd65f, lsl 48 */
+                0xf2c07802,     /* movk x2, 0x03c0, lsl 32 */
+                0xf2baa302,     /* movk x2, 0xd518, lsl 16 */
+                0xf2840802,     /* movk x2, 0x2040 */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+            }),
+            4, pinst_set_tcr_patcher_13, "__TEXT_EXEC"),
+    },
+    {
+        PF_DECL32("msr tcr_el1, x18 patcher iOS 13",
+            LISTIZE({
+                0xd5182052,     /* msr tcr_el1, x18 */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+            }),
+            1, msr_tcr_el1_x18_patcher_13, "__TEXT_EXEC"),
+        PF_DECL32("msr tcr_el1, x18 patcher iOS 14",
+            LISTIZE({
+                0xd5182052,     /* msr tcr_el1, x18 */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+            }),
+            1, msr_tcr_el1_x18_patcher_13, "__TEXT_EXEC"),
+    },
     { PF_END, PF_END },
 };
 

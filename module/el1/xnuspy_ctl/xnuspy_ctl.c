@@ -190,6 +190,19 @@ __attribute__ ((naked)) static uint64_t current_thread(void){
        );
 }
 
+__attribute__ ((naked)) static void init_ktrr_range_13_x(uint64_t lower,
+        uint64_t upper){
+    asm(""
+        "msr s3_4_c15_c2_3, x0\n"
+        "msr s3_4_c15_c2_4, x1\n"
+        "mov x0, 1\n"
+        "msr s3_4_c15_c2_2, x0\n"
+        "dsb sy\n"
+        "isb sy\n"
+        "ret\n"
+       );
+}
+
 static struct _vm_map *current_map(void){
     return *(struct _vm_map **)(current_thread() + offsetof_struct_thread_map);
 }
@@ -387,19 +400,46 @@ static int hook_already_exists(uint64_t target){
     return 0;
 }
 
+static uint64_t shared_mapping_kva(struct xnuspy_mapping_metadata *mm,
+        struct mach_header_64 * /* __user */ umh,
+        uint64_t /* __user */ uaddr){
+    uint64_t dist = uaddr - (uint64_t)umh;
+
+    SPYDBG("%s: dist %#llx uaddr %#llx umh %#llx kmh %#llx\n", __func__,
+            dist, uaddr, (uint64_t)umh, mm->mapping_addr);
+
+    return mm->mapping_addr + dist;
+}
+
 /* Figure out the kernel virtual address of a user address on the
  * shared mapping for this process */
-static uint64_t shared_mapping_kva(struct mach_header_64 *kmh,
-        struct mach_header_64 * /* __user */ umh,
-        uint64_t /* __user */ useraddr){
-    uint64_t u = (uint64_t)umh, k = (uint64_t)kmh;
-    uint64_t dist = useraddr - u;
+/* static uint64_t shared_mapping_kva(struct mach_header_64 *kmh, */
+/*         struct mach_header_64 * /1* __user *1/ umh, */
+/*         uint64_t /1* __user *1/ useraddr){ */
+/*     uint64_t u = (uint64_t)umh, k = (uint64_t)kmh; */
+/*     uint64_t dist = useraddr - u; */
 
-    SPYDBG("%s: dist %#llx useraddr %#llx umh %#llx kmh %#llx\n", __func__,
-            dist, useraddr, u, k);
+/*     SPYDBG("%s: dist %#llx useraddr %#llx umh %#llx kmh %#llx\n", __func__, */
+/*             dist, useraddr, u, k); */
 
-    return k + dist;
-}
+/*     return k + dist; */
+/* } */
+
+/* __attribute__ ((naked)) static void user_access_enable(void){ */
+/*     asm("" */
+/*         ".long 0xd500409f\n" */
+/*         "isb sy\n" */
+/*         "ret\n" */
+/*        ); */
+/* } */
+
+/* __attribute__ ((naked)) static void user_access_disable(void){ */
+/*     asm("" */
+/*         ".long 0xd500419f\n" */
+/*         "isb sy\n" */
+/*         "ret\n" */
+/*        ); */
+/* } */
 
 /* Create a shared mapping of the calling process' __TEXT and __DATA and
  * then find a contiguous set of pages we reserved before booting XNU to
@@ -562,10 +602,8 @@ nextcmd:
      * [copystart, copystart+copysz) in one shot, so it's easier to map
      * everything with the minimum permissions.
      *
-     * We are not actually interacting with this mapping directly, so the VM
-     * permissions of this shared mapping do not matter. We interact with it 
-     * through the static memory we reserved before XNU boot (reflector pages)
-     */
+     * Eventually these permissions will be changed to rwx through the PTEs
+     * of this mapping. */
     vm_prot_t shm_prot = VM_PROT_READ;
 
     /* ipc_port_t */
@@ -613,6 +651,107 @@ nextcmd:
         goto failed_dealloc_kernel_mapping;
     }
 
+    /* XXX START RWX TESTS */
+
+    /* XXX THIS WORKS ON 14.x KPP phones??? */
+
+    /* uint64_t addr = 0xfffffff007004000 + kernel_slide; */
+    /* kprotect((void *)addr, 0x4000, VM_PROT_READ | VM_PROT_WRITE | */
+    /*         VM_PROT_EXECUTE); */
+    /* void (*f)(void) = (void (*)(void))addr; */
+    /* f(); */
+
+    /* uint64_t sctlr_el1; */
+    /* asm volatile("mrs %0, sctlr_el1" : "=r" (sctlr_el1)); */
+    /* SPYDBG("%s: sctlr_el1 %#llx\n", __func__, sctlr_el1); */
+    /* IOSleep(10000); */
+
+    /* pte_t *shm_pte = el1_ptep((void *)shm_addr); */
+    /* SPYDBG("%s: shm pte before @ %#llx: %#llx\n", __func__, shm_pte, *shm_pte); */
+    /* pte_t *shm_pte_pte = el1_ptep(shm_pte); */
+    /* SPYDBG("%s: pte of shm pte @ %#llx: %#llx\n", __func__, shm_pte_pte, */
+    /*         *shm_pte_pte); */
+    /* *shm_pte &= ~ARM_PTE_PNX; */
+
+    /* uint64_t aprr_el0, aprr_el1; */
+    /* asm volatile("mrs %0, s3_4_c15_c2_0" : "=r" (aprr_el0)); */
+    /* asm volatile("mrs %0, s3_4_c15_c2_1" : "=r" (aprr_el1)); */
+    /* uint64_t id_aa64mmfr1_el1; */
+    /* asm volatile("mrs %0, id_aa64mmfr1_el1" : "=r" (id_aa64mmfr1_el1)); */
+    /* uint64_t tcr_el1; */
+    /* asm volatile("mrs %0, tcr_el1" : "=r" (tcr_el1)); */
+
+    /* SPYDBG("%s: aprr EL0 %#llx aprr EL1 %#llx id_aa64mmfr1_el1 %#llx tcr_el1 %#llx\n", */
+    /*         __func__, aprr_el0, aprr_el1, id_aa64mmfr1_el1, tcr_el1); */
+
+    /* Set HPD1 */
+    /* tcr_el1 |= (1uLL << 42); */
+
+    /* Set HPD0 */
+    /* tcr_el1 |= (1uLL << 41); */
+
+    /* asm volatile("mrs %0, tcr_el1" : "=r" (tcr_el1)); */
+    /* SPYDBG("%s: tcr_el1 is now %#llx\n", __func__, tcr_el1); */
+
+    /* IOSleep(10000); */
+
+    /* goto okay; */
+
+    /* void *mem = unified_kalloc(0x20); */
+    /* if(!mem) */
+    /*     goto okay; */
+    /* *(uint32_t*)mem = 0x44; */
+
+    /* kprotect((void *)shm_addr, PAGE_SIZE, VM_PROT_READ | */
+    /*         VM_PROT_EXECUTE); */
+    /* kprotect(mem, PAGE_SIZE, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE); */
+    /* asm volatile("msr tcr_el1, %0" : : "r" (tcr_el1)); */
+    /* tlb_flush(); */
+    /* asm volatile("" */
+    /*         "dsb ishst\n" */
+    /*         "tlbi vmalle1is\n" */
+    /*         "dsb ish\n" */
+    /*         "isb sy\n" */
+    /*         ); */
+
+    /* *(uint32_t *)shm_addr = 0x44; */
+    /* kwrite_instr(shm_addr, 0x44); */
+
+    /* asm volatile("" */
+    /*         "dsb ishst\n" */
+    /*         "tlbi vmalle1is\n" */
+    /*         "dsb ish\n" */
+    /*         "isb sy\n" */
+    /*         ); */
+    /* tlb_flush(); */
+
+    /* pte_t *shm_pte = el1_ptep((void *)shm_addr); */
+    /* pte_t *shm_pte = el1_ptep((void *)mem); */
+    /* SPYDBG("%s: shm pte after @ %#llx: %#llx\n", __func__, shm_pte, *shm_pte); */
+
+    /* IOSleep(10000); */
+
+    /* void (*f)(void) = (void (*)(void))shm_addr; */
+    /* void (*f)(void) = (void (*)(void))mem; */
+
+    /* asm volatile("mrs x17, sctlr_el1\n" */
+    /*         "and x17, x17, ~1\n" */
+    /*         "msr sctlr_el1, x17"); */
+    /* asm volatile("" */
+    /*         "dsb ishst\n" */
+    /*         "tlbi vmalle1is\n" */
+    /*         "dsb ish\n" */
+    /*         "isb sy\n" */
+    /*         ); */
+    /* tlb_flush(); */
+
+    /* user_access_enable(); */
+    /* tlb_flush(); */
+    /* f(); */
+
+    /* XXX END RWX TESTS */
+
+okay:
     metadata->mapping_addr = shm_addr;
     metadata->mapping_size = copysz;
 
@@ -767,9 +906,10 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
     }
 
     /* Mach-O header of the calling process, but the kernel's mapping of it */
-    struct mach_header_64 *kmh = mm->first_reflector_page->page;
+    /* struct mach_header_64 *kmh = mm->first_reflector_page->page; */
 
-    tramp->replacement = shared_mapping_kva(kmh, umh, replacement);
+    /* tramp->replacement = shared_mapping_kva(kmh, umh, replacement); */
+    /* tramp->replacement = shared_mapping_kva(mm, umh, replacement); */
 
     struct xnuspy_reflector_page *cur = mm->first_reflector_page;
 
@@ -779,28 +919,39 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
         if(!cur)
             break;
 
-        pte_t *rp_ptep = el1_ptep(cur->page);
+    /*     pte_t *rp_ptep = el1_ptep(cur->page); */
 
-        uint64_t ma_phys = kvtophys(mapping_addr);
-        uint64_t ma_physpage = ma_phys & ~0x3fffuLL;
+    /*     uint64_t ma_phys = kvtophys(mapping_addr); */
+    /*     uint64_t ma_physpage = ma_phys & ~0x3fffuLL; */
 
-        /* These PTEs are already marked as rwx, we just need to replace
-         * the OutputAddress */
-        pte_t new_rp_pte = (*rp_ptep & ~0xfffffffff000uLL) | ma_physpage;
+    /*     /1* These PTEs are already marked as rwx, we just need to replace */
+    /*      * the OutputAddress *1/ */
+    /*     pte_t new_rp_pte = (*rp_ptep & ~0xfffffffff000uLL) | ma_physpage; */
 
-        kwrite_static(rp_ptep, &new_rp_pte, sizeof(new_rp_pte));
+    /*     kwrite_static(rp_ptep, &new_rp_pte, sizeof(new_rp_pte)); */
 
-        tlb_flush();
+    /*     tlb_flush(); */
 
         cur->used = 1;
         cur = cur->next;
         mapping_addr += PAGE_SIZE;
     }
 
+    kprotect((void *)mm->mapping_addr, mm->mapping_size, VM_PROT_READ |
+            VM_PROT_WRITE | VM_PROT_EXECUTE);
+
+    /* struct mach_header_64 *kmh = (struct mach_header_64 *)mm->mapping_addr; */
+    
+    /* tramp->replacement = shared_mapping_kva(kmh, umh, replacement); */
+
+    tramp->replacement = shared_mapping_kva(mm, umh, replacement);
     tramp->tramp_metadata = tm;
     tramp->mapping_metadata = mm;
 
     xnuspy_mapping_metadata_reference(tramp->mapping_metadata);
+
+    /* XXX ONLY NEED TO HOLD THE LOCK FOR THIS NOW, so move the
+     * lck_rw_lock_exclusive to this function */
     xnuspy_tramp_commit(tramp_entry);
 
     uint32_t branch = assemble_b(target, (uint64_t)tramp->tramp);
@@ -1101,7 +1252,8 @@ static int xnuspy_register_death_callback(uint64_t /* __user */ addr){
     struct mach_header_64 *kmh = mm->first_reflector_page->page;
     struct mach_header_64 *umh = cm->hdr.vme_start;
 
-    uint64_t addr_kva = shared_mapping_kva(kmh, umh, addr);
+    /* uint64_t addr_kva = shared_mapping_kva(kmh, umh, addr); */
+    uint64_t addr_kva = shared_mapping_kva(mm, umh, addr);
 
     mm->death_callback = (void (*)(void))addr_kva;
 

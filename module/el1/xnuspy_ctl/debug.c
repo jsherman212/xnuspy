@@ -6,12 +6,13 @@
 
 #include "debug.h"
 #include "externs.h"
+#include "mem.h"
 
 static void _desc_xnuspy_reflector_page(const char *indent,
         struct xnuspy_reflector_page *p){
     SPYDBG("%sThis reflector page is @ %#llx. "
-            "next: %#llx page %#llx used: %d\n", indent, (uint64_t)p, p->next,
-            p->page, p->used);
+            "next: %#llx page %#llx [phys: %#llx] used: %d\n", indent,
+            (uint64_t)p, p->next, p->page, kvtophys(p->page), p->used);
 }
 
 void desc_freelist(void){
@@ -121,6 +122,13 @@ void desc_xnuspy_mapping_metadata(struct xnuspy_mapping_metadata *mm){
     SPYDBG("Memory object: %#llx\n", mm->memory_object);
     SPYDBG("Shared mapping addr/size: %#llx/%#llx\n", mm->mapping_addr,
             mm->mapping_size);
+
+    SPYDBG("Death callback: ");
+
+    if(mm->death_callback)
+        SPYDBG("%#llx\n", mm->death_callback);
+    else
+        SPYDBG("none\n");
 }
 
 void desc_xnuspy_reflector_page(struct xnuspy_reflector_page *p){
