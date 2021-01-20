@@ -90,14 +90,14 @@ static int protect_common(uint64_t vaddr, uint64_t size, vm_prot_t prot,
     }
 
     while(target_region_cur < target_region_end){
-        pte_t *pte;
+        pte_t *ptep;
 
         if(el == 0)
-            pte = el0_ptep((void *)target_region_cur);
+            ptep = el0_ptep((void *)target_region_cur);
         else
-            pte = el1_ptep((void *)target_region_cur);
+            ptep = el1_ptep((void *)target_region_cur);
 
-        pte_t new_pte = (*pte & ~ARM_PTE_APMASK) | new_pte_ap;
+        pte_t new_pte = (*ptep & ~ARM_PTE_APMASK) | new_pte_ap;
 
         new_pte &= ~(ARM_PTE_NX | ARM_PTE_PNX);
 
@@ -108,7 +108,7 @@ static int protect_common(uint64_t vaddr, uint64_t size, vm_prot_t prot,
                 new_pte |= ARM_PTE_NX;
         }
 
-        kwrite_static(pte, &new_pte, sizeof(new_pte));
+        kwrite_static(ptep, &new_pte, sizeof(new_pte));
 
         target_region_cur += PAGE_SIZE;
     }

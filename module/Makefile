@@ -24,6 +24,10 @@ $(TARGET_DIRS) :
 OBJECT_FILES = $(shell find ./common ./pf ./el3 -type f -name "*.o")
 INSTR_FILES = $(shell find ./el1 -type f -name "*_instrs.h")
 
+ifneq ($(XNUSPY_TRAMP_PAGES), )
+preboot_hook.o : CFLAGS += -DXNUSPY_TRAMP_PAGES=$(XNUSPY_TRAMP_PAGES)
+endif
+
 preboot_hook.o : $(INSTR_FILES) preboot_hook.c preboot_hook.h \
 	common/xnuspy_structs.h
 	$(CC) $(CFLAGS) preboot_hook.c -c

@@ -53,7 +53,7 @@ _hook_system_check_sysctlbyname_hook:
     */
     ldr x21, [x28, XNUSPY_SYSCTL_MIB_PTR]
     mov x22, x19
-    add x23, x21, w20, lsl #0x2
+    add x23, x21, x20, lsl #0x2
 
 Lmib_check_loop:
     ldr w24, [x21], #0x4

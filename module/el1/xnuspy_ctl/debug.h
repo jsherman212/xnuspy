@@ -15,7 +15,6 @@ void desc_unmaplist(void);
 void desc_usedlist(void);
 
 void desc_xnuspy_mapping_metadata(struct xnuspy_mapping_metadata *);
-void desc_xnuspy_reflector_page(struct xnuspy_reflector_page *);
 void desc_xnuspy_tramp(struct xnuspy_tramp *, uint32_t);
 
 #endif

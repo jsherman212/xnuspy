@@ -474,7 +474,6 @@ bool ktrr_lockdown_patcher_13(xnu_pf_patch_t *patch, void *cacheable_stream){
 
     uint32_t *opcode_stream = cacheable_stream;
 
-    /* all to NOP */
     *opcode_stream = 0xd503201f;
     opcode_stream[2] = 0xd503201f;
     opcode_stream[4] = 0xd503201f;
@@ -490,7 +489,6 @@ bool amcc_lockdown_patcher_13(xnu_pf_patch_t *patch, void *cacheable_stream){
 
     uint32_t *opcode_stream = cacheable_stream;
 
-    /* all to NOP */
     *opcode_stream = 0xd503201f;
     opcode_stream[2] = 0xd503201f;
     opcode_stream[3] = 0xd503201f;

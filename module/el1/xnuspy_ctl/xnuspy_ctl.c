@@ -109,7 +109,6 @@ MARK_AS_KERNEL_OFFSET int (*copyinstr)(const void *uaddr, void *kaddr,
 MARK_AS_KERNEL_OFFSET int (*copyout)(const void *kaddr, uint64_t uaddr,
         vm_size_t nbytes);
 MARK_AS_KERNEL_OFFSET void *(*current_proc)(void);
-MARK_AS_KERNEL_OFFSET struct xnuspy_reflector_page *first_reflector_page;
 /* Keep these all aligned 8 bytes */
 MARK_AS_KERNEL_OFFSET uint64_t hookme_in_range;
 MARK_AS_KERNEL_OFFSET uint64_t iOS_version;
@@ -163,8 +162,8 @@ MARK_AS_KERNEL_OFFSET kern_return_t (*vm_map_unwire)(void *map, uint64_t start,
         uint64_t end, int user);
 MARK_AS_KERNEL_OFFSET kern_return_t (*vm_map_wire_external)(void *map,
         uint64_t start, uint64_t end, vm_prot_t prot, int user_wire);
-MARK_AS_KERNEL_OFFSET struct xnuspy_tramp *xnuspy_tramp_page;
-MARK_AS_KERNEL_OFFSET struct xnuspy_tramp *xnuspy_tramp_page_end;
+MARK_AS_KERNEL_OFFSET struct xnuspy_tramp *xnuspy_tramp_mem;
+MARK_AS_KERNEL_OFFSET struct xnuspy_tramp *xnuspy_tramp_mem_end;
 
 int strcmp(const char *s1, const char *s2){
     while(*s1 && (*s1 == *s2)){
@@ -186,19 +185,6 @@ void bzero(void *p, size_t n){
 __attribute__ ((naked)) static uint64_t current_thread(void){
     asm(""
         "mrs x0, tpidr_el1\n"
-        "ret\n"
-       );
-}
-
-__attribute__ ((naked)) static void init_ktrr_range_13_x(uint64_t lower,
-        uint64_t upper){
-    asm(""
-        "msr s3_4_c15_c2_3, x0\n"
-        "msr s3_4_c15_c2_4, x1\n"
-        "mov x0, 1\n"
-        "msr s3_4_c15_c2_2, x0\n"
-        "dsb sy\n"
-        "isb sy\n"
         "ret\n"
        );
 }
@@ -291,8 +277,6 @@ static void xnuspy_mapping_metadata_release(struct xnuspy_mapping_metadata *mm){
         om->mapping_addr = mm->mapping_addr;
         om->mapping_size = mm->mapping_size;
         om->memory_object = mm->memory_object;
-        om->first_reflector_page = mm->first_reflector_page;
-        om->used_reflector_pages = mm->used_reflector_pages;
 
         stqe->elem = om;
 
@@ -354,11 +338,11 @@ static struct stailq_entry *xnuspy_tramp_alloc(void){
     return allocated;
 }
 
-/* Commit an xnuspy_tramp struct to use by putting it on the usedlist. There
- * is no locking done here because the one place this function is called
- * already holds the xnuspy lock */
+/* Commit an xnuspy_tramp struct to use by putting it on the usedlist */
 static void xnuspy_tramp_commit(struct stailq_entry *stqe){
+    lck_rw_lock_exclusive(xnuspy_rw_lck);
     STAILQ_INSERT_TAIL(&usedlist, stqe, link);
+    lck_rw_done(xnuspy_rw_lck);
 }
 
 static struct xnuspy_mapping_metadata *find_mapping_metadata(void){
@@ -400,6 +384,8 @@ static int hook_already_exists(uint64_t target){
     return 0;
 }
 
+/* Figure out the kernel virtual address of a user address on the
+ * shared mapping for this process */
 static uint64_t shared_mapping_kva(struct xnuspy_mapping_metadata *mm,
         struct mach_header_64 * /* __user */ umh,
         uint64_t /* __user */ uaddr){
@@ -411,49 +397,16 @@ static uint64_t shared_mapping_kva(struct xnuspy_mapping_metadata *mm,
     return mm->mapping_addr + dist;
 }
 
-/* Figure out the kernel virtual address of a user address on the
- * shared mapping for this process */
-/* static uint64_t shared_mapping_kva(struct mach_header_64 *kmh, */
-/*         struct mach_header_64 * /1* __user *1/ umh, */
-/*         uint64_t /1* __user *1/ useraddr){ */
-/*     uint64_t u = (uint64_t)umh, k = (uint64_t)kmh; */
-/*     uint64_t dist = useraddr - u; */
-
-/*     SPYDBG("%s: dist %#llx useraddr %#llx umh %#llx kmh %#llx\n", __func__, */
-/*             dist, useraddr, u, k); */
-
-/*     return k + dist; */
-/* } */
-
-/* __attribute__ ((naked)) static void user_access_enable(void){ */
-/*     asm("" */
-/*         ".long 0xd500409f\n" */
-/*         "isb sy\n" */
-/*         "ret\n" */
-/*        ); */
-/* } */
-
-/* __attribute__ ((naked)) static void user_access_disable(void){ */
-/*     asm("" */
-/*         ".long 0xd500419f\n" */
-/*         "isb sy\n" */
-/*         "ret\n" */
-/*        ); */
-/* } */
-
-/* Create a shared mapping of the calling process' __TEXT and __DATA and
- * then find a contiguous set of pages we reserved before booting XNU to
- * to reflect that mapping onto. We share __TEXT so the user can call other
- * functions they wrote from their kernel hooks. We share __DATA so
- * modifications to global variables are visible to both EL1 and EL0. 
+/* Create a shared mapping of the calling process' __TEXT and __DATA.
+ * We share __TEXT so the user can call other functions they wrote from their
+ * kernel hooks. We share __DATA so modifications to global variables are
+ * visible to both EL1 and EL0. 
  *
  * On success, it returns metadata for every hook this process will install.
- * We also return with the xnuspy lock will be held. We only have to do this
- * once for each process since we're mapping the entirety of __TEXT and __DATA
- * and not just the one replacement function.
+ * We only have to do this once for each process since we're mapping the
+ * entirety of __TEXT and __DATA and not just the one replacement function.
  *
- * On failure, returns NULL and sets retval. We do not return with the xnuspy
- * lock held.
+ * On failure, returns NULL and sets retval.
  */
 static struct xnuspy_mapping_metadata *
 map_caller_segments(struct mach_header_64 * /* __user */ umh,
@@ -559,7 +512,6 @@ nextcmd:
         goto failed;
     }
 
-    /* Create the metadata object for the calling process */
     metadata = unified_kalloc(sizeof(*metadata));
 
     if(!metadata){
@@ -569,14 +521,8 @@ nextcmd:
         goto failed;
     }
 
-    need_free_on_error = 1;
-
     bzero(metadata, sizeof(*metadata));
-
-    /* A reference for this will be taken if we end up committing the tramp
-     * struct we allocated */
-    metadata->refcnt = 0;
-    metadata->owner = proc_uniqueid(current_proc());
+    need_free_on_error = 1;
 
     void *kernel_map = *kernel_mapp;
 
@@ -651,156 +597,11 @@ nextcmd:
         goto failed_dealloc_kernel_mapping;
     }
 
-    /* XXX START RWX TESTS */
-
-    /* XXX THIS WORKS ON 14.x KPP phones??? */
-
-    /* uint64_t addr = 0xfffffff007004000 + kernel_slide; */
-    /* kprotect((void *)addr, 0x4000, VM_PROT_READ | VM_PROT_WRITE | */
-    /*         VM_PROT_EXECUTE); */
-    /* void (*f)(void) = (void (*)(void))addr; */
-    /* f(); */
-
-    /* uint64_t sctlr_el1; */
-    /* asm volatile("mrs %0, sctlr_el1" : "=r" (sctlr_el1)); */
-    /* SPYDBG("%s: sctlr_el1 %#llx\n", __func__, sctlr_el1); */
-    /* IOSleep(10000); */
-
-    /* pte_t *shm_pte = el1_ptep((void *)shm_addr); */
-    /* SPYDBG("%s: shm pte before @ %#llx: %#llx\n", __func__, shm_pte, *shm_pte); */
-    /* pte_t *shm_pte_pte = el1_ptep(shm_pte); */
-    /* SPYDBG("%s: pte of shm pte @ %#llx: %#llx\n", __func__, shm_pte_pte, */
-    /*         *shm_pte_pte); */
-    /* *shm_pte &= ~ARM_PTE_PNX; */
-
-    /* uint64_t aprr_el0, aprr_el1; */
-    /* asm volatile("mrs %0, s3_4_c15_c2_0" : "=r" (aprr_el0)); */
-    /* asm volatile("mrs %0, s3_4_c15_c2_1" : "=r" (aprr_el1)); */
-    /* uint64_t id_aa64mmfr1_el1; */
-    /* asm volatile("mrs %0, id_aa64mmfr1_el1" : "=r" (id_aa64mmfr1_el1)); */
-    /* uint64_t tcr_el1; */
-    /* asm volatile("mrs %0, tcr_el1" : "=r" (tcr_el1)); */
-
-    /* SPYDBG("%s: aprr EL0 %#llx aprr EL1 %#llx id_aa64mmfr1_el1 %#llx tcr_el1 %#llx\n", */
-    /*         __func__, aprr_el0, aprr_el1, id_aa64mmfr1_el1, tcr_el1); */
-
-    /* Set HPD1 */
-    /* tcr_el1 |= (1uLL << 42); */
-
-    /* Set HPD0 */
-    /* tcr_el1 |= (1uLL << 41); */
-
-    /* asm volatile("mrs %0, tcr_el1" : "=r" (tcr_el1)); */
-    /* SPYDBG("%s: tcr_el1 is now %#llx\n", __func__, tcr_el1); */
-
-    /* IOSleep(10000); */
-
-    /* goto okay; */
-
-    /* void *mem = unified_kalloc(0x20); */
-    /* if(!mem) */
-    /*     goto okay; */
-    /* *(uint32_t*)mem = 0x44; */
-
-    /* kprotect((void *)shm_addr, PAGE_SIZE, VM_PROT_READ | */
-    /*         VM_PROT_EXECUTE); */
-    /* kprotect(mem, PAGE_SIZE, VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE); */
-    /* asm volatile("msr tcr_el1, %0" : : "r" (tcr_el1)); */
-    /* tlb_flush(); */
-    /* asm volatile("" */
-    /*         "dsb ishst\n" */
-    /*         "tlbi vmalle1is\n" */
-    /*         "dsb ish\n" */
-    /*         "isb sy\n" */
-    /*         ); */
-
-    /* *(uint32_t *)shm_addr = 0x44; */
-    /* kwrite_instr(shm_addr, 0x44); */
-
-    /* asm volatile("" */
-    /*         "dsb ishst\n" */
-    /*         "tlbi vmalle1is\n" */
-    /*         "dsb ish\n" */
-    /*         "isb sy\n" */
-    /*         ); */
-    /* tlb_flush(); */
-
-    /* pte_t *shm_pte = el1_ptep((void *)shm_addr); */
-    /* pte_t *shm_pte = el1_ptep((void *)mem); */
-    /* SPYDBG("%s: shm pte after @ %#llx: %#llx\n", __func__, shm_pte, *shm_pte); */
-
-    /* IOSleep(10000); */
-
-    /* void (*f)(void) = (void (*)(void))shm_addr; */
-    /* void (*f)(void) = (void (*)(void))mem; */
-
-    /* asm volatile("mrs x17, sctlr_el1\n" */
-    /*         "and x17, x17, ~1\n" */
-    /*         "msr sctlr_el1, x17"); */
-    /* asm volatile("" */
-    /*         "dsb ishst\n" */
-    /*         "tlbi vmalle1is\n" */
-    /*         "dsb ish\n" */
-    /*         "isb sy\n" */
-    /*         ); */
-    /* tlb_flush(); */
-
-    /* user_access_enable(); */
-    /* tlb_flush(); */
-    /* f(); */
-
-    /* XXX END RWX TESTS */
-
-okay:
+    metadata->owner = proc_uniqueid(current_proc());
     metadata->mapping_addr = shm_addr;
     metadata->mapping_size = copysz;
 
-    uint64_t npages = metadata->mapping_size / PAGE_SIZE;
-
-    struct xnuspy_reflector_page *found = NULL;
-    struct xnuspy_reflector_page *cur = first_reflector_page;
-
-    lck_rw_lock_exclusive(xnuspy_rw_lck);
-
-    while(cur){
-        if(cur->used)
-            goto nextpage;
-
-        /* Got one free page, check the ones after it */
-        struct xnuspy_reflector_page *leftoff = cur;
-
-        for(int i=1; i<npages; i++){
-            if(!cur || cur->used){
-                cur = leftoff;
-                goto nextpage;
-            }
-
-            cur = cur->next;
-        }
-
-        /* If we're here, we found a set of free reflector pages */
-        cur = leftoff;
-
-        break;
-
-nextpage:
-        cur = cur->next;
-    }
-
-    if(!cur){
-        lck_rw_done(xnuspy_rw_lck);
-        SPYDBG("%s: no free reflector pages\n", __func__);
-        *retval = ENOSPC;
-        goto failed_unwire_kernel_mapping;
-    }
-
-    metadata->first_reflector_page = cur;
-    metadata->used_reflector_pages = npages;
-
     *retval = 0;
-
-    /* We return with the lock held because we may end up committing
-     * the tramp we allocated earlier to the usedlist */
 
     return metadata;
 
@@ -826,7 +627,7 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
 
     int res = 0;
 
-    /* slide target */
+    /* Slide target */
     target += kernel_slide;
 
     if(hook_already_exists(target)){
@@ -857,11 +658,9 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
         goto out_free_tramp_metadata;
     }
 
-    struct xnuspy_tramp *tramp = tramp_entry->elem;
-
-    /* Build the trampoline to the replacement as well as the trampoline
-     * that represents the original function */
     uint32_t orig_tramp_len = 0;
+
+    struct xnuspy_tramp *tramp = tramp_entry->elem;
 
     generate_replacement_tramp(tramp->tramp);
     generate_original_tramp(target + 4, tramp->orig, &orig_tramp_len);
@@ -888,77 +687,30 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
      * __DATA. */
     struct xnuspy_mapping_metadata *mm = find_mapping_metadata();
 
-    if(mm)
-        lck_rw_lock_exclusive(xnuspy_rw_lck);
-    else{
+    if(!mm){
         SPYDBG("%s: need to map __TEXT and __DATA\n", __func__);
 
         mm = map_caller_segments(umh, cm, &res);
 
         if(!mm){
-            SPYDBG("%s: failed to create mapping metadata for this hook\n",
-                    __func__);
+            SPYDBG("%s: could not make mapping metadata: %d\n", __func__, res);
             goto out_free_tramp_entry;
         }
-
-        /* map_caller_segments succeeded, and we returned from it with the
-         * xnuspy lock held */
-    }
-
-    /* Mach-O header of the calling process, but the kernel's mapping of it */
-    /* struct mach_header_64 *kmh = mm->first_reflector_page->page; */
-
-    /* tramp->replacement = shared_mapping_kva(kmh, umh, replacement); */
-    /* tramp->replacement = shared_mapping_kva(mm, umh, replacement); */
-
-    struct xnuspy_reflector_page *cur = mm->first_reflector_page;
-
-    uint64_t mapping_addr = mm->mapping_addr;
-
-    for(int i=0; i<mm->used_reflector_pages; i++){
-        if(!cur)
-            break;
-
-    /*     pte_t *rp_ptep = el1_ptep(cur->page); */
-
-    /*     uint64_t ma_phys = kvtophys(mapping_addr); */
-    /*     uint64_t ma_physpage = ma_phys & ~0x3fffuLL; */
-
-    /*     /1* These PTEs are already marked as rwx, we just need to replace */
-    /*      * the OutputAddress *1/ */
-    /*     pte_t new_rp_pte = (*rp_ptep & ~0xfffffffff000uLL) | ma_physpage; */
-
-    /*     kwrite_static(rp_ptep, &new_rp_pte, sizeof(new_rp_pte)); */
-
-    /*     tlb_flush(); */
-
-        cur->used = 1;
-        cur = cur->next;
-        mapping_addr += PAGE_SIZE;
     }
 
     kprotect((void *)mm->mapping_addr, mm->mapping_size, VM_PROT_READ |
             VM_PROT_WRITE | VM_PROT_EXECUTE);
-
-    /* struct mach_header_64 *kmh = (struct mach_header_64 *)mm->mapping_addr; */
-    
-    /* tramp->replacement = shared_mapping_kva(kmh, umh, replacement); */
 
     tramp->replacement = shared_mapping_kva(mm, umh, replacement);
     tramp->tramp_metadata = tm;
     tramp->mapping_metadata = mm;
 
     xnuspy_mapping_metadata_reference(tramp->mapping_metadata);
-
-    /* XXX ONLY NEED TO HOLD THE LOCK FOR THIS NOW, so move the
-     * lck_rw_lock_exclusive to this function */
     xnuspy_tramp_commit(tramp_entry);
-
-    uint32_t branch = assemble_b(target, (uint64_t)tramp->tramp);
 
     desc_xnuspy_tramp(tramp, orig_tramp_len);
 
-    lck_rw_done(xnuspy_rw_lck);
+    uint32_t branch = assemble_b(target, (uint64_t)tramp->tramp);
 
     kwrite_instr(target, branch);
 
@@ -978,11 +730,12 @@ static void proc_list_unlock(void){
     lck_mtx_unlock(*proc_list_mlockp);
 }
 
-/* Allow around 1 mb of kernel memory to be leaked by us */
-static const uint64_t g_gc_leaked_page_hardcap = 64;
+/* By default, allow around 1 mb of kernel memory to be leaked by us */
+#ifndef XNUSPY_LEAKED_PAGE_LIMIT
+#define XNUSPY_LEAKED_PAGE_LIMIT 64
+#endif
 
-/* We only deallocate just enough shared mappings to get us back down around
- * the hardcap. */
+/* We only deallocate just enough pages to get us back down around the limit. */
 static void xnuspy_do_gc(void){
     SPYDBG("%s: doing gc\n", __func__);
 
@@ -991,41 +744,21 @@ static void xnuspy_do_gc(void){
         return;
     }
 
-    int64_t dealloc_pages = (int64_t)(g_num_leaked_pages - g_gc_leaked_page_hardcap);
+    int64_t dealloc_pages = (int64_t)(g_num_leaked_pages - XNUSPY_LEAKED_PAGE_LIMIT);
 
-    SPYDBG("%s: need to deallocate %lld pages to get back around hardcap\n",
+    SPYDBG("%s: need to deallocate %lld pages to get back around limit\n",
             __func__, dealloc_pages);
 
     struct stailq_entry *entry, *tmp;
 
     STAILQ_FOREACH_SAFE(entry, &unmaplist, link, tmp){
-        if(g_num_leaked_pages <= g_gc_leaked_page_hardcap){
-            SPYDBG("%s: back around hardcap with %lld leaked pages\n", __func__,
+        if(g_num_leaked_pages <= XNUSPY_LEAKED_PAGE_LIMIT){
+            SPYDBG("%s: back around limit with %lld leaked pages\n", __func__,
                     g_num_leaked_pages);
             return;
         }
 
         struct orphan_mapping *om = entry->elem;
-
-        struct xnuspy_reflector_page *cur = om->first_reflector_page;
-        uint64_t used_reflector_pages = om->used_reflector_pages;
-
-        lck_rw_lock_exclusive(xnuspy_rw_lck);
-
-        SPYDBG("%s: marking the following reflector pages as unused:\n", __func__);
-
-        for(uint64_t i=0; i<used_reflector_pages; i++){
-            if(!cur)
-                break;
-
-            cur->used = 0;
-
-            desc_xnuspy_reflector_page(cur);
-
-            cur = cur->next;
-        }
-
-        lck_rw_done(xnuspy_rw_lck);
 
         ipc_port_release_send(om->memory_object);
 
@@ -1036,22 +769,25 @@ static void xnuspy_do_gc(void){
         kern_return_t kret = vm_map_unwire(*kernel_mapp, om->mapping_addr,
                 om->mapping_addr + om->mapping_size, 0);
 
-        if(kret)
+        if(kret){
+            SPYDBG("%s: vm_map_unwire failed: %#x\n", __func__, kret);
             didfail = 1;
+        }
 
         kret = _vm_deallocate(*kernel_mapp, om->mapping_addr,
                 om->mapping_size);
 
-        if(kret)
+        if(kret){
+            SPYDBG("%s: vm_deallocate failed: %#x\n", __func__, kret);
             didfail = 1;
+        }
 
         if(didfail)
-            SPYDBG("%s: something failed :(\n", __func__);
-        else
+            SPYDBG("%s: failed :( these pages will be leaked forever\n", __func__);
+        else{
             SPYDBG("%s: okay\n", __func__);
-
-        if(!didfail)
             g_num_leaked_pages -= om->mapping_size / PAGE_SIZE;
+        }
 
         STAILQ_REMOVE(&unmaplist, entry, stailq_entry, link);
 
@@ -1064,7 +800,7 @@ static void xnuspy_consider_gc(void){
     SPYDBG("%s: Currently, there are %lld leaked pages\n", __func__,
             g_num_leaked_pages);
 
-    if(g_num_leaked_pages <= g_gc_leaked_page_hardcap)
+    if(g_num_leaked_pages <= XNUSPY_LEAKED_PAGE_LIMIT)
         return;
 
     xnuspy_do_gc();
@@ -1173,9 +909,11 @@ static int xnuspy_init(void){
     STAILQ_INIT(&usedlist);
     STAILQ_INIT(&unmaplist);
 
-    struct xnuspy_tramp *cursor = xnuspy_tramp_page;
+    uint64_t nhooks = 0;
 
-    while(cursor + 1 < xnuspy_tramp_page_end){
+    struct xnuspy_tramp *cursor = xnuspy_tramp_mem;
+
+    while(cursor + 1 < xnuspy_tramp_mem_end){
         struct stailq_entry *entry = unified_kalloc(sizeof(*entry));
 
         if(!entry){
@@ -1187,7 +925,10 @@ static int xnuspy_init(void){
         entry->elem = cursor;
         STAILQ_INSERT_TAIL(&freelist, entry, link);
         cursor++;
+        nhooks++;
     }
+
+    SPYDBG("%s: %lld available xnuspy_tramp structs\n", __func__, nhooks);
 
     void *gct = NULL;
     kern_return_t kret = kernel_thread_start(xnuspy_gc_thread, NULL, &gct);
@@ -1200,17 +941,10 @@ static int xnuspy_init(void){
 
     thread_deallocate(gct);
 
-    /* Mark the xnuspy_tramp page as writeable/executable */
+    uint64_t sz = (uint64_t)xnuspy_tramp_mem_end - (uint64_t)xnuspy_tramp_mem;
     vm_prot_t prot = VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE;
-    kprotect(xnuspy_tramp_page, PAGE_SIZE, prot);
 
-    /* Do the same for the pages which will reflect shared mappings */
-    struct xnuspy_reflector_page *cur = first_reflector_page;
-    
-    while(cur){
-        kprotect(cur->page, PAGE_SIZE, prot);
-        cur = cur->next;
-    }
+    kprotect(xnuspy_tramp_mem, sz, prot);
 
     xnuspy_init_flag = 1;
 
@@ -1249,10 +983,8 @@ static int xnuspy_register_death_callback(uint64_t /* __user */ addr){
     }
 
     struct _vm_map *cm = current_map();
-    struct mach_header_64 *kmh = mm->first_reflector_page->page;
     struct mach_header_64 *umh = cm->hdr.vme_start;
 
-    /* uint64_t addr_kva = shared_mapping_kva(kmh, umh, addr); */
     uint64_t addr_kva = shared_mapping_kva(mm, umh, addr);
 
     mm->death_callback = (void (*)(void))addr_kva;

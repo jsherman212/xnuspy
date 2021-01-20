@@ -33,7 +33,6 @@ extern int (*copyinstr)(const void *uaddr, void *kaddr,
 extern int (*copyout)(const void *kaddr, uint64_t uaddr,
         vm_size_t nbytes);
 extern void *(*current_proc)(void);
-extern struct xnuspy_reflector_page *first_reflector_page;
 extern uint64_t hookme_in_range;
 extern uint64_t iOS_version;
 extern void (*IOSleep)(unsigned int millis);
@@ -86,8 +85,8 @@ extern kern_return_t (*vm_map_unwire)(void *map, uint64_t start,
         uint64_t end, int user);
 extern kern_return_t (*vm_map_wire_external)(void *map,
         uint64_t start, uint64_t end, vm_prot_t prot, int user_wire);
-extern struct xnuspy_tramp *xnuspy_tramp_page;
-extern struct xnuspy_tramp *xnuspy_tramp_page_end;
+extern struct xnuspy_tramp *xnuspy_tramp_mem;
+extern struct xnuspy_tramp *xnuspy_tramp_mem_end;
 
 /* End kernel offsets */
 

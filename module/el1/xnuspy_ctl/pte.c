@@ -6,11 +6,11 @@
 static pte_t *ptep(uint64_t ttbr, uint64_t addr){
     uint64_t l1_table = phystokv(ttbr & 0xfffffffffffe);
     uint64_t l1_idx = (addr >> ARM_TT_L1_SHIFT) & 0x7;
-    pte_t *l1_ttep = (uint64_t *)(l1_table + (0x8 * l1_idx));
+    uint64_t *l1_ttep = (uint64_t *)(l1_table + (0x8 * l1_idx));
 
     uint64_t l2_table = phystokv(*l1_ttep & ARM_TTE_TABLE_MASK);
     uint64_t l2_idx = (addr >> ARM_TT_L2_SHIFT) & 0x7ff;
-    pte_t *l2_ttep = (uint64_t *)(l2_table + (0x8 * l2_idx));
+    uint64_t *l2_ttep = (uint64_t *)(l2_table + (0x8 * l2_idx));
 
     uint64_t l3_table = phystokv(*l2_ttep & ARM_TTE_TABLE_MASK);
     uint64_t l3_idx = (addr >> ARM_TT_L3_SHIFT) & 0x7ff;

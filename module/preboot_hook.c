@@ -21,9 +21,8 @@ static uint64_t g_xnuspy_ctl_addr = 0;
 static uint64_t g_xnuspy_ctl_img_codestart = 0;
 /* how many bytes to we need to mark as executable inside xnuspy_ctl_tramp? */
 static uint64_t g_xnuspy_ctl_img_codesz = 0;
-static uint64_t g_xnuspy_tramp_page_addr = 0;
-static uint64_t g_xnuspy_tramp_page_end = 0;
-static uint64_t g_first_reflector_page = 0;
+static uint64_t g_xnuspy_tramp_mem_addr = 0;
+static uint64_t g_xnuspy_tramp_mem_end = 0;
 /* Assume we're in range until we do the check */
 static uint64_t g_hookme_in_range = 1;
 
@@ -58,7 +57,6 @@ static struct xnuspy_ctl_kernel_symbol {
     { "_copyinstr", &g_copyinstr_addr },
     { "_copyout", &g_copyout_addr },
     { "_current_proc", &g_current_proc_addr },
-    { "_first_reflector_page", &g_first_reflector_page },
     { "_hookme_in_range", &g_hookme_in_range },
     { "_iOS_version", &g_kern_version_major },
     { "_IOSleep", &g_IOSleep_addr },
@@ -95,8 +93,8 @@ static struct xnuspy_ctl_kernel_symbol {
     { "__vm_deallocate", &g_vm_deallocate_addr },
     { "_vm_map_unwire", &g_vm_map_unwire_addr },
     { "_vm_map_wire_external", &g_vm_map_wire_external_addr },
-    { "_xnuspy_tramp_page", &g_xnuspy_tramp_page_addr },
-    { "_xnuspy_tramp_page_end", &g_xnuspy_tramp_page_end },
+    { "_xnuspy_tramp_mem", &g_xnuspy_tramp_mem_addr },
+    { "_xnuspy_tramp_mem_end", &g_xnuspy_tramp_mem_end },
 };
 
 static void anything_missing(void){
@@ -424,7 +422,7 @@ static void process_xnuspy_ctl_image(void *xnuspy_ctl_image){
             g_xnuspy_ctl_addr = xnu_ptr_to_va(va);
         else if(strcmp(sym, "__hookme") == 0){
             uint64_t _hookme_kva = xnu_ptr_to_va(va);
-            uint64_t ceil = g_xnuspy_tramp_page_end;
+            uint64_t ceil = g_xnuspy_tramp_mem_end;
             int64_t dist = ceil - _hookme_kva;
 
             if(dist < 0)
@@ -449,51 +447,28 @@ static void process_xnuspy_ctl_image(void *xnuspy_ctl_image){
     }
 }
 
+#ifndef XNUSPY_TRAMP_PAGES
+#define XNUSPY_TRAMP_PAGES 1
+#endif
+
 void (*next_preboot_hook)(void);
 
 void xnuspy_preboot_hook(void){
     anything_missing();
 
-    /* We are going to allocate a bunch of pages that xnuspy will use
-     * to reflect the user's replacement code on. Allocating them inside of
-     * the module will relieve the system from the stress of doing a bunch
-     * of page sized allocations.
-     *
-     * We need to figure out *how* much static memory can be allocated before
-     * we hit the limit and panic. From the output in checkra1n's KPF, the
-     * ramdisk is 0x110000 bytes, so we need to make sure there's space for
-     * that.  Unfortunately alloc_static_current and alloc_static_end aren't
-     * exported so we need to calculate them ourselves. These calculations are
-     * the ones done inside src/kernel/std.c. I don't think anything before
-     * us has called alloc_static so these calculations are fine here. */
-    uint64_t alloc_static_current =
-        (kCacheableView - 0x800000000 + gBootArgs->topOfKernelData) & ~0x3fff;
-    uint64_t alloc_static_base = alloc_static_current;
-    uint64_t alloc_static_end = 0x417fe0000;
-    uint64_t alloc_static_hardcap = alloc_static_base + (1024 * 1024 * 64);
+    uint64_t xnuspy_tramp_mem_size = PAGE_SIZE * XNUSPY_TRAMP_PAGES;
+    void *xnuspy_tramp_mem = alloc_static(xnuspy_tramp_mem_size);
 
-    if(alloc_static_end > alloc_static_hardcap)
-        alloc_static_end = alloc_static_hardcap;
-
-    uint64_t free_static_memory = alloc_static_end - alloc_static_current;
-
-    /* make sure the ramdisk is accounted for, +- a couple pages for safety */
-    free_static_memory -= 0x110000 + (PAGE_SIZE * 6);
-
-    void *xnuspy_tramp_page = alloc_static(PAGE_SIZE);
-
-    free_static_memory -= PAGE_SIZE;
-
-    if(!xnuspy_tramp_page){
+    if(!xnuspy_tramp_mem){
         puts("xnuspy: alloc_static");
         puts("   returned NULL while");
         puts("   allocating xnuspy");
-        puts("   trampoline page");
+        puts("   trampoline mem");
 
         xnuspy_fatal_error();
     }
 
-    memset(xnuspy_tramp_page, 0, PAGE_SIZE);
+    memset(xnuspy_tramp_mem, 0, xnuspy_tramp_mem_size);
 
     /* For every function which gets hooked, a single unconditional
      * immediate branch is written targeting some point on the
@@ -577,14 +552,14 @@ next:
             codestart = __text->addr + kernel_slide;
     }
 
-    uint64_t ceil = xnu_ptr_to_va(xnuspy_tramp_page) + PAGE_SIZE;
+    uint64_t ceil = xnu_ptr_to_va(xnuspy_tramp_mem) + xnuspy_tramp_mem_size;
     uint64_t dist = ceil - codestart;
 
     bool fallback = false;
 
     if(dist > 0x8000000){
         printf("xnuspy: distance from first\n"
-               "  code to tramp page is larger\n"
+               "  code to end of tramp mem is larger\n"
                "  than 128 MB. Falling back to\n"
                "  the unused r-x page already in\n"
                "  the kernelcache. As a result,\n"
@@ -594,13 +569,11 @@ next:
         fallback = true;
     }
     else{
-        g_xnuspy_tramp_page_addr = xnu_ptr_to_va(xnuspy_tramp_page);
-        g_xnuspy_tramp_page_end = g_xnuspy_tramp_page_addr + PAGE_SIZE;
+        g_xnuspy_tramp_mem_addr = xnu_ptr_to_va(xnuspy_tramp_mem);
+        g_xnuspy_tramp_mem_end = g_xnuspy_tramp_mem_addr + xnuspy_tramp_mem_size;
     }
 
     xnuspy_cache_base = alloc_static(PAGE_SIZE);
-
-    free_static_memory -= PAGE_SIZE;
 
     if(!xnuspy_cache_base){
         puts("xnuspy: alloc_static");
@@ -622,62 +595,7 @@ next:
         xnuspy_fatal_error();
     }
 
-    free_static_memory -= (loader_xfer_recv_count + PAGE_SIZE) & ~(PAGE_SIZE - 1);
-
     memcpy(xnuspy_ctl_image, loader_xfer_recv_data, loader_xfer_recv_count);
-
-    if(free_static_memory > 0x800000)
-        free_static_memory = 0x800000;
-
-    uint64_t reflector_pages_allocsz = (free_static_memory / PAGE_SIZE) *
-        sizeof(struct xnuspy_reflector_page);
-
-    /* Now we can start to create the linked list of pages xnuspy will
-     * use to hold user code. alloc_static rounds up to the nearest page */
-    struct xnuspy_reflector_page *reflector_pages = alloc_static(reflector_pages_allocsz);
-
-    if(!reflector_pages){
-        puts("xnuspy: alloc_static");
-        puts("   returned NULL while");
-        puts("   allocating reflector");
-        puts("   pages linked list");
-
-        xnuspy_fatal_error();
-    }
-
-    free_static_memory -= (reflector_pages_allocsz + PAGE_SIZE) & ~(PAGE_SIZE - 1);
-
-    /* Build the linked list of reflector pages */
-    uint64_t num_reflector_pages = free_static_memory / PAGE_SIZE;
-    struct xnuspy_reflector_page *curpage = reflector_pages;
-
-    while(num_reflector_pages > 0){
-        curpage->next = (struct xnuspy_reflector_page *)xnu_ptr_to_va(curpage + 1);
-        curpage->used = 0;
-        curpage->page = alloc_static(PAGE_SIZE);
-
-        if(!curpage->page){
-            puts("xnuspy: alloc_static");
-            puts("   returned NULL while");
-            puts("   allocating single");
-            puts("   reflector page");
-
-            xnuspy_fatal_error();
-        }
-
-        curpage->page = (struct xnuspy_reflector_page *)xnu_ptr_to_va(curpage->page);
-
-        curpage++;
-        num_reflector_pages--;
-    }
-
-    /* Terminate this linked list */
-    curpage--;
-    curpage->next = NULL;
-
-    g_first_reflector_page = xnu_ptr_to_va(reflector_pages);
-
-    free_static_memory = 0;
 
     uint64_t num_free_instrs = g_exec_scratch_space_size / sizeof(uint32_t);
     uint32_t *scratch_space = xnu_va_to_ptr(g_exec_scratch_space_addr);
@@ -695,8 +613,8 @@ next:
         /* We do this so checkra1n kpf doesn't use this space for shellcode */
         memset(rxpage_unaligned, '$', rxpage_end - rxpage_unaligned);
 
-        g_xnuspy_tramp_page_addr = xnu_ptr_to_va(rxpage);
-        g_xnuspy_tramp_page_end = xnu_ptr_to_va(rxpage_end);
+        g_xnuspy_tramp_mem_addr = xnu_ptr_to_va(rxpage);
+        g_xnuspy_tramp_mem_end = xnu_ptr_to_va(rxpage_end);
     }
 
     process_xnuspy_ctl_image(xnuspy_ctl_image);

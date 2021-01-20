@@ -8,13 +8,6 @@
 #include "externs.h"
 #include "mem.h"
 
-static void _desc_xnuspy_reflector_page(const char *indent,
-        struct xnuspy_reflector_page *p){
-    SPYDBG("%sThis reflector page is @ %#llx. "
-            "next: %#llx page %#llx [phys: %#llx] used: %d\n", indent,
-            (uint64_t)p, p->next, p->page, kvtophys(p->page), p->used);
-}
-
 void desc_freelist(void){
     lck_rw_lock_shared(xnuspy_rw_lck);
 
@@ -48,18 +41,6 @@ void desc_orphan_mapping(struct orphan_mapping *om){
     SPYDBG("Mapping addr: %#llx\n", om->mapping_addr);
     SPYDBG("Mapping size: %#llx\n", om->mapping_size);
     SPYDBG("Mapping memory object: %#llx\n", om->memory_object);
-    SPYDBG("# of used reflector pages: %lld\n", om->used_reflector_pages);
-    SPYDBG("Reflector pages:\n");
-
-    struct xnuspy_reflector_page *cur = om->first_reflector_page;
-
-    for(int i=0; i<om->used_reflector_pages; i++){
-        if(!cur)
-            break;
-
-        _desc_xnuspy_reflector_page("    ", cur);
-        cur = cur->next;
-    }
 }
 
 /* XXX ONLY meant to be called from xnuspy_gc_thread, hence the lack
@@ -106,19 +87,6 @@ void desc_usedlist(void){
 void desc_xnuspy_mapping_metadata(struct xnuspy_mapping_metadata *mm){
     SPYDBG("Mapping metadata refcnt: %lld\n", mm->refcnt);
     SPYDBG("Owner: %d\n", mm->owner);
-    SPYDBG("# of used reflector pages: %lld\n", mm->used_reflector_pages);
-    SPYDBG("Reflector pages:\n");
-
-    struct xnuspy_reflector_page *cur = mm->first_reflector_page;
-
-    for(int i=0; i<mm->used_reflector_pages; i++){
-        if(!cur)
-            break;
-
-        _desc_xnuspy_reflector_page("    ", cur);
-        cur = cur->next;
-    }
-
     SPYDBG("Memory object: %#llx\n", mm->memory_object);
     SPYDBG("Shared mapping addr/size: %#llx/%#llx\n", mm->mapping_addr,
             mm->mapping_size);
@@ -129,10 +97,6 @@ void desc_xnuspy_mapping_metadata(struct xnuspy_mapping_metadata *mm){
         SPYDBG("%#llx\n", mm->death_callback);
     else
         SPYDBG("none\n");
-}
-
-void desc_xnuspy_reflector_page(struct xnuspy_reflector_page *p){
-    _desc_xnuspy_reflector_page("", p);
 }
 
 void desc_xnuspy_tramp(struct xnuspy_tramp *t, uint32_t orig_tramp_len){
@@ -155,6 +119,7 @@ void desc_xnuspy_tramp(struct xnuspy_tramp *t, uint32_t orig_tramp_len){
         SPYDBG("Hooked function: %#llx [unslid=%#llx]\n",
                 t->tramp_metadata->hooked,
                 t->tramp_metadata->hooked - kernel_slide);
+
         SPYDBG("Original instruction: %#x\n", t->tramp_metadata->orig_instr);
     }
 

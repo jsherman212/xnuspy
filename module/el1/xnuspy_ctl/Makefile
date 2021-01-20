@@ -9,6 +9,10 @@ ifeq ($(XNUSPY_DEBUG), 1)
 	CFLAGS += -DXNUSPY_DEBUG
 endif
 
+ifneq ($(XNUSPY_LEAKED_PAGE_LIMIT), )
+	CFLAGS += -DXNUSPY_LEAKED_PAGE_LIMIT=$(XNUSPY_LEAKED_PAGE_LIMIT)
+endif
+
 LDFLAGS = -Xlinker -kext 
 
 all : $(OBJECT_FILES) xnuspy_ctl

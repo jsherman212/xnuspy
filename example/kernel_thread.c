@@ -176,7 +176,12 @@ int main(int argc, char **argv){
         return 1;
     }
 
-    syscall(SYS_xnuspy_ctl, XNUSPY_CALL_HOOKME, 0, 0, 0);
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_CALL_HOOKME, 0, 0, 0);
+
+    if(ret){
+        printf("Calling hookme not supported\n");
+        return 1;
+    }
 
     printf("Ctrl C or enter to quit and invoke death callback\n");
     getchar();

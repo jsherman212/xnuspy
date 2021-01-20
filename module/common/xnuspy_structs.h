@@ -8,18 +8,12 @@ struct stailq_entry {
     STAILQ_ENTRY(stailq_entry) link;
 };
 
-struct xnuspy_reflector_page {
-    struct xnuspy_reflector_page *next;
-    void *page;
-    int used;
-};
-
+/* This structure represents a shared mapping that's been added to the
+ * unmaplist */
 struct orphan_mapping {
     uint64_t mapping_addr;
     uint64_t mapping_size;
     void *memory_object;
-    struct xnuspy_reflector_page *first_reflector_page;
-    uint64_t used_reflector_pages;
 };
 
 /* This structure represents a shared __TEXT and __DATA mapping. There is
@@ -29,10 +23,6 @@ struct xnuspy_mapping_metadata {
     _Atomic uint64_t refcnt;
     /* Process which owns this mapping (p_uniqueid) */
     uint64_t owner;
-    /* Pointer to the first reflector page used for this mapping */
-    struct xnuspy_reflector_page *first_reflector_page;
-    /* How many reflector pages are used ^ */
-    uint64_t used_reflector_pages;
     /* Memory object for this shared mapping, ipc_port_t */
     void *memory_object;
     /* Address of the start of this mapping */
@@ -56,7 +46,7 @@ struct xnuspy_tramp_metadata {
 /* This structure represents a function hook. Every xnuspy_tramp struct resides
  * on writeable, executable memory. */
 struct xnuspy_tramp {
-    /* Kernel virtual address of reflected userland replacement */
+    /* Kernel virtual address of userland replacement on shared mapping */
     uint64_t replacement;
     /* The trampoline for a hooked function. When the user installs a hook
      * on a function, the first instruction of that function is replaced

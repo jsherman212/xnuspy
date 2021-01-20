@@ -64,7 +64,7 @@ I designed this flavor to match [`MSHookFunction`](http://www.cydiasubstrate.com
 supply a slid address, you will most likely panic. `arg2` is a pointer to your
 ABI-compatible replacement function. `arg3` is a pointer for `xnuspy_ctl` to
 `copyout` the address of a trampoline that represents the original kernel
-function. This can be NULL if you don't intend to call the original.
+function. This can be `NULL` if you don't intend to call the original.
 
 ## `XNUSPY_REGISTER_DEATH_CALLBACK`
 This flavor allows you to register an optional "death callback", a function xnuspy
@@ -109,7 +109,7 @@ does not return any errors.
 - `ENOSPC` if:
   - There are no free `xnuspy_tramp` structs, a data structure internal to
 xnuspy. This shouldn't happen unless you're hooking hundreds of kernel functions
-at the same time. If you need more function hooks, check out the section about
+*at the same time*. If you need more function hooks, check out the section about
 limits under "Important Information".
 - `EFAULT` if:
   - `current_map()->hdr.vme_start` is not a pointer to the calling processes'
@@ -128,7 +128,7 @@ value that I haven't yet taken into account for (and a message is printed
 to the kernel log about it if you compiled with `XNUSPY_DEBUG=1`).
 
 If this flavor returns an error, the target kernel function was not hooked.
-If you passed a non-NULL pointer for `arg3`, it may or may not have been
+If you passed a non-`NULL` pointer for `arg3`, it may or may not have been
 initialized. It's unsafe to use if it was.
 
 #### Errors Pertaining to `XNUSPY_REGISTER_DEATH_CALLBACK`
@@ -182,14 +182,6 @@ variable or you will panic.
 
 Skimming https://developer.apple.com/library/archive/documentation/Darwin/Conceptual/KernelProgramming/style/style.html is also recommended.
 
-### Logging
-For some reason, logs from `os_log_with_args` don't show up in the stream
-outputted from the command line tool `oslog`. Logs from `kprintf` don't
-make it there either, but they *can* be seen with `dmesg`. However, `dmesg`
-isn't a live feed, so I wrote `klog`, a tool which shows `kprintf` logs
-in real time. Find it in `klog/`. I strongly recommend using that instead
-of spamming `dmesg` for your `kprintf` messages.
-
 ### Debugging Kernel Panics
 Bugs are inevitable when writing code, so eventually you're going to cause a
 kernel panic. A panic doesn't necessarily mean there's a bug with xnuspy, so
@@ -211,7 +203,7 @@ and watch for a line from `klog` that looks like this:
 `shared_mapping_kva: dist 0x7af4 uaddr 0x104797af4 umh 0x104790000 kmh 0xfffffff00c90c000`
 
 If you're installing more than one hook, there will be more than one occurrence.
-In that case, `dist` and `replacement` will vary, but `umh` and `kmh` won't. `kmh`
+In that case, `dist` and `uaddr` will vary, but `umh` and `kmh` won't. `kmh`
 points to the beginning of the kernel's mapping of your program's `__TEXT` segment.
 Throw your hook program into your favorite disassembler and rebase it so its Mach-O
 header is at the address of `kmh`. For IDA Pro, that's `Edit -> Segments -> Rebase
@@ -219,6 +211,38 @@ program...` with `Image base` bubbled. After your device panics and reboots agai
 if there are addresses which correspond to the kernel's mapping of your replacement
 in the panic log, they will match up with the disassembly. If there are none, then
 you probably have some sort of subtle memory corruption inside your replacement.
+
+xnuspy also has no way of knowing if a kernel thread is still executing (or will
+execute) on the kernel's mapping of your program's `__TEXT` segment after your
+hooks are uninstalled. One of the things xnuspy does to deal with this is to not
+deallocate this mapping immediately after your hook program dies. Instead, it's
+added to the end of a queue. Once xnuspy's garbage collection thread notices a
+set limit has been exceeded regarding how many pages worth of mappings are held
+in that queue, it will start to deallocate from the front of the queue and will
+continue until that limit is no longer exceeded. By default, this limit is 1 MB,
+or 64 pages.
+
+While this does help enormously, the larger the `__TEXT` and `__DATA` segments
+of your hook program become, the less likely xnuspy wins this race. If you are
+panicking regularly and have a somewhat large hook program, try increasing
+this limit by adding `XNUSPY_LEAKED_PAGE_LIMIT=n` before `make`. This will set
+this limit to `n` pages rather than 64.
+
+### Limits
+xnuspy reserves one page of static kernel memory before XNU boots for its `xnuspy_tramp`
+structs, letting you simultaneously hook around 225 kernel functions. If you want
+more, you can add `XNUSPY_TRAMP_PAGES=n` before `make`. This will tell xnuspy to
+reserve `n` pages of static memory for `xnuspy_tramp` structures. However, if
+xnuspy has to fall back to unused code already inside the kernelcache, then this
+is ignored. When this happens is detailed in "How It Works".
+
+### Logging
+For some reason, logs from `os_log_with_args` don't show up in the stream
+outputted from the command line tool `oslog`. Logs from `kprintf` don't
+make it there either, but they *can* be seen with `dmesg`. However, `dmesg`
+isn't a live feed, so I wrote `klog`, a tool which shows `kprintf` logs
+in real time. Find it in `klog/`. I strongly recommend using that instead
+of spamming `dmesg` for your `kprintf` messages.
 
 ### Hook Uninstallation
 xnuspy will manage this for you. Once a process exits, all the kernel hooks
@@ -241,9 +265,6 @@ original function does not modify `X17`.
 after a fresh boot. This is the only part of xnuspy which is raceable since
 I can't statically initialize the read/write lock I use. After the first call
 returns, any future calls are guarenteed to be thread-safe.
-
-### Limits
-TODO
 
 # How It Works
 This is simplified, but it captures the main idea well. A function hook in xnuspy
