@@ -141,11 +141,11 @@ If this flavor returns an error, your death callback was not registered.
 #### Errors Pertaining to `XNUSPY_CALL_HOOKME`
 `errno` is set to...
 - `ENOTSUP` if:
-  - `hookme` is too far away from the page of `xnuspy_tramp` structures. This
-is determined inside of pongoOS, and can only happen if xnuspy had to
-fallback to unused code already inside of the kernelcache. In this case,
-calling `hookme` would almost certainly cause a kernel panic, and you'll
-have to figure out another kernel function to hook.
+  - `hookme` is too far away from the memory containing the `xnuspy_tramp`
+structures. This is determined inside of pongoOS, and can only happen if
+xnuspy had to fallback to unused code already inside of the kernelcache.
+In this case, calling `hookme` would almost certainly cause a kernel panic,
+and you'll have to figure out another kernel function to hook.
 
 If this flavor returns an error, `hookme` was not called.
 
