@@ -355,8 +355,9 @@ static struct xnuspy_mapping_metadata *find_mapping_metadata(void){
         struct xnuspy_tramp *tramp = entry->elem;
 
         if(tramp->mapping_metadata->owner == cuniqueid){
+            struct xnuspy_mapping_metadata *mm = tramp->mapping_metadata;
             lck_rw_done(xnuspy_rw_lck);
-            return tramp->mapping_metadata;
+            return mm;
         }
     }
 

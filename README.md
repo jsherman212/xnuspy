@@ -178,6 +178,9 @@ You can create function pointers to other kernel functions and call those, thoug
 example, `PAGE_SIZE` expands to `vm_page_size`, not a constant. You need to
 disable PAN (on A10+, which I also don't recommend doing) before reading this 
 variable or you will panic.
+- *Make sure to compile your code with `-fno-stack-protector`.* In some cases,
+Clang will have to read `___stack_chk_guard` by dereferencing another userspace
+pointer, which will panic on A10+.
 - *Just to be safe, don't compile your hook programs with compiler optimizations.*
 
 Skimming https://developer.apple.com/library/archive/documentation/Darwin/Conceptual/KernelProgramming/style/style.html is also recommended.
