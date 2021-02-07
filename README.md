@@ -179,7 +179,7 @@ example, `PAGE_SIZE` expands to `vm_page_size`, not a constant. You need to
 disable PAN (on A10+, which I also don't recommend doing) before reading this 
 variable or you will panic.
 - *Make sure to compile your code with `-fno-stack-protector`.* In some cases,
-Clang will have to read `___stack_chk_guard` by dereferencing another userspace
+the device will have to read `___stack_chk_guard` by dereferencing another userspace
 pointer, which will panic on A10+.
 - *Just to be safe, don't compile your hook programs with compiler optimizations.*
 
