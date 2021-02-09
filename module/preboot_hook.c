@@ -84,10 +84,14 @@ static struct xnuspy_ctl_kernel_symbol {
     { "_phystokv", &g_phystokv_addr },
     { "_proc_list_lock", &g_proc_list_lock_addr },
     { "_proc_list_mlockp", &g_proc_list_mlock_addr },
+    { "_proc_name", &g_proc_name_addr },
     { "_proc_pid", &g_proc_pid_addr },
     { "_proc_ref_locked", &g_proc_ref_locked_addr },
     { "_proc_rele_locked", &g_proc_rele_locked_addr },
     { "_proc_uniqueid", &g_proc_uniqueid_addr },
+    { "__snprintf", &g_snprintf_addr },
+    { "__strlen", &g_strlen_addr },
+    { "__strncmp", &g_strncmp_addr },
     { "_thread_deallocate", &g_thread_deallocate_addr },
     { "__thread_terminate", &g_thread_terminate_addr },
     { "__vm_deallocate", &g_vm_deallocate_addr },
@@ -176,6 +180,11 @@ static void anything_missing(void){
         chk(!g_patched_pinst_set_tcr, "pinst_set_tcr wasn't patched\n");
         chk(!g_patched_all_msr_tcr_el1_x18, "did not patch all msr tcr_el1, x18\n");
     }
+
+    chk(!g_proc_name_addr, "proc_name not found\n");
+    chk(!g_snprintf_addr, "snprintf not found\n");
+    chk(!g_strlen_addr, "strlen not found\n");
+    chk(!g_strncmp_addr, "strncmp not found\n");
 
     /* if we printed the error header, something is missing */
     if(printed_err_hdr)

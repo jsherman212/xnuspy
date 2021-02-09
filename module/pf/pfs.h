@@ -1284,6 +1284,78 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
             }),
             1, msr_tcr_el1_x18_patcher_13, "__TEXT_EXEC"),
     },
+    {
+        PF_DECL32("proc_name,snprintf,strlen finder iOS 13",
+            LISTIZE({
+                0x94000000,     /* bl n */
+                0x8b000001,     /* add x1, xn, x0 */
+                0x4b000002,     /* sub w2, wn, w0 */
+                0x0,            /* ignore this instruction */
+                0x94000000,     /* bl n */
+                0x0,            /* ignore this instruction */
+                0x0,            /* ignore this instruction */
+                0xb4000000,     /* cbz x0, n */
+            }),
+            LISTIZE({
+                0xfc000000,     /* ignore immediate */
+                0xfffffc1f,     /* ignore Rn */
+                0xfffffc1f,     /* ignore Rn */
+                0x0,            /* ignore this instruction */
+                0xfc000000,     /* ignore immediate */
+                0x0,            /* ignore this instruction */
+                0x0,            /* ignore this instruction */
+                0xff00001f,     /* ignore immediate */
+            }),
+            8, proc_name_snprintf_strlen_finder_13, "__TEXT_EXEC"),
+        PF_DECL32("proc_name,snprintf,strlen finder iOS 14",
+            LISTIZE({
+                0x94000000,     /* bl n */
+                0x8b000001,     /* add x1, xn, x0 */
+                0x4b000002,     /* sub w2, wn, w0 */
+                0x0,            /* ignore this instruction */
+                0x94000000,     /* bl n */
+                0x10000000,     /* adrp x0, n or adr x0, n */
+            }),
+            LISTIZE({
+                0xfc000000,     /* ignore immediate */
+                0xfffffc1f,     /* ignore Rn */
+                0xfffffc1f,     /* ignore Rn */
+                0x0,            /* ignore this instruction */
+                0xfc000000,     /* ignore immediate */
+                0x1f00001f,     /* ignore immediate */
+            }),
+            6, proc_name_snprintf_strlen_finder_13, "__TEXT_EXEC"),
+    },
+    {
+        PF_DECL32("strcmp finder iOS 13",
+            LISTIZE({
+                0xa9bf7bfd,     /* stp x29, x30, [sp, -0x10]! */
+                0x910003fd,     /* mov x29, sp */
+                0xca030063,     /* eor x3, x3, x3 */
+                0xb4000002,     /* cbz x2, n */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xff00001f,     /* ignore immediate */
+            }),
+            4, strncmp_finder_13, "__TEXT_EXEC"),
+        PF_DECL32("strcmp finder iOS 13",
+            LISTIZE({
+                0xa9bf7bfd,     /* stp x29, x30, [sp, -0x10]! */
+                0x910003fd,     /* mov x29, sp */
+                0xca030063,     /* eor x3, x3, x3 */
+                0xb4000002,     /* cbz x2, n */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xff00001f,     /* ignore immediate */
+            }),
+            4, strncmp_finder_13, "__TEXT_EXEC"),
+    },
     { PF_END, PF_END },
 };
 

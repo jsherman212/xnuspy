@@ -42,5 +42,7 @@ bool copyinstr_finder_13(xnu_pf_patch_t *, void *);
 bool thread_terminate_finder_13(xnu_pf_patch_t *, void *);
 bool pinst_set_tcr_patcher_13(xnu_pf_patch_t *, void *);
 bool msr_tcr_el1_x18_patcher_13(xnu_pf_patch_t *, void *);
+bool proc_name_snprintf_strlen_finder_13(xnu_pf_patch_t *, void *);
+bool strncmp_finder_13(xnu_pf_patch_t *, void *);
 
 #endif

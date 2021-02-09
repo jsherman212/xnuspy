@@ -50,6 +50,7 @@ enum xnuspy_cache_id {
     THREAD_DEALLOCATE,
     THREAD_TERMINATE,
     ALLPROC,
+    BZERO,
     IPC_PORT_RELEASE_SEND,
     KERNEL_MAP,
     LCK_GRP_ALLOC_INIT,
@@ -67,13 +68,21 @@ enum xnuspy_cache_id {
     PROC_LIST_LOCK,
     PROC_LIST_UNLOCK,
     PROC_LIST_MLOCK,
+    PROC_NAME,
     PROC_REF_LOCKED,
     PROC_RELE_LOCKED,
     PROC_UNIQUEID,
+    SNPRINTF,
+    STRCMP,
+    STRLEN,
+    STRNCMP,
     VM_DEALLOCATE,
     VM_MAP_UNWIRE,
     VM_MAP_WIRE_EXTERNAL,
     IOSLEEP,
+
+    /* Everything below is from xnuspy, everything above is from XNU */
+
     HOOKME,
     CURRENT_MAP,
     IOS_VERSION,
@@ -148,10 +157,19 @@ MARK_AS_KERNEL_OFFSET uint64_t offsetof_struct_thread_map;
 MARK_AS_KERNEL_OFFSET uint64_t (*phystokv)(uint64_t pa);
 MARK_AS_KERNEL_OFFSET void (*proc_list_lock)(void);
 MARK_AS_KERNEL_OFFSET void **proc_list_mlockp;
+/* XNU's declaration, not mine */
+MARK_AS_KERNEL_OFFSET void (*proc_name)(int pid, char *buf, int size);
 MARK_AS_KERNEL_OFFSET pid_t (*proc_pid)(void *proc);
 MARK_AS_KERNEL_OFFSET void (*proc_ref_locked)(void *proc);
 MARK_AS_KERNEL_OFFSET void (*proc_rele_locked)(void *proc);
 MARK_AS_KERNEL_OFFSET uint64_t (*proc_uniqueid)(void *proc);
+/* Extra underscore so compiler stops complaining */
+MARK_AS_KERNEL_OFFSET int (*_snprintf)(char *str, size_t size,
+        const char *fmt, ...);
+/* Extra underscore so compiler stops complaining */
+MARK_AS_KERNEL_OFFSET size_t (*_strlen)(const char *s);
+/* Extra underscore so compiler stops complaining */
+MARK_AS_KERNEL_OFFSET int (*_strncmp)(const char *s1, const char *s2, size_t n);
 MARK_AS_KERNEL_OFFSET void (*thread_deallocate)(void *thread);
 /* Extra underscore so compiler stops complaining */
 MARK_AS_KERNEL_OFFSET void (*_thread_terminate)(void *thread);
@@ -1086,6 +1104,9 @@ static int xnuspy_cache_read(enum xnuspy_cache_id which,
         case ALLPROC:
             what = *allprocp;
             break;
+        case BZERO:
+            what = bzero;
+            break;
         case IPC_PORT_RELEASE_SEND:
             what = ipc_port_release_send;
             break;
@@ -1128,6 +1149,9 @@ static int xnuspy_cache_read(enum xnuspy_cache_id which,
         case OFFSETOF_STRUCT_THREAD_MAP:
             what = (void *)offsetof_struct_thread_map;
             break;
+        case PROC_NAME:
+            what = proc_name;
+            break;
         case PROC_LIST_LOCK:
             what = proc_list_lock;
             break;
@@ -1145,6 +1169,18 @@ static int xnuspy_cache_read(enum xnuspy_cache_id which,
             break;
         case PROC_UNIQUEID:
             what = proc_uniqueid;
+            break;
+        case SNPRINTF:
+            what = _snprintf;
+            break;
+        case STRCMP:
+            what = strcmp;
+            break;
+        case STRLEN:
+            what = _strlen;
+            break;
+        case STRNCMP:
+            what = _strncmp;
             break;
         case VM_DEALLOCATE:
             what = _vm_deallocate;

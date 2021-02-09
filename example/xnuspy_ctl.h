@@ -45,6 +45,7 @@ enum {
     /* struct proclist allproc @ bsd/sys/proc_internal.h */
     ALLPROC,
 
+    BZERO,
     IPC_PORT_RELEASE_SEND,
 
     /* vm_map_t kernel_map @ osfmk/vm/vm_kern.h */
@@ -71,9 +72,14 @@ enum {
     /* lck_mtx_t *proc_list_mlock @ bsd/sys/proc_internal.h */
     PROC_LIST_MLOCK,
 
+    PROC_NAME,
     PROC_REF_LOCKED,
     PROC_RELE_LOCKED,
     PROC_UNIQUEID,
+    SNPRINTF,
+    STRCMP,
+    STRLEN,
+    STRNCMP,
     VM_DEALLOCATE,
     VM_MAP_UNWIRE,
     VM_MAP_WIRE_EXTERNAL,

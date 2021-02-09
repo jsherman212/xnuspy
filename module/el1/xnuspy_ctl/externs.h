@@ -71,10 +71,17 @@ extern uint64_t offsetof_struct_thread_map;
 extern uint64_t (*phystokv)(uint64_t pa);
 extern void (*proc_list_lock)(void);
 extern void **proc_list_mlockp;
+extern void (*proc_name)(int pid, char *buf, int size);
 extern pid_t (*proc_pid)(void *proc);
 extern void (*proc_ref_locked)(void *proc);
 extern void (*proc_rele_locked)(void *proc);
 extern uint64_t (*proc_uniqueid)(void *proc);
+/* Extra underscore so compiler stops complaining */
+extern int (*_snprintf)(char *str, size_t size, const char *fmt, ...);
+/* Extra underscore so compiler stops complaining */
+extern size_t (*_strlen)(const char *s);
+/* Extra underscore so compiler stops complaining */
+extern int (*_strncmp)(const char *s1, const char *s2, size_t n);
 extern void (*thread_deallocate)(void *thread);
 /* Extra underscore so compiler stops complaining */
 extern void (*_thread_terminate)(void *thread);

@@ -10,13 +10,15 @@
 
 #include "xnuspy_ctl.h"
 
+static void (*_bzero)(void *p, size_t n);
 static int (*copyin)(const void *uaddr, void *kaddr, size_t len);
 static int (*copyinstr)(const void *uaddr, void *kaddr, size_t len, size_t *done);
-static int (*copyout)(const void *kaddr, void *uaddr, size_t len);
 static void *(*current_proc)(void);
 static void (*kprintf)(const char *, ...);
-static void (*kwrite_instr)(uint64_t, uint32_t);
+static void (*proc_name)(int pid, char *buf, int size);
 static pid_t (*proc_pid)(void *);
+static int (*_snprintf)(char *str, size_t size, const char *fmt, ...);
+static int (*_strcmp)(const char *s1, const char *s2);
 static void *(*unified_kalloc)(size_t sz);
 static void (*unified_kfree)(void *ptr);
 
@@ -54,55 +56,61 @@ struct nameidata {
     /* ... */
 };
 
-static int strcmp_(const char *s1, const char *s2){
-    while(*s1 && (*s1 == *s2)){
-        s1++;
-        s2++;
-    }
-
-    return *(const unsigned char *)s1 - *(const unsigned char *)s2;
-}
+#define BLOCKED_FILE "/var/mobile/testfile.txt"
 
 static int (*open1_orig)(void *vfsctx, struct nameidata *ndp, int uflags,
         void *vap, void *fp_zalloc, void *cra, int32_t *retval);
 
 static int open1(void *vfsctx, struct nameidata *ndp, int uflags,
         void *vap, void *fp_zalloc, void *cra, int32_t *retval){
+    char *path = NULL;
+
     if(!(ndp->ni_dirp && UIO_SEG_IS_USER_SPACE(ndp->ni_segflag)))
         goto orig;
 
     size_t sz = PATHBUFLEN;
-    char *path = unified_kalloc(sz);
 
-    if(!path)
+    if(!(path = unified_kalloc(sz)))
         goto orig;
+
+    _bzero(path, sz);
 
     size_t pathlen = 0;
     int res = copyinstr(ndp->ni_dirp, path, sz, &pathlen);
 
-    if(res){
-        unified_kfree(path);
+    if(res)
         goto orig;
-    }
 
     path[pathlen - 1] = '\0';
 
     uint8_t cpu = curcpu();
     pid_t caller = caller_pid();
 
-    kprintf("%s: (CPU %d): process %d wants to open '%s'\n", __func__, cpu,
-            caller, path);
+    char *caller_name = unified_kalloc(MAXCOMLEN + 1);
 
-    if(strcmp_(path, "/var/mobile/testfile.txt") == 0){
+    if(!caller_name)
+        goto orig;
+
+    /* proc_name doesn't bzero for some version of iOS 13 */
+    _bzero(caller_name, MAXCOMLEN + 1);
+    proc_name(caller, caller_name, MAXCOMLEN + 1);
+
+    kprintf("%s: (CPU %d): '%s' (%d) wants to open '%s'\n", __func__, cpu,
+            caller_name, caller, path);
+
+    unified_kfree(caller_name);
+
+    if(_strcmp(path, BLOCKED_FILE) == 0){
         kprintf("%s: denying open for '%s'\n", __func__, path);
         unified_kfree(path);
         *retval = -1;
         return ENOENT;
     }
 
-    unified_kfree(path);
+orig:;
+    if(path)
+        unified_kfree(path);
 
-orig:
     return open1_orig(vfsctx, ndp, uflags, vap, fp_zalloc, cra, retval);
 }
 
@@ -110,80 +118,27 @@ static long SYS_xnuspy_ctl = 0;
 
 static int gather_kernel_offsets(void){
     int ret;
+#define GET(a, b) \
+    do { \
+        ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, a, b, 0); \
+        if(ret){ \
+            printf("%s: failed getting %s\n", __func__, #a); \
+            return ret; \
+        } \
+    } while (0)
 
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, COPYIN, &copyin, 0);
-
-    if(ret){
-        printf("Failed getting copyin\n");
-        return ret;
-    }
-
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, COPYINSTR, &copyinstr, 0);
-
-    if(ret){
-        printf("Failed getting copyinstr\n");
-        return ret;
-    }
-
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, COPYOUT, &copyout, 0);
-
-    if(ret){
-        printf("Failed getting copyout\n");
-        return ret;
-    }
-
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, CURRENT_PROC,
-            &current_proc, 0);
-
-    if(ret){
-        printf("Failed getting current_proc\n");
-        return ret;
-    }
-
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, KPRINTF, &kprintf, 0);
-
-    if(ret){
-        printf("Failed getting kprintf\n");
-        return ret;
-    }
-
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, KWRITE_INSTR,
-            &kwrite_instr, 0);
-
-    if(ret){
-        printf("Failed getting kwrite_instr\n");
-        return ret;
-    }
-
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, PROC_PID, &proc_pid, 0);
-
-    if(ret){
-        printf("Failed getting proc_pid\n");
-        return ret;
-    }
-
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, KERNEL_SLIDE, &kernel_slide, 0);
-
-    if(ret){
-        printf("Failed getting kernel slide\n");
-        return ret;
-    }
-
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, UNIFIED_KALLOC,
-            &unified_kalloc, 0);
-
-    if(ret){
-        printf("Failed getting unified_kalloc\n");
-        return ret;
-    }
-
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, UNIFIED_KFREE,
-            &unified_kfree, 0);
-
-    if(ret){
-        printf("Failed getting unified_kfree\n");
-        return ret;
-    }
+    GET(BZERO, &_bzero);
+    GET(COPYIN, &copyin);
+    GET(COPYINSTR, &copyinstr);
+    GET(CURRENT_PROC, &current_proc);
+    GET(KPRINTF, &kprintf);
+    GET(PROC_NAME, &proc_name);
+    GET(PROC_PID, &proc_pid);
+    GET(KERNEL_SLIDE, &kernel_slide);
+    GET(SNPRINTF, &_snprintf);
+    GET(STRCMP, &_strcmp);
+    GET(UNIFIED_KALLOC, &unified_kalloc);
+    GET(UNIFIED_KFREE, &unified_kfree);
 
     return 0;
 }
@@ -223,7 +178,7 @@ int main(int argc, char **argv){
     }
 
     for(;;){
-        int fd = open("/var/mobile/testfile.txt", O_CREAT);
+        int fd = open(BLOCKED_FILE, O_CREAT);
 
         if(fd == -1)
             printf("open failed: %s\n", strerror(errno));

@@ -62,6 +62,10 @@ uint64_t g_copyinstr_addr = 0;
 uint64_t g_thread_terminate_addr = 0;
 int g_patched_pinst_set_tcr = 0;
 int g_patched_all_msr_tcr_el1_x18;
+uint64_t g_snprintf_addr;
+uint64_t g_strlen_addr;
+uint64_t g_proc_name_addr;
+uint64_t g_strncmp_addr;
 uint64_t g_xnuspy_sysctl_mib_ptr = 0;
 uint64_t g_xnuspy_sysctl_mib_count_ptr = 0;
 uint64_t g_xnuspy_ctl_callnum = 0;
@@ -1106,6 +1110,39 @@ bool msr_tcr_el1_x18_patcher_13(xnu_pf_patch_t *patch,
     }
 
     count++;
+
+    return true;
+}
+
+/* confirmed working on all kernels 13.0-14.4 */
+bool proc_name_snprintf_strlen_finder_13(xnu_pf_patch_t *patch,
+        void *cacheable_stream){
+    xnu_pf_disable_patch(patch);
+
+    uint32_t *opcode_stream = cacheable_stream;
+
+    uint32_t *snprintf = get_branch_dst_ptr(opcode_stream - 2);
+    uint32_t *strlen = get_branch_dst_ptr(opcode_stream);
+    uint32_t *proc_name = get_branch_dst_ptr(opcode_stream + 4);
+
+    g_snprintf_addr = xnu_ptr_to_va(snprintf);
+    g_strlen_addr = xnu_ptr_to_va(strlen);
+    g_proc_name_addr = xnu_ptr_to_va(proc_name);
+
+    puts("xnuspy: found snprintf");
+    puts("xnuspy: found strlen");
+    puts("xnuspy: found proc_name");
+
+    return true;
+}
+
+/* confirmed working on all kernels 13.0-14.4 */
+bool strncmp_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
+    xnu_pf_disable_patch(patch);
+
+    g_strncmp_addr = xnu_ptr_to_va(cacheable_stream);
+
+    puts("xnuspy: found strncmp");
 
     return true;
 }
