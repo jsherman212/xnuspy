@@ -11,13 +11,11 @@
 #include "xnuspy_ctl.h"
 
 static void (*_bzero)(void *p, size_t n);
-static int (*copyin)(const void *uaddr, void *kaddr, size_t len);
 static int (*copyinstr)(const void *uaddr, void *kaddr, size_t len, size_t *done);
 static void *(*current_proc)(void);
 static void (*kprintf)(const char *, ...);
 static void (*proc_name)(int pid, char *buf, int size);
 static pid_t (*proc_pid)(void *);
-static int (*_snprintf)(char *str, size_t size, const char *fmt, ...);
 static int (*_strcmp)(const char *s1, const char *s2);
 static void *(*unified_kalloc)(size_t sz);
 static void (*unified_kfree)(void *ptr);
@@ -128,13 +126,11 @@ static int gather_kernel_offsets(void){
     } while (0)
 
     GET(BZERO, &_bzero);
-    GET(COPYIN, &copyin);
     GET(COPYINSTR, &copyinstr);
     GET(CURRENT_PROC, &current_proc);
     GET(KPRINTF, &kprintf);
     GET(PROC_NAME, &proc_name);
     GET(PROC_PID, &proc_pid);
-    GET(KERNEL_SLIDE, &kernel_slide);
     GET(SNPRINTF, &_snprintf);
     GET(STRCMP, &_strcmp);
     GET(UNIFIED_KALLOC, &unified_kalloc);

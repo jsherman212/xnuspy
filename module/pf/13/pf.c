@@ -66,6 +66,10 @@ uint64_t g_snprintf_addr;
 uint64_t g_strlen_addr;
 uint64_t g_proc_name_addr;
 uint64_t g_strncmp_addr;
+uint64_t g_memset_addr;
+uint64_t g_memmove_addr;
+uint64_t g_memcmp_addr;
+uint64_t g_strnstr_addr;
 uint64_t g_xnuspy_sysctl_mib_ptr = 0;
 uint64_t g_xnuspy_sysctl_mib_count_ptr = 0;
 uint64_t g_xnuspy_ctl_callnum = 0;
@@ -1143,6 +1147,88 @@ bool strncmp_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     g_strncmp_addr = xnu_ptr_to_va(cacheable_stream);
 
     puts("xnuspy: found strncmp");
+
+    return true;
+}
+
+/* confirmed working on all kernels 13.0-14.4 */
+bool memset_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
+    xnu_pf_disable_patch(patch);
+
+    uint32_t *opcode_stream = cacheable_stream;
+
+    /* Look for the start of memset's prologue, trying to match
+     * stp x29, x30, [sp, -0x10]! */
+    uint32_t instr_limit = 20;
+
+    while(*opcode_stream != 0xa9bf7bfd){
+        if(instr_limit-- == 0)
+            return false;
+
+        opcode_stream--;
+    }
+
+    g_memset_addr = xnu_ptr_to_va(opcode_stream);
+
+    puts("xnuspy: found memset");
+
+    return true;
+}
+
+/* confirmed working on all kernels 13.0-14.4 */
+bool memmove_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
+    xnu_pf_disable_patch(patch);
+
+    uint32_t *opcode_stream = cacheable_stream;
+
+    /* Look for the start of memmove's prologue, trying to match
+     * stp x29, x30, [sp, -0x10]! */
+    uint32_t instr_limit = 20;
+
+    while(*opcode_stream != 0xa9bf7bfd){
+        if(instr_limit-- == 0)
+            return false;
+
+        opcode_stream--;
+    }
+
+    g_memmove_addr = xnu_ptr_to_va(opcode_stream);
+
+    puts("xnuspy: found memmove");
+
+    return true;
+}
+
+/* confirmed working on all kernels 13.0-14.4 */
+bool memcmp_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
+    xnu_pf_disable_patch(patch);
+
+    g_memcmp_addr = xnu_ptr_to_va(cacheable_stream);
+
+    puts("xnuspy: found memcmp");
+
+    return true;
+}
+
+bool strnstr_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
+    xnu_pf_disable_patch(patch);
+
+    uint32_t *opcode_stream = cacheable_stream;
+
+    /* Look for the start of strnstr's prologue, trying to match
+     * stp x24, x23, [sp, -0x40]! */
+    uint32_t instr_limit = 50;
+
+    while(*opcode_stream != 0xa9bc5ff8){
+        if(instr_limit-- == 0)
+            return true;
+
+        opcode_stream--;
+    }
+
+    g_strnstr_addr = xnu_ptr_to_va(opcode_stream);
+
+    puts("xnuspy: found strnstr");
 
     return true;
 }

@@ -58,7 +58,6 @@ extern void (*lck_rw_free)(lck_rw_t *lock, void *grp);
 extern void (*lck_rw_lock_exclusive)(void *lock);
 extern void (*lck_rw_lock_shared)(void *lock);
 extern int (*lck_rw_lock_shared_to_exclusive)(lck_rw_t *lck);
-/* Extra underscore so compiler stops complaining */
 extern kern_return_t (*_mach_make_memory_entry_64)(void *target_map,
         uint64_t *size, uint64_t offset, vm_prot_t prot, void **object_handle,
         void *parent_handle);
@@ -67,6 +66,9 @@ extern kern_return_t (*mach_vm_map_external)(void *target_map,
         void *memory_object, uint64_t offset, int copy,
         vm_prot_t cur_protection, vm_prot_t max_protection,
         vm_inherit_t inheritance);
+extern int (*_memcmp)(const void *s1, const void *s2, size_t n);
+extern void *(*_memmove)(void *dest, const void *src, size_t n);
+extern void *(*_memset)(void *s, int c, size_t n);
 extern uint64_t offsetof_struct_thread_map;
 extern uint64_t (*phystokv)(uint64_t pa);
 extern void (*proc_list_lock)(void);
@@ -76,16 +78,12 @@ extern pid_t (*proc_pid)(void *proc);
 extern void (*proc_ref_locked)(void *proc);
 extern void (*proc_rele_locked)(void *proc);
 extern uint64_t (*proc_uniqueid)(void *proc);
-/* Extra underscore so compiler stops complaining */
 extern int (*_snprintf)(char *str, size_t size, const char *fmt, ...);
-/* Extra underscore so compiler stops complaining */
 extern size_t (*_strlen)(const char *s);
-/* Extra underscore so compiler stops complaining */
 extern int (*_strncmp)(const char *s1, const char *s2, size_t n);
+extern char *(*_strnstr)(const char *big, const char *little, size_t len);
 extern void (*thread_deallocate)(void *thread);
-/* Extra underscore so compiler stops complaining */
 extern void (*_thread_terminate)(void *thread);
-/* Extra underscore so compiler stops complaining */
 extern kern_return_t (*_vm_deallocate)(void *map,
         uint64_t start, uint64_t size);
 extern kern_return_t (*vm_map_unwire)(void *map, uint64_t start,

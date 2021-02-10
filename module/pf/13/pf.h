@@ -44,5 +44,9 @@ bool pinst_set_tcr_patcher_13(xnu_pf_patch_t *, void *);
 bool msr_tcr_el1_x18_patcher_13(xnu_pf_patch_t *, void *);
 bool proc_name_snprintf_strlen_finder_13(xnu_pf_patch_t *, void *);
 bool strncmp_finder_13(xnu_pf_patch_t *, void *);
+bool memset_finder_13(xnu_pf_patch_t *, void *);
+bool memmove_finder_13(xnu_pf_patch_t *, void *);
+bool memcmp_finder_13(xnu_pf_patch_t *, void *);
+bool strnstr_finder_13(xnu_pf_patch_t *, void *);
 
 #endif

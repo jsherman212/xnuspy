@@ -8,6 +8,9 @@ enum {
     XNUSPY_REGISTER_DEATH_CALLBACK,
     XNUSPY_CALL_HOOKME,
     XNUSPY_CACHE_READ,
+    XNUSPY_KREAD,
+    XNUSPY_KWRITE,
+    XNUSPY_GET_CURRENT_THREAD,
 };
 
 /* Values for XNUSPY_CACHE_READ */
@@ -62,6 +65,9 @@ enum {
     LCK_RW_LOCK_SHARED_TO_EXCLUSIVE,
     MACH_MAKE_MEMORY_ENTRY_64,
     MACH_VM_MAP_EXTERNAL,
+    MEMCMP,
+    MEMMOVE,
+    MEMSET,
 
     /* offsetof(struct thread, map), vm_map_t */
     OFFSETOF_STRUCT_THREAD_MAP,
@@ -80,6 +86,7 @@ enum {
     STRCMP,
     STRLEN,
     STRNCMP,
+    STRNSTR,
     VM_DEALLOCATE,
     VM_MAP_UNWIRE,
     VM_MAP_WIRE_EXTERNAL,

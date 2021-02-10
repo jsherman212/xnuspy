@@ -28,7 +28,10 @@ enum {
     XNUSPY_REGISTER_DEATH_CALLBACK,
     XNUSPY_CALL_HOOKME,
     XNUSPY_CACHE_READ,
-    XNUSPY_MAX_FLAVOR = XNUSPY_CACHE_READ,
+    XNUSPY_KREAD,
+    XNUSPY_KWRITE,
+    XNUSPY_GET_CURRENT_THREAD,
+    XNUSPY_MAX_FLAVOR = XNUSPY_GET_CURRENT_THREAD,
 };
 
 /* Values for XNUSPY_CACHE_READ */
@@ -64,6 +67,9 @@ enum xnuspy_cache_id {
     LCK_RW_LOCK_SHARED_TO_EXCLUSIVE,
     MACH_MAKE_MEMORY_ENTRY_64,
     MACH_VM_MAP_EXTERNAL,
+    MEMCMP,
+    MEMMOVE,
+    MEMSET,
     OFFSETOF_STRUCT_THREAD_MAP,
     PROC_LIST_LOCK,
     PROC_LIST_UNLOCK,
@@ -76,6 +82,7 @@ enum xnuspy_cache_id {
     STRCMP,
     STRLEN,
     STRNCMP,
+    STRNSTR,
     VM_DEALLOCATE,
     VM_MAP_UNWIRE,
     VM_MAP_WIRE_EXTERNAL,
@@ -144,7 +151,6 @@ MARK_AS_KERNEL_OFFSET void (*lck_rw_free)(lck_rw_t *lock, void *grp);
 MARK_AS_KERNEL_OFFSET void (*lck_rw_lock_exclusive)(void *lock);
 MARK_AS_KERNEL_OFFSET void (*lck_rw_lock_shared)(void *lock);
 MARK_AS_KERNEL_OFFSET int (*lck_rw_lock_shared_to_exclusive)(lck_rw_t *lck);
-/* Extra underscore so compiler stops complaining */
 MARK_AS_KERNEL_OFFSET kern_return_t (*_mach_make_memory_entry_64)(void *target_map,
         uint64_t *size, uint64_t offset, vm_prot_t prot, void **object_handle,
         void *parent_handle);
@@ -153,6 +159,9 @@ MARK_AS_KERNEL_OFFSET kern_return_t (*mach_vm_map_external)(void *target_map,
         void *memory_object, uint64_t offset, int copy,
         vm_prot_t cur_protection, vm_prot_t max_protection,
         vm_inherit_t inheritance);
+MARK_AS_KERNEL_OFFSET int (*_memcmp)(const void *s1, const void *s2, size_t n);
+MARK_AS_KERNEL_OFFSET void *(*_memmove)(void *dest, const void *src, size_t n);
+MARK_AS_KERNEL_OFFSET void *(*_memset)(void *s, int c, size_t n);
 MARK_AS_KERNEL_OFFSET uint64_t offsetof_struct_thread_map;
 MARK_AS_KERNEL_OFFSET uint64_t (*phystokv)(uint64_t pa);
 MARK_AS_KERNEL_OFFSET void (*proc_list_lock)(void);
@@ -163,17 +172,13 @@ MARK_AS_KERNEL_OFFSET pid_t (*proc_pid)(void *proc);
 MARK_AS_KERNEL_OFFSET void (*proc_ref_locked)(void *proc);
 MARK_AS_KERNEL_OFFSET void (*proc_rele_locked)(void *proc);
 MARK_AS_KERNEL_OFFSET uint64_t (*proc_uniqueid)(void *proc);
-/* Extra underscore so compiler stops complaining */
-MARK_AS_KERNEL_OFFSET int (*_snprintf)(char *str, size_t size,
-        const char *fmt, ...);
-/* Extra underscore so compiler stops complaining */
+MARK_AS_KERNEL_OFFSET int (*_snprintf)(char *str, size_t size, const char *fmt, ...);
 MARK_AS_KERNEL_OFFSET size_t (*_strlen)(const char *s);
-/* Extra underscore so compiler stops complaining */
 MARK_AS_KERNEL_OFFSET int (*_strncmp)(const char *s1, const char *s2, size_t n);
+MARK_AS_KERNEL_OFFSET char *(*_strnstr)(const char *big, const char *little,
+        size_t len);
 MARK_AS_KERNEL_OFFSET void (*thread_deallocate)(void *thread);
-/* Extra underscore so compiler stops complaining */
 MARK_AS_KERNEL_OFFSET void (*_thread_terminate)(void *thread);
-/* Extra underscore so compiler stops complaining */
 MARK_AS_KERNEL_OFFSET kern_return_t (*_vm_deallocate)(void *map,
         uint64_t start, uint64_t size);
 MARK_AS_KERNEL_OFFSET kern_return_t (*vm_map_unwire)(void *map, uint64_t start,
@@ -1146,6 +1151,15 @@ static int xnuspy_cache_read(enum xnuspy_cache_id which,
         case MACH_VM_MAP_EXTERNAL:
             what = mach_vm_map_external;
             break;
+        case MEMCMP:
+            what = _memcmp;
+            break;
+        case MEMMOVE:
+            what = _memmove;
+            break;
+        case MEMSET:
+            what = _memset;
+            break;
         case OFFSETOF_STRUCT_THREAD_MAP:
             what = (void *)offsetof_struct_thread_map;
             break;
@@ -1181,6 +1195,9 @@ static int xnuspy_cache_read(enum xnuspy_cache_id which,
             break;
         case STRNCMP:
             what = _strncmp;
+            break;
+        case STRNSTR:
+            what = _strnstr;
             break;
         case VM_DEALLOCATE:
             what = _vm_deallocate;
@@ -1243,6 +1260,37 @@ static int xnuspy_cache_read(enum xnuspy_cache_id which,
     return copyout(&what, outp, sizeof(outp));
 }
 
+static int xnuspy_kwhat(int what, uint64_t kva, uint64_t uva, vm_size_t sz){
+    SPYDBG("%s: called with flavor %d, kva %#llx, uva %#llx, sz %#llx\n",
+            __func__, what, kva, uva, sz);
+
+    uint64_t kphys = kvtophys(kva), uphys = uvtophys(uva);
+
+    if(!kphys || !uphys){
+        SPYDBG("%s: address translation failed for kva or uva kphys=%#llx"
+                " uphys=%#llx\n", __func__, kphys, uphys);
+        return EFAULT;
+    }
+
+    uint64_t src, dst;
+
+    if(what == XNUSPY_KREAD){
+        src = kphys;
+        dst = uphys;
+    }
+    else{
+        src = uphys;
+        dst = kphys;
+    }
+
+    bcopy_phys(src, dst, sz);
+
+    SPYDBG("%s: wrote %#llx bytes from %#llx to %#llx\n", __func__, sz,
+            src, dst);
+
+    return 0;
+}
+
 struct xnuspy_ctl_args {
     uint64_t flavor;
     uint64_t arg1;
@@ -1288,6 +1336,16 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
             {
                 enum xnuspy_cache_id xcid = (enum xnuspy_cache_id)uap->arg1;
                 res = xnuspy_cache_read(xcid, uap->arg2);
+                break;
+            }
+        case XNUSPY_KREAD:
+        case XNUSPY_KWRITE:
+            res = xnuspy_kwhat(flavor, uap->arg1, uap->arg2, uap->arg3);
+            break;
+        case XNUSPY_GET_CURRENT_THREAD:
+            {
+                uint64_t ct = current_thread();
+                res = copyout(&ct, uap->arg1, sizeof(ct));
                 break;
             }
         default:
