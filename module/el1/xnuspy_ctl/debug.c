@@ -40,7 +40,7 @@ void desc_orphan_mapping(struct orphan_mapping *om){
     SPYDBG("This orphan mapping is at %#llx\n", om);
     SPYDBG("Mapping addr: %#llx\n", om->mapping_addr);
     SPYDBG("Mapping size: %#llx\n", om->mapping_size);
-    SPYDBG("Mapping memory object: %#llx\n", om->memory_object);
+    SPYDBG("Mapping memory entry: %#llx\n", om->memory_entry);
 }
 
 /* XXX ONLY meant to be called from xnuspy_gc_thread, hence the lack
@@ -84,19 +84,52 @@ void desc_usedlist(void){
     lck_rw_done(xnuspy_rw_lck);
 }
 
-void desc_xnuspy_mapping_metadata(struct xnuspy_mapping_metadata *mm){
-    SPYDBG("Mapping metadata refcnt: %lld\n", mm->refcnt);
-    SPYDBG("Owner: %d\n", mm->owner);
-    SPYDBG("Memory object: %#llx\n", mm->memory_object);
-    SPYDBG("Shared mapping addr/size: %#llx/%#llx\n", mm->mapping_addr,
-            mm->mapping_size);
+static void _desc_xnuspy_mapping(struct xnuspy_mapping *m){
+    SPYDBG("\tMapping metadata refcnt: %lld\n", m->refcnt);
+    SPYDBG("\tMemory entry: %#llx\n", m->memory_entry);
+    SPYDBG("\tUserspace version of this mapping: %#llx\n", m->mapping_addr_uva);
+    SPYDBG("\tShared mapping addr/size: %#llx/%#llx\n", m->mapping_addr_kva,
+            m->mapping_size);
+
+    SPYDBG("\tDeath callback: ");
+
+    if(m->death_callback)
+        SPYDBG("%#llx\n", m->death_callback);
+    else
+        SPYDBG("none\n");
+}
+
+void desc_xnuspy_mapping(struct xnuspy_mapping *m){
+    SPYDBG("Mapping metadata refcnt: %lld\n", m->refcnt);
+    SPYDBG("Memory entry: %#llx\n", m->memory_entry);
+    SPYDBG("Userspace version of this mapping: %#llx\n", m->mapping_addr_uva);
+    SPYDBG("Shared mapping addr/size: %#llx/%#llx\n", m->mapping_addr_kva,
+            m->mapping_size);
 
     SPYDBG("Death callback: ");
 
-    if(mm->death_callback)
-        SPYDBG("%#llx\n", mm->death_callback);
+    if(m->death_callback)
+        SPYDBG("%#llx\n", m->death_callback);
     else
         SPYDBG("none\n");
+}
+
+void desc_xnuspy_mapping_metadata(struct xnuspy_mapping_metadata *mm){
+    SPYDBG("Owner: %d\n", mm->owner);
+    SPYDBG("Mappings:\n");
+
+    if(SLIST_EMPTY(&mm->mappings)){
+        SPYDBG("none\n");
+        return;
+    }
+
+    struct slist_entry *entry;
+
+    SLIST_FOREACH(entry, &mm->mappings, link){
+        struct xnuspy_mapping *m = entry->elem;
+        _desc_xnuspy_mapping(m);
+        SPYDBG("\n");
+    }
 }
 
 void desc_xnuspy_tramp(struct xnuspy_tramp *t, uint32_t orig_tramp_len){

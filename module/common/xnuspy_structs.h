@@ -8,29 +8,48 @@ struct stailq_entry {
     STAILQ_ENTRY(stailq_entry) link;
 };
 
+struct slist_entry {
+    void *elem;
+    SLIST_ENTRY(slist_entry) link;
+};
+
 /* This structure represents a shared mapping that's been added to the
  * unmaplist */
 struct orphan_mapping {
     uint64_t mapping_addr;
     uint64_t mapping_size;
-    void *memory_object;
+    void *memory_entry;
 };
 
-/* This structure represents a shared __TEXT and __DATA mapping. There is
- * one xnuspy_mapping_metadata struct per process. */
-struct xnuspy_mapping_metadata {
-    /* Reference count for metadata, NOT the xnuspy_tramp */
-    _Atomic uint64_t refcnt;
-    /* Process which owns this mapping (p_uniqueid) */
-    uint64_t owner;
-    /* Memory object for this shared mapping, ipc_port_t */
-    void *memory_object;
-    /* Address of the start of this mapping */
-    uint64_t mapping_addr;
-    /* Size of this mapping */
+/* This structure represents a shared __TEXT and __DATA mapping. There could
+ * be a number of these structures per-process because different dynamic
+ * libraries loaded into the address space of one process can install
+ * hooks. */
+struct xnuspy_mapping {
+    /* Reference count for this mapping, NOT the mapping metadata */
+    _Atomic int64_t refcnt;
+    /* Memory entry for this shared mapping, ipc_port_t */
+    void *memory_entry;
+    /* User address of the start of what this mapping represents */
+    uint64_t mapping_addr_uva;
+    /* Kernel address of the start of this mapping */
+    uint64_t mapping_addr_kva;
+    /* Size of this mapping, same for user and kernel */
     uint64_t mapping_size;
-    /* Death callback */
+    /* Death callback to invoke when refcnt hits zero */
     void (*death_callback)(void);
+};
+
+/* This structure maintains all shared mappings for a given process. There
+ * is one of these per-process. This will be deallocated when the mappings
+ * linked list is empty. */
+struct xnuspy_mapping_metadata {
+    /* Process which owns all of the mappings managed by this structure
+     * (p_uniqueid) */
+    uint64_t owner;
+    /* Linked list of all shared mappings we've created for this process.
+     * Protected by xnuspy_rw_lck. */
+    SLIST_HEAD(, slist_entry) mappings;
 };
 
 /* This structure contains information for an xnuspy_tramp that isn't
@@ -150,21 +169,33 @@ typedef struct __lck_rw_t__ {
     void *owner;
 } lck_rw_t;
 
+#define CAST_TO_VM_MAP_ENTRY(x) ((struct vm_map_entry *)(uintptr_t)(x))
+#define vm_map_to_entry(map) CAST_TO_VM_MAP_ENTRY(&(map)->hdr.links)
+#define vm_map_first_entry(map) ((map)->hdr.links.next)
+
 #define vme_prev		links.prev
 #define vme_next		links.next
 #define vme_start		links.start
 #define vme_end			links.end
 
+struct vm_map_links {
+    struct vm_map_entry *prev;
+    struct vm_map_entry *next;
+    uint64_t start;
+    uint64_t end;
+};
+
+struct vm_map_entry {
+    struct vm_map_links links;
+};
+
+struct vm_map_header {
+    struct vm_map_links links;
+};
+
 struct _vm_map {
     lck_rw_t lck;
-    struct {
-        struct {
-            void *prev;
-            void *next;
-            void *start;
-            void *end;
-        } links;
-    } hdr;
+    struct vm_map_header hdr;
 };
 
 struct sysent {

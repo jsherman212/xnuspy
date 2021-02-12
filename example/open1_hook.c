@@ -131,7 +131,6 @@ static int gather_kernel_offsets(void){
     GET(KPRINTF, &kprintf);
     GET(PROC_NAME, &proc_name);
     GET(PROC_PID, &proc_pid);
-    GET(SNPRINTF, &_snprintf);
     GET(STRCMP, &_strcmp);
     GET(UNIFIED_KALLOC, &unified_kalloc);
     GET(UNIFIED_KFREE, &unified_kfree);
@@ -165,7 +164,9 @@ int main(int argc, char **argv){
     }
 
     /* iphone se 14.3 */
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xfffffff0072da190,
+    /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xfffffff0072da190, */
+    /*         open1, &open1_orig); */
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xfffffff007d99c1c,
             open1, &open1_orig);
 
     if(ret){

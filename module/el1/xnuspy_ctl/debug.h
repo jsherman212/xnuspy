@@ -14,6 +14,7 @@ void desc_orphan_mapping(struct orphan_mapping *);
 void desc_unmaplist(void);
 void desc_usedlist(void);
 
+void desc_xnuspy_mapping(struct xnuspy_mapping *);
 void desc_xnuspy_mapping_metadata(struct xnuspy_mapping_metadata *);
 void desc_xnuspy_tramp(struct xnuspy_tramp *, uint32_t);
 

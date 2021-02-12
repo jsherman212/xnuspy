@@ -272,14 +272,61 @@ STAILQ_HEAD(, stailq_entry) unmaplist = STAILQ_HEAD_INITIALIZER(unmaplist);
 
 static uint64_t g_num_leaked_pages = 0;
 
-static void xnuspy_mapping_metadata_release(struct xnuspy_mapping_metadata *mm){
-    if(--mm->refcnt == 0){
-        if(mm->death_callback){
+/* static void xnuspy_mapping_metadata_release(struct xnuspy_mapping_metadata *mm){ */
+/*     if(--mm->refcnt == 0){ */
+/*         if(mm->death_callback){ */
+/*             SPYDBG("%s: invoking death callback\n", __func__); */
+/*             mm->death_callback(); */
+/*         } */
+
+/*         g_num_leaked_pages += mm->mapping_size / PAGE_SIZE; */
+
+/*         struct orphan_mapping *om = unified_kalloc(sizeof(*om)); */
+
+/*         /1* I don't care for allocation failures here, we just won't be able to */
+/*          * ever unmap this mapping. This shouldn't happen too often? *1/ */
+/*         if(!om){ */
+/*             SPYDBG("%s: om allocation failed\n", __func__); */
+/*             return; */
+/*         } */
+
+/*         struct stailq_entry *stqe = unified_kalloc(sizeof(*stqe)); */
+
+/*         if(!stqe){ */
+/*             SPYDBG("%s: stqe allocation failed\n", __func__); */
+/*             return; */
+/*         } */
+
+/*         om->mapping_addr = mm->mapping_addr; */
+/*         om->mapping_size = mm->mapping_size; */
+/*         om->memory_object = mm->memory_object; */
+
+/*         stqe->elem = om; */
+
+/*         STAILQ_INSERT_TAIL(&unmaplist, stqe, link); */
+
+/*         SPYDBG("%s: added mapping @ %#llx to the unmaplist\n", __func__, */
+/*                 om->mapping_addr); */
+/*         desc_orphan_mapping(om); */
+
+/*         unified_kfree(mm); */
+/*     } */
+/* } */
+
+/* static void xnuspy_mapping_metadata_reference(struct xnuspy_mapping_metadata *mm){ */
+/*     mm->refcnt++; */
+/* } */
+
+static bool xnuspy_mapping_release(struct xnuspy_mapping *m){
+    bool last = --m->refcnt == 0;
+
+    if(last){
+        if(m->death_callback){
             SPYDBG("%s: invoking death callback\n", __func__);
-            mm->death_callback();
+            m->death_callback();
         }
 
-        g_num_leaked_pages += mm->mapping_size / PAGE_SIZE;
+        g_num_leaked_pages += m->mapping_size / PAGE_SIZE;
 
         struct orphan_mapping *om = unified_kalloc(sizeof(*om));
 
@@ -287,19 +334,19 @@ static void xnuspy_mapping_metadata_release(struct xnuspy_mapping_metadata *mm){
          * ever unmap this mapping. This shouldn't happen too often? */
         if(!om){
             SPYDBG("%s: om allocation failed\n", __func__);
-            return;
+            return last;
         }
 
         struct stailq_entry *stqe = unified_kalloc(sizeof(*stqe));
 
         if(!stqe){
             SPYDBG("%s: stqe allocation failed\n", __func__);
-            return;
+            return last;
         }
 
-        om->mapping_addr = mm->mapping_addr;
-        om->mapping_size = mm->mapping_size;
-        om->memory_object = mm->memory_object;
+        om->mapping_addr = m->mapping_addr_kva;
+        om->mapping_size = m->mapping_size;
+        om->memory_entry = m->memory_entry;
 
         stqe->elem = om;
 
@@ -307,26 +354,47 @@ static void xnuspy_mapping_metadata_release(struct xnuspy_mapping_metadata *mm){
 
         SPYDBG("%s: added mapping @ %#llx to the unmaplist\n", __func__,
                 om->mapping_addr);
+
         desc_orphan_mapping(om);
 
-        unified_kfree(mm);
+        unified_kfree(m);
     }
+
+    return last;
 }
 
-static void xnuspy_mapping_metadata_reference(struct xnuspy_mapping_metadata *mm){
-    mm->refcnt++;
+static void xnuspy_mapping_reference(struct xnuspy_mapping *m){
+    m->refcnt++;
 }
 
 /* This function is expected to be called with an xnuspy_tramp that has
- * already been pulled off the usedlist, but not yet added to the freelist */
+ * already been pulled off the usedlist, but not yet added to the freelist.
+ * xnuspy_rw_lock is expected to be held exclusively if we're here. */
 static void xnuspy_tramp_teardown(struct xnuspy_tramp *t){
     struct xnuspy_mapping_metadata *mm = t->mapping_metadata;
+    struct xnuspy_tramp_metadata *tm = t->tramp_metadata;
 
-    if(mm){
-        if(mm->refcnt > 0)
-            xnuspy_mapping_metadata_release(mm);
+    uint64_t replacement_kva = t->replacement;
 
-        t->mapping_metadata = NULL;
+    struct slist_entry *entry, *tmp;
+
+    SLIST_FOREACH_SAFE(entry, &mm->mappings, link, tmp){
+        struct xnuspy_mapping *m = entry->elem;
+
+        uint64_t start = m->mapping_addr_kva;
+        uint64_t end = start + m->mapping_size;
+
+        if(replacement_kva >= start && replacement_kva < end){
+            if(xnuspy_mapping_release(m)){
+                SPYDBG("%s: last ref on mapping was released, removing from"
+                        " list\n", __func__);
+                SLIST_REMOVE(&mm->mappings, entry, slist_entry, link);
+            }
+
+            t->mapping_metadata = NULL;
+
+            break;
+        }
     }
 
     if(t->tramp_metadata){
@@ -366,6 +434,25 @@ static void xnuspy_tramp_commit(struct stailq_entry *stqe){
     lck_rw_lock_exclusive(xnuspy_rw_lck);
     STAILQ_INSERT_TAIL(&usedlist, stqe, link);
     lck_rw_done(xnuspy_rw_lck);
+}
+
+/* Add an xnuspy mapping to the list of the calling process's shared
+ * mappings. A reference for m must have been taken before calling this
+ * function. */
+static int xnuspy_mapping_add(struct xnuspy_mapping_metadata *mm,
+        struct xnuspy_mapping *m){
+    struct slist_entry *sle = unified_kalloc(sizeof(*sle));
+
+    if(!sle)
+        return ENOMEM;
+
+    sle->elem = m;
+
+    lck_rw_lock_exclusive(xnuspy_rw_lck);
+    SLIST_INSERT_HEAD(&mm->mappings, sle, link);
+    lck_rw_done(xnuspy_rw_lck);
+
+    return 0;
 }
 
 static struct xnuspy_mapping_metadata *find_mapping_metadata(void){
@@ -410,35 +497,43 @@ static int hook_already_exists(uint64_t target){
 
 /* Figure out the kernel virtual address of a user address on the
  * shared mapping for this process */
-static uint64_t shared_mapping_kva(struct xnuspy_mapping_metadata *mm,
-        struct mach_header_64 * /* __user */ umh,
+/* static uint64_t shared_mapping_kva(struct xnuspy_mapping_metadata *mm, */
+/*         struct mach_header_64 * /1* __user *1/ umh, */
+/*         uint64_t /1* __user *1/ uaddr){ */
+/*     uint64_t dist = uaddr - (uint64_t)umh; */
+
+/*     SPYDBG("%s: dist %#llx uaddr %#llx umh %#llx kmh %#llx\n", __func__, */
+/*             dist, uaddr, (uint64_t)umh, mm->mapping_addr); */
+
+/*     return mm->mapping_addr + dist; */
+/* } */
+
+/* Figure out the kernel virtual address of a user address on a shared
+ * mapping */
+static uint64_t shared_mapping_kva(struct xnuspy_mapping *m,
         uint64_t /* __user */ uaddr){
-    uint64_t dist = uaddr - (uint64_t)umh;
+    uint64_t dist = uaddr - m->mapping_addr_uva;
 
     SPYDBG("%s: dist %#llx uaddr %#llx umh %#llx kmh %#llx\n", __func__,
-            dist, uaddr, (uint64_t)umh, mm->mapping_addr);
+            dist, uaddr, m->mapping_addr_uva, m->mapping_addr_kva);
 
-    return mm->mapping_addr + dist;
+    return m->mapping_addr_kva + dist;
 }
 
-/* Create a shared mapping of the calling process' __TEXT and __DATA.
+/* Create a shared mapping of __TEXT and __DATA from the Mach-O header passed
+ * in.
+ *
  * We share __TEXT so the user can call other functions they wrote from their
  * kernel hooks. We share __DATA so modifications to global variables are
  * visible to both EL1 and EL0. 
  *
- * On success, it returns metadata for every hook this process will install.
- * We only have to do this once for each process since we're mapping the
- * entirety of __TEXT and __DATA and not just the one replacement function.
+ * On success, returns a new xnuspy_mapping struct with a reference taken.
  *
  * On failure, returns NULL and sets retval.
  */
-static struct xnuspy_mapping_metadata *
-map_caller_segments(struct mach_header_64 * /* __user */ umh,
+static struct xnuspy_mapping *
+map_segments(struct mach_header_64 * /* __user */ umh,
         struct _vm_map *current_map, int *retval){
-    uint64_t aslr_slide = (uintptr_t)umh - 0x100000000;
-    uint64_t copystart = 0, copysz = 0;
-    int seen_text = 0, seen_data = 0;
-
     struct mach_header_64 umh_kern;
 
     int res = copyin(umh, &umh_kern, sizeof(umh_kern));
@@ -478,6 +573,23 @@ map_caller_segments(struct mach_header_64 * /* __user */ umh,
         return NULL;
     }
 
+    uint64_t aslr_slide;
+
+    if(umh_kern.filetype == MH_EXECUTE)
+        aslr_slide = (uintptr_t)umh - 0x100000000;
+    else if(umh_kern.filetype == MH_DYLIB)
+        aslr_slide = (uintptr_t)umh;
+    else{
+        unified_kfree(lc);
+        SPYDBG("%s: the caller is not from a Mach-O executable or a"
+                " dylib? Filetype=%#x\n", __func__, umh_kern.filetype);
+        *retval = ENOTSUP;
+        return NULL;
+    }
+
+    uint64_t copystart = 0, copysz = 0;
+    bool seen_text = false, seen_data = false;
+
     uint32_t ncmds = umh_kern.ncmds;
 
     for(uint32_t i=0; i<ncmds; i++){
@@ -486,12 +598,14 @@ map_caller_segments(struct mach_header_64 * /* __user */ umh,
 
         struct segment_command_64 *sc64 = (struct segment_command_64 *)lc;
 
-        int is_text = strcmp(sc64->segname, "__TEXT") == 0;
-        int is_data = strcmp(sc64->segname, "__DATA") == 0;
+        bool is_text = strcmp(sc64->segname, "__TEXT") == 0;
+        bool is_data = strcmp(sc64->segname, "__DATA") == 0;
 
         /* These will always be page aligned and unslid */
         uint64_t start = sc64->vmaddr + aslr_slide;
         uint64_t end = start + sc64->vmsize;
+
+        SPYDBG("%s: start %#llx end %#llx\n", __func__, start, end);
 
         /* If this segment is neither __TEXT nor __DATA, but we've already
          * seen __TEXT or __DATA, we need to make sure we account for
@@ -508,10 +622,10 @@ map_caller_segments(struct mach_header_64 * /* __user */ umh,
             }
 
             if(is_text)
-                seen_text = 1;
+                seen_text = true;
 
             if(is_data)
-                seen_data = 1;
+                seen_data = true;
 
             if(seen_text && seen_data){
                 SPYDBG("%s: we've seen text and data, breaking\n", __func__);
@@ -529,23 +643,23 @@ nextcmd:
             copystart, copysz);
 
     int need_free_on_error = 0;
-    struct xnuspy_mapping_metadata *metadata = NULL;
+    struct xnuspy_mapping *m = NULL;
 
     if(!copystart || !copysz){
         *retval = ENOENT;
         goto failed;
     }
 
-    metadata = unified_kalloc(sizeof(*metadata));
+    m = unified_kalloc(sizeof(*m));
 
-    if(!metadata){
-        SPYDBG("%s: unified_kalloc returned NULL when allocating metadata\n",
+    if(!m){
+        SPYDBG("%s: unified_kalloc returned NULL when allocating mapping obj\n",
                 __func__);
         *retval = ENOMEM;
         goto failed;
     }
 
-    bzero(metadata, sizeof(*metadata));
+    bzero(m, sizeof(*m));
     need_free_on_error = 1;
 
     void *kernel_map = *kernel_mapp;
@@ -598,12 +712,12 @@ nextcmd:
         goto failed_dealloc_memobj;
     }
 
-    metadata->memory_object = shm_object;
+    m->memory_entry = shm_object;
 
     uint64_t shm_addr = 0;
     kret = mach_vm_map_external(kernel_map, &shm_addr, copysz, 0,
-            VM_FLAGS_ANYWHERE, metadata->memory_object, 0, 0, shm_prot,
-            shm_prot, VM_INHERIT_NONE);
+            VM_FLAGS_ANYWHERE, m->memory_entry, 0, 0, shm_prot, shm_prot,
+            VM_INHERIT_NONE);
 
     if(kret){
         SPYDBG("%s: mach_vm_map_external failed: %d\n", __func__, kret);
@@ -621,13 +735,15 @@ nextcmd:
         goto failed_dealloc_kernel_mapping;
     }
 
-    metadata->owner = proc_uniqueid(current_proc());
-    metadata->mapping_addr = shm_addr;
-    metadata->mapping_size = copysz;
+    m->mapping_addr_uva = (uint64_t)umh;
+    m->mapping_addr_kva = shm_addr;
+    m->mapping_size = copysz;
+
+    xnuspy_mapping_reference(m);
 
     *retval = 0;
 
-    return metadata;
+    return m;
 
 failed_unwire_kernel_mapping:
     vm_map_unwire(kernel_map, shm_addr, shm_addr + copysz, 0);
@@ -639,12 +755,74 @@ failed_unwire_user_segments:
     vm_map_unwire(current_map, copystart, copystart + copysz, 1);
 failed:;
    if(need_free_on_error)
-       unified_kfree(metadata);
+       unified_kfree(m);
 
     return NULL;
 }
 
-static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
+static struct xnuspy_mapping *
+find_mapping_for_uaddr(struct xnuspy_mapping_metadata *mm,
+        uint64_t /* __user */ addr){
+    struct slist_entry *entry;
+
+    lck_rw_lock_shared(xnuspy_rw_lck);
+
+    SLIST_FOREACH(entry, &mm->mappings, link){
+        struct xnuspy_mapping *m = entry->elem;
+
+        uint64_t /* __user */ start = m->mapping_addr_uva;
+        uint64_t /* __user */ end = m->mapping_size + start;
+
+        if(addr >= start && addr < end){
+            xnuspy_mapping_reference(m);
+            lck_rw_done(xnuspy_rw_lck);
+            return m;
+        }
+    }
+
+    lck_rw_done(xnuspy_rw_lck);
+
+    return NULL;
+}
+
+/* Given the vm_map of the caller, figure out the Mach-O header that
+ * corresponds to addr. This exists so xnuspy can be used inside dynamic
+ * libraries. */
+static struct mach_header_64 * /* __user */ mh_for_addr(struct _vm_map *cm,
+        uint64_t /* __user */ addr){
+    struct vm_map_entry *entry;
+
+    for(entry = vm_map_first_entry(cm);
+            entry != vm_map_to_entry(cm);
+            entry = entry->vme_next){
+        uint64_t /* __user */ start = entry->vme_start;
+        uint64_t /* __user */ end = entry->vme_end;
+
+        if(addr >= start && addr < end){
+            SPYDBG("%s: found mach header for %#llx @ %#llx\n", __func__,
+                    addr, start);
+
+            return (struct mach_header_64 *)start;
+
+            /* struct mach_header_64 umh_kern; */
+            /* int res = copyin(entry->vme_start, &umh_kern, sizeof(umh_kern)); */
+
+            /* if(res) */
+            /*     SPYDBG("%s: copyin mach header failed: %d\n", __func__, res); */
+            /* else{ */
+            /*     SPYDBG("%s: magic: %#x\n", __func__, umh_kern.magic); */
+            /* } */
+        }
+
+        /* SPYDBG("%s: entry %d: [%p-%p]\n", __func__, i, s, e); */
+
+        /* i++; */
+    }
+
+    return NULL;
+}
+
+static int xnuspy_install_hook(uint64_t target, uint64_t /* __user */ replacement,
         uint64_t /* __user */ origp){
     SPYDBG("%s: called with unslid target %#llx replacement %#llx origp %#llx\n",
             __func__, target, replacement, origp);
@@ -701,45 +879,93 @@ static int xnuspy_install_hook(uint64_t target, uint64_t replacement,
         }
     }
 
-    struct _vm_map *cm = current_map();
-
-    /* User pointer to Mach-O header of the calling process */
-    struct mach_header_64 *umh = cm->hdr.vme_start;
-
     /* Check if we've got mapping metadata for the calling process already.
-     * If we don't, we need to create a shared mapping out of __TEXT and
-     * __DATA. */
+     * If we don't, this is the first hook being installed for this process,
+     * so we need to create it. */
     struct xnuspy_mapping_metadata *mm = find_mapping_metadata();
 
-    if(!mm){
-        SPYDBG("%s: need to map __TEXT and __DATA\n", __func__);
+    bool need_mm_kfree_on_fail = false;
 
-        mm = map_caller_segments(umh, cm, &res);
+    if(!mm){
+        SPYDBG("%s: no mapping metadata for this process, creating it\n",
+                __func__);
+
+        mm = unified_kalloc(sizeof(*mm));
 
         if(!mm){
-            SPYDBG("%s: could not make mapping metadata: %d\n", __func__, res);
+            SPYDBG("%s: unified_kalloc failed for new metadata object\n",
+                    __func__);
+            res = ENOMEM;
             goto out_free_tramp_entry;
         }
+
+        need_mm_kfree_on_fail = true;
+
+        mm->owner = proc_uniqueid(current_proc());
+
+        SLIST_INIT(&mm->mappings);
     }
 
-    kprotect((void *)mm->mapping_addr, mm->mapping_size, VM_PROT_READ |
-            VM_PROT_WRITE | VM_PROT_EXECUTE);
+    /* Check to see if we already have a mapping for the replacement.
+     * If we don't, we need to create it now. A reference has already
+     * been taken for m if it's not NULL. */
+    struct xnuspy_mapping *m = find_mapping_for_uaddr(mm, replacement);
+    struct _vm_map *cm = current_map();
 
-    tramp->replacement = shared_mapping_kva(mm, umh, replacement);
+    if(!m){
+        struct mach_header_64 * /* __user */ umh = mh_for_addr(cm, replacement);
+
+        if(!umh){
+            SPYDBG("%s: could not find Mach-O header corresponding to the page"
+                    " containing %#llx\n", __func__, replacement);
+            /* XXX DOCUMENT THIS */
+            res = ENOENT;
+            goto out_free_mapping_metadata;
+        }
+
+        SPYDBG("%s: no shared mapping for %#llx, creating it now\n",
+                __func__, replacement);
+
+        m = map_segments(umh, cm, &res);
+
+        if(!m){
+            SPYDBG("%s: could not make mapping: %d\n", __func__, res);
+            goto out_free_mapping_metadata;
+        }
+
+        res = xnuspy_mapping_add(mm, m);
+
+        if(res){
+            SPYDBG("%s: Could not add this mapping struct to mapping list"
+                    " for this process: %d\n", __func__, res);
+            goto out_release_mapping;
+        }
+
+        /* Easier to just grant rwx to all pages of the shared mapping */
+        kprotect((void *)m->mapping_addr_kva, m->mapping_size, VM_PROT_READ |
+                VM_PROT_WRITE | VM_PROT_EXECUTE);
+    }
+
+    tramp->replacement = shared_mapping_kva(m, replacement);
     tramp->tramp_metadata = tm;
     tramp->mapping_metadata = mm;
-
-    xnuspy_mapping_metadata_reference(tramp->mapping_metadata);
-    xnuspy_tramp_commit(tramp_entry);
 
     desc_xnuspy_tramp(tramp, orig_tramp_len);
 
     uint32_t branch = assemble_b(target, (uint64_t)tramp->tramp);
 
+    IOSleep(6000);
+
     kwrite_instr(target, branch);
+    xnuspy_tramp_commit(tramp_entry);
 
     return 0;
 
+out_release_mapping:
+    xnuspy_mapping_release(m);
+out_free_mapping_metadata:;
+    if(need_mm_kfree_on_fail)
+        unified_kfree(mm);
 out_free_tramp_entry:
     xnuspy_tramp_free(tramp_entry);
 out_free_tramp_metadata:
@@ -784,18 +1010,22 @@ static void xnuspy_do_gc(void){
 
         struct orphan_mapping *om = entry->elem;
 
-        ipc_port_release_send(om->memory_object);
+        ipc_port_release_send(om->memory_entry);
 
         /* If we fail from this point on, make sure we don't update
          * g_num_leaked_pages */
-        int didfail = 0;
+        bool didfail = false;
 
         kern_return_t kret = vm_map_unwire(*kernel_mapp, om->mapping_addr,
                 om->mapping_addr + om->mapping_size, 0);
 
         if(kret){
             SPYDBG("%s: vm_map_unwire failed: %#x\n", __func__, kret);
-            didfail = 1;
+            didfail = true;
+
+            /* Maybe it's unsafe to deallocate if we failed to unwire?
+             * Honestly don't know */
+            goto end;
         }
 
         kret = _vm_deallocate(*kernel_mapp, om->mapping_addr,
@@ -803,13 +1033,16 @@ static void xnuspy_do_gc(void){
 
         if(kret){
             SPYDBG("%s: vm_deallocate failed: %#x\n", __func__, kret);
-            didfail = 1;
+            didfail = true;
         }
 
-        if(didfail)
-            SPYDBG("%s: failed :( these pages will be leaked forever\n", __func__);
+end:;
+        if(didfail){
+            SPYDBG("%s: failed to gc :( those pages will be leaked forever\n",
+                    __func__);
+        }
         else{
-            SPYDBG("%s: okay\n", __func__);
+            SPYDBG("%s: gc okay\n", __func__);
             g_num_leaked_pages -= om->mapping_size / PAGE_SIZE;
         }
 
@@ -861,9 +1094,10 @@ static void xnuspy_gc_thread(void *param, int wait_result){
              * last proc structure in the list for some reason */
             void *curproc = *allprocp;
             pid_t pid;
+
             /* For simplicity, assume owner is dead before we start the
              * search */
-            int owner_dead = 1;
+            bool owner_dead = true;
 
             do {
                 proc_ref_locked(curproc);
@@ -875,7 +1109,7 @@ static void xnuspy_gc_thread(void *param, int wait_result){
                 proc_rele_locked(curproc);
 
                 if(mm->owner == uniqueid){
-                    owner_dead = 0;
+                    owner_dead = false;
                     break;
                 }
 
@@ -1007,14 +1241,20 @@ static int xnuspy_register_death_callback(uint64_t /* __user */ addr){
     }
 
     struct _vm_map *cm = current_map();
-    struct mach_header_64 *umh = cm->hdr.vme_start;
+    struct xnuspy_mapping *m = find_mapping_for_uaddr(mm, addr);
 
-    uint64_t addr_kva = shared_mapping_kva(mm, umh, addr);
+    if(!m){
+        SPYDBG("%s: no mapping struct for user addr %#llx?\n", __func__,
+                addr);
+        return ENOENT;
+    }
 
-    mm->death_callback = (void (*)(void))addr_kva;
+    m->death_callback = (void (*)(void))shared_mapping_kva(m, addr);
 
     SPYDBG("%s: set death callback to %#llx for %lld\n", __func__,
-            (uint64_t)mm->death_callback, mm->owner);
+            (uint64_t)m->death_callback, mm->owner);
+
+    xnuspy_mapping_release(m);
 
     return 0;
 }
