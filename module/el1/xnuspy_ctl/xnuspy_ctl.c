@@ -163,6 +163,7 @@ MARK_AS_KERNEL_OFFSET int (*_memcmp)(const void *s1, const void *s2, size_t n);
 MARK_AS_KERNEL_OFFSET void *(*_memmove)(void *dest, const void *src, size_t n);
 MARK_AS_KERNEL_OFFSET void *(*_memset)(void *s, int c, size_t n);
 MARK_AS_KERNEL_OFFSET uint64_t offsetof_struct_thread_map;
+MARK_AS_KERNEL_OFFSET __attribute__ ((noreturn)) void (*_panic)(const char *fmt, ...);
 MARK_AS_KERNEL_OFFSET uint64_t (*phystokv)(uint64_t pa);
 MARK_AS_KERNEL_OFFSET void (*proc_list_lock)(void);
 MARK_AS_KERNEL_OFFSET void **proc_list_mlockp;
@@ -273,7 +274,12 @@ STAILQ_HEAD(, stailq_entry) unmaplist = STAILQ_HEAD_INITIALIZER(unmaplist);
 static uint64_t g_num_leaked_pages = 0;
 
 static bool xnuspy_mapping_release(struct xnuspy_mapping *m){
-    bool last = --m->refcnt == 0;
+    int64_t prev = m->refcnt--;
+
+    if(prev < 1)
+        _panic("xnuspy_mapping(%p) over-release!", m);
+
+    bool last = (prev == 1);
 
     if(last){
         if(m->death_callback){
@@ -319,7 +325,13 @@ static bool xnuspy_mapping_release(struct xnuspy_mapping *m){
 }
 
 static void xnuspy_mapping_reference(struct xnuspy_mapping *m){
-    m->refcnt++;
+    int64_t prev = m->refcnt++;
+
+    if(prev < 0)
+        _panic("xnuspy_mapping(%p) resurrection!", m);
+
+    if(prev >= MAX_MAPPING_REFERENCES)
+        _panic("xnuspy_mapping(%p) possible memory corruption!", m);
 }
 
 /* This function is expected to be called with an xnuspy_tramp that has
@@ -891,7 +903,7 @@ static int xnuspy_install_hook(uint64_t target, uint64_t /* __user */ replacemen
 
     xnuspy_tramp_commit(tramp_entry);
 
-    IOSleep(6000);
+    /* IOSleep(6000); */
     kwrite_instr(target, branch);
 
     return 0;
@@ -1530,9 +1542,6 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
     if(res)
 out:
         *retval = -1;
-
-    /* XXX XXX */
-    asm volatile(".align 9");
 
     return res;
 }

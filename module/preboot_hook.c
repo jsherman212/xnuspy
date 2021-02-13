@@ -84,6 +84,7 @@ static struct xnuspy_ctl_kernel_symbol {
     { "__memmove", &g_memmove_addr },
     { "__memset", &g_memset_addr },
     { "_offsetof_struct_thread_map", &g_offsetof_struct_thread_map },
+    { "__panic", &g_panic_addr },
     { "_phystokv", &g_phystokv_addr },
     { "_proc_list_lock", &g_proc_list_lock_addr },
     { "_proc_list_mlockp", &g_proc_list_mlock_addr },
@@ -193,6 +194,7 @@ static void anything_missing(void){
     chk(!g_memmove_addr, "memmove not found\n");
     chk(!g_memcmp_addr, "memcmp not found\n");
     chk(!g_strnstr_addr, "strnstr not found\n");
+    chk(!g_panic_addr, "panic not found\n");
 
     /* if we printed the error header, something is missing */
     if(printed_err_hdr)

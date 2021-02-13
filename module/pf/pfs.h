@@ -1456,6 +1456,44 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
             }),
             3, strnstr_finder_13, "__TEXT_EXEC"),
     },
+    {
+        PF_DECL32("panic finder iOS 13",
+            LISTIZE({
+                0x910023e1,     /* add x1, sp, #8 */
+                0x52800002,     /* mov w2, #0 */
+                0xd2800003,     /* mov x3, #0 */
+                0xd2800004,     /* mov x4, #0 */
+                0xd2800005,     /* mov x5, #0 */
+                0xaa1e03e6      /* mov x6, x30 */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+            }),
+            6, panic_finder_13, "__TEXT_EXEC"),
+        PF_DECL32("panic finder iOS 14",
+            LISTIZE({
+                0x910023e1,     /* add x1, sp, #8 */
+                0x52800002,     /* mov w2, #0 */
+                0xd2800003,     /* mov x3, #0 */
+                0xd2800004,     /* mov x4, #0 */
+                0xd2800005,     /* mov x5, #0 */
+                0xaa1e03e6      /* mov x6, x30 */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+            }),
+            6, panic_finder_13, "__TEXT_EXEC"),
+    },
     { PF_END, PF_END },
 };
 

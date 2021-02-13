@@ -21,6 +21,8 @@ struct orphan_mapping {
     void *memory_entry;
 };
 
+#define MAX_MAPPING_REFERENCES (0x1000000)
+
 /* This structure represents a shared __TEXT and __DATA mapping. There could
  * be a number of these structures per-process because different dynamic
  * libraries loaded into the address space of one process can install

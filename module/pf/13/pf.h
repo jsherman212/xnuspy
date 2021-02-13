@@ -48,5 +48,6 @@ bool memset_finder_13(xnu_pf_patch_t *, void *);
 bool memmove_finder_13(xnu_pf_patch_t *, void *);
 bool memcmp_finder_13(xnu_pf_patch_t *, void *);
 bool strnstr_finder_13(xnu_pf_patch_t *, void *);
+bool panic_finder_13(xnu_pf_patch_t *, void *);
 
 #endif

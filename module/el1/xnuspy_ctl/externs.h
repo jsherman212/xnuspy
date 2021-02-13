@@ -70,6 +70,7 @@ extern int (*_memcmp)(const void *s1, const void *s2, size_t n);
 extern void *(*_memmove)(void *dest, const void *src, size_t n);
 extern void *(*_memset)(void *s, int c, size_t n);
 extern uint64_t offsetof_struct_thread_map;
+extern __attribute__ ((noreturn)) void (*_panic)(const char *fmt, ...);
 extern uint64_t (*phystokv)(uint64_t pa);
 extern void (*proc_list_lock)(void);
 extern void **proc_list_mlockp;

@@ -70,6 +70,7 @@ uint64_t g_memset_addr;
 uint64_t g_memmove_addr;
 uint64_t g_memcmp_addr;
 uint64_t g_strnstr_addr;
+uint64_t g_panic_addr;
 uint64_t g_xnuspy_sysctl_mib_ptr = 0;
 uint64_t g_xnuspy_sysctl_mib_count_ptr = 0;
 uint64_t g_xnuspy_ctl_callnum = 0;
@@ -1229,6 +1230,30 @@ bool strnstr_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     g_strnstr_addr = xnu_ptr_to_va(opcode_stream);
 
     puts("xnuspy: found strnstr");
+
+    return true;
+}
+
+bool panic_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
+    xnu_pf_disable_patch(patch);
+
+    uint32_t *opcode_stream = cacheable_stream;
+
+    /* Look for the start of panic's prologue, trying to match
+     * sub sp, sp, n */
+    uint32_t instr_limit = 50;
+
+    while((*opcode_stream & 0xffc003ff) != 0xd10003ff){
+        if(instr_limit-- == 0)
+            return false;
+
+        opcode_stream--;
+    }
+
+    g_panic_addr = xnu_ptr_to_va(opcode_stream);
+
+    puts("xnuspy: found panic");
+    printf("%s: panic @ %#llx\n", __func__, g_panic_addr-kernel_slide);
 
     return true;
 }
