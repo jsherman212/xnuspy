@@ -277,7 +277,7 @@ static bool xnuspy_mapping_release(struct xnuspy_mapping *m){
     int64_t prev = m->refcnt--;
 
     if(prev < 1)
-        _panic("xnuspy_mapping(%p) over-release!", m);
+        _panic("xnuspy_mapping(%p) over-release", m);
 
     bool last = (prev == 1);
 
@@ -328,10 +328,10 @@ static void xnuspy_mapping_reference(struct xnuspy_mapping *m){
     int64_t prev = m->refcnt++;
 
     if(prev < 0)
-        _panic("xnuspy_mapping(%p) resurrection!", m);
+        _panic("xnuspy_mapping(%p) resurrection", m);
 
     if(prev >= MAX_MAPPING_REFERENCES)
-        _panic("xnuspy_mapping(%p) possible memory corruption!", m);
+        _panic("xnuspy_mapping(%p) possible memory corruption", m);
 }
 
 /* This function is expected to be called with an xnuspy_tramp that has
@@ -562,8 +562,8 @@ map_segments(struct mach_header_64 * /* __user */ umh,
         bool is_data = strcmp(sc64->segname, "__DATA") == 0;
 
         /* These will always be page aligned and unslid */
-        uint64_t start = sc64->vmaddr + aslr_slide;
-        uint64_t end = start + sc64->vmsize;
+        uint64_t /* __user */ start = sc64->vmaddr + aslr_slide;
+        uint64_t /* __user */ end = start + sc64->vmsize;
 
         SPYDBG("%s: start %#llx end %#llx\n", __func__, start, end);
 
@@ -651,12 +651,12 @@ nextcmd:
     vm_prot_t shm_prot = VM_PROT_READ;
 
     /* ipc_port_t */
-    void *shm_object = NULL;
+    void *shm_entry = NULL;
 
     uint64_t copysz_before = copysz;
 
     kret = _mach_make_memory_entry_64(current_map, &copysz, copystart,
-            MAP_MEM_VM_SHARE | shm_prot, &shm_object, NULL);
+            MAP_MEM_VM_SHARE | shm_prot, &shm_entry, NULL);
 
     if(kret){
         SPYDBG("%s: mach_make_memory_entry_64 failed: %d\n", __func__, kret);
@@ -669,20 +669,19 @@ nextcmd:
                 "expected %#llx\n", __func__, copysz, copysz_before);
         /* Probably not the best option */
         *retval = EIO;
-        goto failed_dealloc_memobj;
+        goto failed_dealloc_mementry;
     }
 
-    m->memory_entry = shm_object;
-
     uint64_t shm_addr = 0;
+
     kret = mach_vm_map_external(kernel_map, &shm_addr, copysz, 0,
-            VM_FLAGS_ANYWHERE, m->memory_entry, 0, 0, shm_prot, shm_prot,
+            VM_FLAGS_ANYWHERE, shm_entry, 0, 0, shm_prot, shm_prot,
             VM_INHERIT_NONE);
 
     if(kret){
         SPYDBG("%s: mach_vm_map_external failed: %d\n", __func__, kret);
         *retval = kern_return_to_errno(kret);
-        goto failed_dealloc_memobj;
+        goto failed_dealloc_mementry;
     }
 
     /* Wire down the shared mapping */
@@ -695,6 +694,7 @@ nextcmd:
         goto failed_dealloc_kernel_mapping;
     }
 
+    m->memory_entry = shm_entry;
     m->mapping_addr_uva = (uint64_t)umh;
     m->mapping_addr_kva = shm_addr;
     m->mapping_size = copysz;
@@ -709,8 +709,8 @@ failed_unwire_kernel_mapping:
     vm_map_unwire(kernel_map, shm_addr, shm_addr + copysz, 0);
 failed_dealloc_kernel_mapping:
     _vm_deallocate(kernel_map, shm_addr, copysz);
-failed_dealloc_memobj:
-    ipc_port_release_send(shm_object);
+failed_dealloc_mementry:
+    ipc_port_release_send(shm_entry);
 failed_unwire_user_segments:
     vm_map_unwire(current_map, copystart, copystart + copysz, 1);
 failed:;
@@ -752,6 +752,8 @@ static struct mach_header_64 * /* __user */ mh_for_addr(struct _vm_map *cm,
         uint64_t /* __user */ addr){
     struct vm_map_entry *entry;
 
+    lck_rw_lock_shared(&cm->lck);
+
     for(entry = vm_map_first_entry(cm);
             entry != vm_map_to_entry(cm);
             entry = entry->vme_next){
@@ -759,6 +761,8 @@ static struct mach_header_64 * /* __user */ mh_for_addr(struct _vm_map *cm,
         uint64_t /* __user */ end = entry->vme_end;
 
         if(addr >= start && addr < end){
+            lck_rw_done(&cm->lck);
+
             SPYDBG("%s: found mach header for %#llx @ %#llx\n", __func__,
                     addr, start);
 
@@ -766,11 +770,13 @@ static struct mach_header_64 * /* __user */ mh_for_addr(struct _vm_map *cm,
         }
     }
 
+    lck_rw_done(&cm->lck);
+
     return NULL;
 }
 
-static int xnuspy_install_hook(uint64_t target, uint64_t /* __user */ replacement,
-        uint64_t /* __user */ origp){
+static int xnuspy_install_hook(uint64_t target,
+        uint64_t /* __user */ replacement, uint64_t /* __user */ origp){
     SPYDBG("%s: called with unslid target %#llx replacement %#llx origp %#llx\n",
             __func__, target, replacement, origp);
 
