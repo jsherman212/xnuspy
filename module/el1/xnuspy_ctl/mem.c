@@ -44,6 +44,48 @@ __attribute__ ((naked)) uint64_t uvtophys(uint64_t kaddr){
             );
 }
 
+void dcache_clean_PoU(void *address, size_t size){
+    const size_t cache_line_size = 64;
+
+    size = (size + cache_line_size) & ~(cache_line_size - 1);
+
+    uint64_t start = ((uint64_t)address & ~(cache_line_size - 1));
+    uint64_t end = start + size;
+
+    asm volatile("isb sy");
+
+    do {
+        asm volatile(""
+                "dc cvau, %0\n"
+                "dsb ish\n"
+                "isb sy\n"
+                : : "r" (start));
+
+        start += cache_line_size;
+    } while (start < end);
+}
+
+void icache_invalidate_PoU(void *address, size_t size){
+    const size_t cache_line_size = 64;
+
+    size = (size + cache_line_size) & ~(cache_line_size - 1);
+
+    uint64_t start = ((uint64_t)address & ~(cache_line_size - 1));
+    uint64_t end = start + size;
+
+    asm volatile("isb sy");
+
+    do {
+        asm volatile(""
+                "ic ivau, %0\n"
+                "dsb ish\n"
+                "isb sy\n"
+                : : "r" (start));
+
+        start += cache_line_size;
+    } while (start < end);
+}
+
 /* Write to static kernel memory, using bcopy_phys.
  *
  * Parameters:
@@ -152,11 +194,8 @@ void kwrite_instr(uint64_t dst, uint32_t instr){
 
     *(uint32_t *)dst = instr;
 
-    asm volatile("dc cvau, %0" : : "r" (dst));
-    asm volatile("dsb ish");
-    asm volatile("ic ivau, %0" : : "r" (dst));
-    asm volatile("dsb ish");
-    asm volatile("isb sy");
+    dcache_clean_PoU((void *)dst, sizeof(uint32_t));
+    icache_invalidate_PoU((void *)dst, sizeof(uint32_t));
 
     kprotect((void *)dst, sizeof(uint32_t), VM_PROT_READ | VM_PROT_EXECUTE);
 }

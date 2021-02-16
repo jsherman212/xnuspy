@@ -98,8 +98,6 @@ static uint64_t kaddr_of_port(mach_port_t p){
         return 0;
     }
 
-    /* printf("offset of map: %#llx\n", offsetof_map); */
-
     /* task pointer is conveniently right before map pointer for all
      * my phones */
     uint64_t task;
@@ -110,8 +108,6 @@ static uint64_t kaddr_of_port(mach_port_t p){
         printf("%s: kread failed for task: %s\n", __func__, strerror(errno));
         return 0;
     }
-
-    /* printf("task: %p\n", task); */
 
     if(!task){
         printf("%s: task NULL?\n", __func__);
@@ -184,13 +180,6 @@ int main(int argc, char **argv){
     printf("mach_task_self() @ %#llx\n", taskport_kaddr);
 
     kdump(taskport_kaddr, 0xa8);
-
-    /* uint64_t val = 0x4142434445464749; */
-    /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_KWRITE, taskport_kaddr+0x68, &val, */
-    /*         sizeof(val)); */
-    /* kdump(taskport_kaddr, 0xa8); */
-    /* printf("%d\n", ret); */
-    /* sleep(1); */
 
     return 0;
 }

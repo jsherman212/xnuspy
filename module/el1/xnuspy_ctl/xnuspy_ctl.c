@@ -538,7 +538,7 @@ map_segments(struct mach_header_64 * /* __user */ umh,
     if(umh_kern.filetype == MH_EXECUTE)
         aslr_slide = (uintptr_t)umh - 0x100000000;
     else if(umh_kern.filetype == MH_DYLIB)
-        aslr_slide = (uintptr_t)umh;
+        aslr_slide = (uint64_t)umh;
     else{
         unified_kfree(lc);
         SPYDBG("%s: the caller is not from a Mach-O executable or a"
@@ -602,7 +602,7 @@ nextcmd:
     SPYDBG("%s: ended with copystart %#llx copysz %#llx\n", __func__,
             copystart, copysz);
 
-    int need_free_on_error = 0;
+    bool need_free_on_error = false;
     struct xnuspy_mapping *m = NULL;
 
     if(!copystart || !copysz){
@@ -620,7 +620,8 @@ nextcmd:
     }
 
     bzero(m, sizeof(*m));
-    need_free_on_error = 1;
+
+    need_free_on_error = true;
 
     void *kernel_map = *kernel_mapp;
 
@@ -820,6 +821,12 @@ static int xnuspy_install_hook(uint64_t target,
     generate_replacement_tramp(tramp->tramp);
     generate_original_tramp(target + 4, tramp->orig, &orig_tramp_len);
 
+    dcache_clean_PoU(tramp->tramp, sizeof(tramp->tramp));
+    icache_invalidate_PoU(tramp->tramp, sizeof(tramp->tramp));
+
+    dcache_clean_PoU(tramp->orig, sizeof(tramp->orig));
+    icache_invalidate_PoU(tramp->orig, sizeof(tramp->orig));
+
     /* copyout the original function trampoline before the target
      * function is hooked, if necessary */
     if(origp){
@@ -899,17 +906,15 @@ static int xnuspy_install_hook(uint64_t target,
                 VM_PROT_WRITE | VM_PROT_EXECUTE);
     }
 
+    uint32_t branch = assemble_b(target, (uint64_t)tramp->tramp);
+
     tramp->replacement = shared_mapping_kva(m, replacement);
     tramp->tramp_metadata = tm;
     tramp->mapping_metadata = mm;
 
     desc_xnuspy_tramp(tramp, orig_tramp_len);
 
-    uint32_t branch = assemble_b(target, (uint64_t)tramp->tramp);
-
     xnuspy_tramp_commit(tramp_entry);
-
-    /* IOSleep(6000); */
     kwrite_instr(target, branch);
 
     return 0;

@@ -4,6 +4,9 @@
 __attribute__((naked)) uint64_t kvtophys(uint64_t);
 __attribute__((naked)) uint64_t uvtophys(uint64_t);
 
+void dcache_clean_PoU(void *address, size_t size);
+void icache_invalidate_PoU(void *address, size_t size);
+
 int kprotect(void *, uint64_t, vm_prot_t);
 int uprotect(void *, uint64_t, vm_prot_t);
 
