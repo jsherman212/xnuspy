@@ -50,7 +50,8 @@ sysctlbyname("kern.xnuspy_ctl_callnum", &SYS_xnuspy_ctl, &oldlen, NULL, 0);
 
 This system call takes four arguments, `flavor`, `arg1`, `arg2`, and `arg3`.
 The flavor can either be `XNUSPY_CHECK_IF_PATCHED`, `XNUSPY_INSTALL_HOOK`,
-`XNUSPY_REGISTER_DEATH_CALLBACK`, `XNUSPY_CALL_HOOKME`, or `XNUSPY_CACHE_READ`.
+`XNUSPY_REGISTER_DEATH_CALLBACK`, `XNUSPY_CALL_HOOKME`, `XNUSPY_CACHE_READ`,
+`XNUSPY_KREAD`, `XNUSPY_KWRITE`, or `XNUSPY_GET_CURRENT_THREAD`.
 The meaning of the next three arguments depend on the flavor.
 
 ## `XNUSPY_CHECK_IF_PATCHED`
@@ -88,44 +89,68 @@ There are no arguments for this flavor.
 
 ## `XNUSPY_CACHE_READ`
 This flavor gives you a way to read from the xnuspy cache. It contains many useful
-things like `kprintf`, `current_proc`, `kernel_thread_start`, and the kernel slide
-so you don't have to find them yourself. For a complete list of cache IDs, check
-out `example/xnuspy_ctl.h`. 
+things like `kprintf`, `current_proc`, `kernel_thread_start`, some libc functions,
+and the kernel slide so you don't have to find them yourself. For a complete list
+of cache IDs, check out `example/xnuspy_ctl.h`. 
 
 `arg1` is one of the cache IDs defined in `xnuspy_ctl.h` and `arg2` is a
 pointer for `xnuspy_ctl` to `copyout` the address or value of what you requested.
+The values of the other arguments are ignored.
+
+## `XNUSPY_KREAD`
+This flavor gives you an easy way to read kernel memory from userspace without
+tfp0.
+
+`arg1` is a kernel virtual address, `arg2` is the address of a userspace buffer,
+and `arg3` is the size of that userspace buffer. `arg3` bytes will be written
+from `arg1` to `arg2`.
+
+## `XNUSPY_KWRITE`
+This flavor gives you an easy way to write to kernel memory from userspace without
+tfp0.
+
+`arg1` is a kernel virtual address, `arg2` is the address of a userspace buffer,
+and `arg3` is the size of that userspace buffer. `arg3` bytes will be written
+from `arg2` to `arg1`.
+
+## `XNUSPY_GET_CURRENT_THREAD`
+This flavor provides userspace the kernel address of the calling thread.
+
+`arg1` is a pointer for `xnuspy_ctl` to `copyout` the return value of
+`current_thread`. The values of the other arguments are ignored.
 
 ### Errors
 For all flavors except `XNUSPY_CHECK_IF_PATCHED`, `0` is returned on success.
 Upon error, `-1` is returned and `errno` is set. `XNUSPY_CHECK_IF_PATCHED`
-does not return any errors.
+does not return any errors. XNU's `mach_to_bsd_errno` is used to convert a
+`kern_return_t` to the appropriate `errno`. 
 
 #### Errors Pertaining to `XNUSPY_INSTALL_HOOK`
 `errno` is set to...
 - `EEXIST` if:
   - A hook already exists for the unslid kernel function denoted by `arg1`.
 - `ENOMEM` if:
-  - `kalloc_canblock` or `kalloc_external` returned `NULL`.
+  - `unified_kalloc` returned `NULL`.
 - `ENOSPC` if:
   - There are no free `xnuspy_tramp` structs, a data structure internal to
 xnuspy. This shouldn't happen unless you're hooking hundreds of kernel functions
 *at the same time*. If you need more function hooks, check out the section about
 limits under "Important Information".
-- `EFAULT` if:
-  - `current_map()->hdr.vme_start` is not a pointer to the calling processes'
-Mach-O header.
+- `ENOTSUP` if:
+  - The caller is not from a Mach-O executable or dynamic library.
 - `ENOENT` if:
-  - `map_caller_segments` was unable to find `__TEXT` and `__DATA` for the
-calling process.
+  - `mh_for_addr` was unable to determine the Mach-O header corresponding to
+`arg2` inside the caller's address space.
+- `EFAULT` if:
+  - The determined Mach-O header is not actually a Mach-O header. This will probably
+never happen.
 - `EIO` if:
   - `mach_make_memory_entry_64` did not return a memory entry for the entirety
-of the calling processes' `__TEXT` and `__DATA` segments.
+of the determined Mach-O header's `__TEXT` and `__DATA` segments.
 
 `errno` also depends on the return value of `vm_map_wire_external`,
-`mach_vm_map_external`, `copyin`, `copyout`, and if applicable, the one-time
-initialization function. An `errno` of `10000` represents a `kern_return_t`
-value that I haven't yet taken into account for (and a message is printed
-to the kernel log about it if you compiled with `XNUSPY_DEBUG=1`).
+`mach_vm_map_external`, `mach_make_memory_entry_64`, `copyin`, `copyout`, and
+if applicable, the one-time initialization function.
 
 If this flavor returns an error, the target kernel function was not hooked.
 If you passed a non-`NULL` pointer for `arg3`, it may or may not have been
@@ -164,6 +189,17 @@ return value of the one-time initialization function.
 If this flavor returns an error, the pointer you passed for `arg2` was not
 initialized.
 
+#### Errors Pertaining to `XNUSPY_KREAD` and `XNUSPY_KWRITE`
+`errno` is set to...
+- `EFAULT` if:
+  - Address translation failed for `arg1` or `arg2`. If you compiled with
+`XNUSPY_DEBUG=1`, a message about it is printed to the kernel log.
+
+If this flavor returns an error, kernel memory was not read/written.
+
+#### Errors Pertaining to `XNUSPY_GET_CURRENT_THREAD`
+If `copyout` fails, `errno` is set to its return value.
+
 # Important Information
 
 ### Common Pitfalls
@@ -172,7 +208,8 @@ kernel code. Here's a couple things to keep in mind when you're writing hooks:
 
 - *You cannot execute any userspace code that lives outside your program's
 `__TEXT` segment*. You will panic if, for example, you accidentally call `printf`
-instead of `kprintf`. You need to re-implement any libc function you wish to call.
+instead of `kprintf`. You need to re-implement any libc function you want to call
+if that function is not already available via `XNUSPY_CACHE_READ`.
 You can create function pointers to other kernel functions and call those, though.
 - *Many macros commonly used in userspace code are unsafe for the kernel.* For
 example, `PAGE_SIZE` expands to `vm_page_size`, not a constant. You need to
@@ -247,6 +284,15 @@ isn't a live feed, so I wrote `klog`, a tool which shows `kprintf` logs
 in real time. Find it in `klog/`. I strongly recommend using that instead
 of spamming `dmesg` for your `kprintf` messages.
 
+If you get `﻿﻿open: Resource busy` after running `klog`, run this command
+`launchctl unload /System/Library/LaunchDaemons/com.apple.syslogd.plist`
+and try again.
+
+Unfortunately, you won't be able to see any `NSLog`'s if
+`atm_diagnostic_config=0x20000000` is set in XNU's bootargs. `klog` depends
+on this boot argument being present. If you want `NSLog` back, remove that
+boot argument from `pongo_send_command` inside `loader.c`.
+
 ### Hook Uninstallation
 xnuspy will manage this for you. Once a process exits, all the kernel hooks
 that were installed by that process are uninstalled within a second or so.
@@ -289,11 +335,15 @@ replacement function, `tramp` is a small trampoline that re-directs execution to
 `replacement`, and `orig` is a larger, more complicated trampoline that represents
 the original function.
 
-Before a function is hooked, xnuspy creates a shared user-kernel mapping of the
-calling processes' `__TEXT` and `__DATA` segments (as well as any segment in
-between those, if any). `__TEXT` is shared so you can call other functions from
-your hooks. `__DATA` is shared so changes to global variables are seen by both
-EL1 and EL0. This is done only once per process.
+One of the first things xnuspy does is determine where the EL0 replacement resides
+inside the calling processes' address space. This is done so kernel functions can be
+hooked from dynamic libraries. The Mach-O header which corresponds to the address of
+that replacement is saved.
+
+After, a shared user-kernel mapping of that header's `__TEXT` and `__DATA` segments
+(as well as any segment in between those, if any) is created. `__TEXT` is shared so you
+can call other functions from your hooks. `__DATA` is shared so changes to global
+variables are seen by both EL1 and EL0.
 
 Since this mapping is a one-to-one copy of `__TEXT` and `__DATA`, it's easy to
 figure out the address of the user's replacement function on it. Given the address of

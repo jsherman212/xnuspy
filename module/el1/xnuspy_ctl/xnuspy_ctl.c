@@ -486,7 +486,7 @@ map_segments(struct mach_header_64 * /* __user */ umh,
     }
 
     struct load_command *lc_orig = lc;
-    struct load_command *ulc = (struct load_command *)(umh + 1);
+    struct load_command * /* __user */ ulc = (struct load_command *)(umh + 1);
 
     res = copyin(ulc, lc, sizeofcmds);
 

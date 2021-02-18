@@ -177,7 +177,8 @@ int main(int argc, char **argv, const char **envp){
     
     usleep(200 * 1000);
 
-    /* Don't remove any of these boot args if you modify this string */
+    /* If you want to modify this string, don't remove rootdev=md0 and
+     * use_contiguous_hint=0. Make sure to keep the newline. */
     err = pongo_send_command(pongo_device, "xargs rootdev=md0"
             " use_contiguous_hint=0 msgbuf=0x3c000"
             " atm_diagnostic_config=0x20000000\n");

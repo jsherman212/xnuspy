@@ -1231,8 +1231,6 @@ bool mach_to_bsd_errno_finder_13(xnu_pf_patch_t *patch,
     g_mach_to_bsd_errno_addr = xnu_ptr_to_va(cacheable_stream);
 
     puts("xnuspy: found mach_to_bsd_errno");
-    printf("%s: mach_to_bsd_errno @ %p\n", __func__,
-            g_mach_to_bsd_errno_addr-kernel_slide);
 
     return true;
 }

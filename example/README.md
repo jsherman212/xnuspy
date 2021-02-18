@@ -43,6 +43,18 @@ iPhone SE (2016) 14.3:
 This hooks `hookme`, invokes `xnuspy_ctl` to call it, starts up a kernel
 thread, and registers a death callback.
 
+### kaddr_of_port
+This uses `XNUSPY_KREAD` to determine the kernel addres of a userspace
+Mach port handle.
+
+Some offsets I already have for `offsetof(struct task, itk_space)`:
+
+```
+iPhone 8 13.6.1: 0x320
+iPhone X 13.3.1: 0x320
+iPhone 7 14.1:   0x330
+```
+
 ### Compiling (on device)
 ```
 clang-10 -Wno-deprecated-declarations -isysroot <your sdk> open1_hook.c -o open1_hook
@@ -57,4 +69,9 @@ ldid -Sent.xml -P ./user_client_monitor
 ```
 clang-10 -Wno-deprecated-declarations -isysroot <your sdk> kernel_thread.c -o kernel_thread
 ldid -Sent.xml -P ./kernel_thread
+```
+
+```
+clang-10 -Wno-deprecated-declarations -isysroot <your sdk> kaddr_of_port.c -o kaddr_of_port 
+ldid -Sent.xml -P ./kaddr_of_port
 ```

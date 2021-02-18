@@ -157,10 +157,8 @@ int main(int argc, char **argv){
         return 1;
     }
 
-    printf("kslide %#llx\n", kernel_slide);
     /* xnuspy does not operate on slid addresses */
     hookme_addr -= kernel_slide;
-    printf("unslid hookme addr %#llx\n", hookme_addr);
 
     ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, hookme_addr,
             hookme_hook, NULL);
