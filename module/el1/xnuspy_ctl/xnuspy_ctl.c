@@ -9,6 +9,7 @@
 #include "../../common/xnuspy_structs.h"
 
 #include "debug.h"
+#include "libc.h"
 #include "mem.h"
 #include "pte.h"
 #include "tramp.h"
@@ -67,8 +68,11 @@ enum xnuspy_cache_id {
     LCK_RW_LOCK_SHARED_TO_EXCLUSIVE,
     MACH_MAKE_MEMORY_ENTRY_64,
     MACH_VM_MAP_EXTERNAL,
+    MEMCHR,
     MEMCMP,
+    MEMMEM,
     MEMMOVE,
+    MEMRCHR,
     MEMSET,
     OFFSETOF_STRUCT_THREAD_MAP,
     PROC_LIST_LOCK,
@@ -79,9 +83,12 @@ enum xnuspy_cache_id {
     PROC_RELE_LOCKED,
     PROC_UNIQUEID,
     SNPRINTF,
+    STRCHR,
+    STRRCHR,
     STRCMP,
     STRLEN,
     STRNCMP,
+    STRSTR,
     STRNSTR,
     VM_DEALLOCATE,
     VM_MAP_UNWIRE,
@@ -159,7 +166,6 @@ MARK_AS_KERNEL_OFFSET kern_return_t (*mach_vm_map_external)(void *target_map,
         void *memory_object, uint64_t offset, int copy,
         vm_prot_t cur_protection, vm_prot_t max_protection,
         vm_inherit_t inheritance);
-MARK_AS_KERNEL_OFFSET int (*_memcmp)(const void *s1, const void *s2, size_t n);
 MARK_AS_KERNEL_OFFSET void *(*_memmove)(void *dest, const void *src, size_t n);
 MARK_AS_KERNEL_OFFSET void *(*_memset)(void *s, int c, size_t n);
 MARK_AS_KERNEL_OFFSET uint64_t offsetof_struct_thread_map;
@@ -176,8 +182,6 @@ MARK_AS_KERNEL_OFFSET uint64_t (*proc_uniqueid)(void *proc);
 MARK_AS_KERNEL_OFFSET int (*_snprintf)(char *str, size_t size, const char *fmt, ...);
 MARK_AS_KERNEL_OFFSET size_t (*_strlen)(const char *s);
 MARK_AS_KERNEL_OFFSET int (*_strncmp)(const char *s1, const char *s2, size_t n);
-MARK_AS_KERNEL_OFFSET char *(*_strnstr)(const char *big, const char *little,
-        size_t len);
 MARK_AS_KERNEL_OFFSET void (*thread_deallocate)(void *thread);
 MARK_AS_KERNEL_OFFSET void (*_thread_terminate)(void *thread);
 MARK_AS_KERNEL_OFFSET kern_return_t (*_vm_deallocate)(void *map,
@@ -188,23 +192,6 @@ MARK_AS_KERNEL_OFFSET kern_return_t (*vm_map_wire_external)(void *map,
         uint64_t start, uint64_t end, vm_prot_t prot, int user_wire);
 MARK_AS_KERNEL_OFFSET struct xnuspy_tramp *xnuspy_tramp_mem;
 MARK_AS_KERNEL_OFFSET struct xnuspy_tramp *xnuspy_tramp_mem_end;
-
-int strcmp(const char *s1, const char *s2){
-    while(*s1 && (*s1 == *s2)){
-        s1++;
-        s2++;
-    }
-
-    return *(const unsigned char *)s1 - *(const unsigned char *)s2;
-}
-
-void bzero(void *p, size_t n){
-    uint8_t *p0 = p;
-    uint8_t *p_end = p0 + n;
-
-    while(p0 < p_end)
-        *p0++ = '\0';
-}
 
 __attribute__ ((naked)) static uint64_t current_thread(void){
     asm(""
@@ -878,7 +865,6 @@ static int xnuspy_install_hook(uint64_t target,
         if(!umh){
             SPYDBG("%s: could not find Mach-O header corresponding to the page"
                     " containing %#llx\n", __func__, replacement);
-            /* XXX DOCUMENT THIS */
             res = ENOENT;
             goto out_free_mapping_metadata;
         }
@@ -1348,11 +1334,20 @@ static int xnuspy_cache_read(enum xnuspy_cache_id which,
         case MACH_VM_MAP_EXTERNAL:
             what = mach_vm_map_external;
             break;
+        case MEMCHR:
+            what = memchr;
+            break;
         case MEMCMP:
-            what = _memcmp;
+            what = memcmp;
+            break;
+        case MEMMEM:
+            what = memmem;
             break;
         case MEMMOVE:
             what = _memmove;
+            break;
+        case MEMRCHR:
+            what = memrchr;
             break;
         case MEMSET:
             what = _memset;
@@ -1384,6 +1379,12 @@ static int xnuspy_cache_read(enum xnuspy_cache_id which,
         case SNPRINTF:
             what = _snprintf;
             break;
+        case STRCHR:
+            what = strchr;
+            break;
+        case STRRCHR:
+            what = strrchr;
+            break;
         case STRCMP:
             what = strcmp;
             break;
@@ -1393,8 +1394,11 @@ static int xnuspy_cache_read(enum xnuspy_cache_id which,
         case STRNCMP:
             what = _strncmp;
             break;
+        case STRSTR:
+            what = strstr;
+            break;
         case STRNSTR:
-            what = _strnstr;
+            what = strnstr;
             break;
         case VM_DEALLOCATE:
             what = _vm_deallocate;

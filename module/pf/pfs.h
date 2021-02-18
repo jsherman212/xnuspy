@@ -1401,62 +1401,6 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
             2, memmove_finder_13, "__TEXT_EXEC"),
     },
     {
-        PF_DECL32("memcmp finder iOS 13",
-            LISTIZE({
-                0xb4000002,     /* cbz x2, n */
-                0x39400008,     /* ldrb w8, [x0] */
-                0x39400029,     /* ldrb w9, [x1] */
-                0x6b090108,     /* subs w8, w8, w9 */
-            }),
-            LISTIZE({
-                0xff00001f,     /* ignore immediate */
-                0xffffffff,     /* match exactly */
-                0xffffffff,     /* match exactly */
-                0xffffffff,     /* match exactly */
-            }),
-            4, memcmp_finder_13, "__TEXT_EXEC"),
-        PF_DECL32("memcmp finder iOS 14",
-            LISTIZE({
-                0xb4000002,     /* cbz x2, n */
-                0x39400008,     /* ldrb w8, [x0] */
-                0x39400029,     /* ldrb w9, [x1] */
-                0x6b090108,     /* subs w8, w8, w9 */
-            }),
-            LISTIZE({
-                0xff00001f,     /* ignore immediate */
-                0xffffffff,     /* match exactly */
-                0xffffffff,     /* match exactly */
-                0xffffffff,     /* match exactly */
-            }),
-            4, memcmp_finder_13, "__TEXT_EXEC"),
-    },
-    {
-        PF_DECL32("strnstr finder iOS 13",
-            LISTIZE({
-                0x384016c8,     /* ldrb w8, [x22], #1 */
-                0x34000008,     /* cbz w8, n */
-                0xb100071f,     /* cmn x24, #1 */
-            }),
-            LISTIZE({
-                0xffffffff,     /* match exactly */
-                0xff00001f,     /* ignore immediate */
-                0xffffffff,     /* match exactly */
-            }),
-            3, strnstr_finder_13, "__TEXT_EXEC"),
-        PF_DECL32("strnstr finder iOS 14",
-            LISTIZE({
-                0x384016c8,     /* ldrb w8, [x22], #1 */
-                0x34000008,     /* cbz w8, n */
-                0xb100071f,     /* cmn x24, #1 */
-            }),
-            LISTIZE({
-                0xffffffff,     /* match exactly */
-                0xff00001f,     /* ignore immediate */
-                0xffffffff,     /* match exactly */
-            }),
-            3, strnstr_finder_13, "__TEXT_EXEC"),
-    },
-    {
         PF_DECL32("panic finder iOS 13",
             LISTIZE({
                 0x910023e1,     /* add x1, sp, #8 */

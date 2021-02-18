@@ -66,7 +66,6 @@ extern kern_return_t (*mach_vm_map_external)(void *target_map,
         void *memory_object, uint64_t offset, int copy,
         vm_prot_t cur_protection, vm_prot_t max_protection,
         vm_inherit_t inheritance);
-extern int (*_memcmp)(const void *s1, const void *s2, size_t n);
 extern void *(*_memmove)(void *dest, const void *src, size_t n);
 extern void *(*_memset)(void *s, int c, size_t n);
 extern uint64_t offsetof_struct_thread_map;
@@ -82,7 +81,6 @@ extern uint64_t (*proc_uniqueid)(void *proc);
 extern int (*_snprintf)(char *str, size_t size, const char *fmt, ...);
 extern size_t (*_strlen)(const char *s);
 extern int (*_strncmp)(const char *s1, const char *s2, size_t n);
-extern char *(*_strnstr)(const char *big, const char *little, size_t len);
 extern void (*thread_deallocate)(void *thread);
 extern void (*_thread_terminate)(void *thread);
 extern kern_return_t (*_vm_deallocate)(void *map,

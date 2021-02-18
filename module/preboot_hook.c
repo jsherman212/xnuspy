@@ -80,7 +80,6 @@ static struct xnuspy_ctl_kernel_symbol {
     { "_lck_rw_lock_shared_to_exclusive", &g_lck_rw_lock_shared_to_exclusive_addr },
     { "__mach_make_memory_entry_64", &g_mach_make_memory_entry_64_addr },
     { "_mach_vm_map_external", &g_mach_vm_map_external_addr },
-    { "__memcmp", &g_memcmp_addr },
     { "__memmove", &g_memmove_addr },
     { "__memset", &g_memset_addr },
     { "_offsetof_struct_thread_map", &g_offsetof_struct_thread_map },
@@ -96,7 +95,6 @@ static struct xnuspy_ctl_kernel_symbol {
     { "__snprintf", &g_snprintf_addr },
     { "__strlen", &g_strlen_addr },
     { "__strncmp", &g_strncmp_addr },
-    { "__strnstr", &g_strnstr_addr },
     { "_thread_deallocate", &g_thread_deallocate_addr },
     { "__thread_terminate", &g_thread_terminate_addr },
     { "__vm_deallocate", &g_vm_deallocate_addr },
@@ -192,8 +190,6 @@ static void anything_missing(void){
     chk(!g_strncmp_addr, "strncmp not found\n");
     chk(!g_memset_addr, "memset not found\n");
     chk(!g_memmove_addr, "memmove not found\n");
-    chk(!g_memcmp_addr, "memcmp not found\n");
-    chk(!g_strnstr_addr, "strnstr not found\n");
     chk(!g_panic_addr, "panic not found\n");
 
     /* if we printed the error header, something is missing */

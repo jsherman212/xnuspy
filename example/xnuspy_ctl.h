@@ -65,8 +65,11 @@ enum {
     LCK_RW_LOCK_SHARED_TO_EXCLUSIVE,
     MACH_MAKE_MEMORY_ENTRY_64,
     MACH_VM_MAP_EXTERNAL,
+    MEMCHR,
     MEMCMP,
+    MEMMEM,
     MEMMOVE,
+    MEMRCHR,
     MEMSET,
 
     /* offsetof(struct thread, map), vm_map_t */
@@ -83,9 +86,12 @@ enum {
     PROC_RELE_LOCKED,
     PROC_UNIQUEID,
     SNPRINTF,
+    STRCHR,
+    STRRCHR,
     STRCMP,
     STRLEN,
     STRNCMP,
+    STRSTR,
     STRNSTR,
     VM_DEALLOCATE,
     VM_MAP_UNWIRE,
@@ -146,7 +152,7 @@ enum {
 
     /* int kprotect(void *kaddr, uint64_t size, vm_prot_t prot)
      *
-     * Change protections of static kernel memory at the page table level.
+     * Change protections of kernel memory at the page table level.
      *
      * Parameters:
      *  kaddr: kernel virtual address of target.
