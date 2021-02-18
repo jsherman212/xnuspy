@@ -1438,6 +1438,36 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
             }),
             6, panic_finder_13, "__TEXT_EXEC"),
     },
+    {
+        PF_DECL32("mach_bsd_to_errno finder iOS 13",
+            LISTIZE({
+                0x7100cc1f,     /* cmp w0, #0x33 */
+                0x54000008,     /* b.hi n */
+                0x10000008,     /* adrp x8, n or adr x8, n */
+                0x0,            /* ignore this instruction */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+                0xff00001f,     /* ignore immediate */
+                0x1f00001f,     /* ignore immediate */
+                0x0,            /* ignore this instruction */
+            }),
+            4, mach_to_bsd_errno_finder_13, "__TEXT_EXEC"),
+        PF_DECL32("mach_bsd_to_errno finder iOS 14",
+            LISTIZE({
+                0x7100cc1f,     /* cmp w0, #0x33 */
+                0x54000008,     /* b.hi n */
+                0x10000008,     /* adrp x8, n or adr x8, n */
+                0x0,            /* ignore this instruction */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+                0xff00001f,     /* ignore immediate */
+                0x1f00001f,     /* ignore immediate */
+                0x0,            /* ignore this instruction */
+            }),
+            4, mach_to_bsd_errno_finder_13, "__TEXT_EXEC"),
+    },
     { PF_END, PF_END },
 };
 

@@ -161,6 +161,7 @@ MARK_AS_KERNEL_OFFSET int (*lck_rw_lock_shared_to_exclusive)(lck_rw_t *lck);
 MARK_AS_KERNEL_OFFSET kern_return_t (*_mach_make_memory_entry_64)(void *target_map,
         uint64_t *size, uint64_t offset, vm_prot_t prot, void **object_handle,
         void *parent_handle);
+MARK_AS_KERNEL_OFFSET int (*mach_to_bsd_errno)(kern_return_t mach_err);
 MARK_AS_KERNEL_OFFSET kern_return_t (*mach_vm_map_external)(void *target_map,
         uint64_t *address, uint64_t size, uint64_t mask, int flags,
         void *memory_object, uint64_t offset, int copy,
@@ -202,30 +203,6 @@ __attribute__ ((naked)) static uint64_t current_thread(void){
 
 static struct _vm_map *current_map(void){
     return *(struct _vm_map **)(current_thread() + offsetof_struct_thread_map);
-}
-
-static int kern_return_to_errno(kern_return_t kret){
-    switch(kret){
-        case KERN_INVALID_ADDRESS:
-            return EFAULT;
-        case KERN_PROTECTION_FAILURE:
-        case KERN_NO_ACCESS:
-            return EPERM;
-        case KERN_NO_SPACE:
-        case KERN_RESOURCE_SHORTAGE:
-            return ENOSPC;
-        case KERN_FAILURE:
-        case KERN_INVALID_ARGUMENT:
-            return EINVAL;      /* is this the best for KERN_FAILURE? */
-        case KERN_MEMORY_PRESENT:
-            return EEXIST;
-    };
-
-    SPYDBG("%s: unhandled kern_return_t %#x, returning 10000\n",
-            __func__, kret);
-
-    /* Not a valid errno */
-    return 10000;
 }
 
 lck_rw_t *xnuspy_rw_lck = NULL;
@@ -624,7 +601,7 @@ nextcmd:
     if(kret){
         SPYDBG("%s: vm_map_wire_external failed when wiring down "
                 "[copystart, copysz): %d\n", __func__, kret);
-        *retval = kern_return_to_errno(kret);
+        *retval = mach_to_bsd_errno(kret);
         goto failed;
     }
 
@@ -648,7 +625,7 @@ nextcmd:
 
     if(kret){
         SPYDBG("%s: mach_make_memory_entry_64 failed: %d\n", __func__, kret);
-        *retval = kern_return_to_errno(kret);
+        *retval = mach_to_bsd_errno(kret);
         goto failed_unwire_user_segments;
     }
 
@@ -668,7 +645,7 @@ nextcmd:
 
     if(kret){
         SPYDBG("%s: mach_vm_map_external failed: %d\n", __func__, kret);
-        *retval = kern_return_to_errno(kret);
+        *retval = mach_to_bsd_errno(kret);
         goto failed_dealloc_mementry;
     }
 
@@ -678,7 +655,7 @@ nextcmd:
 
     if(kret){
         SPYDBG("%s: vm_map_wire_external failed: %d\n", __func__, kret);
-        *retval = kern_return_to_errno(kret);
+        *retval = mach_to_bsd_errno(kret);
         goto failed_dealloc_kernel_mapping;
     }
 
@@ -1137,7 +1114,7 @@ static int xnuspy_init(void){
 
     if(kret){
         SPYDBG("%s: kernel_thread_start failed: %d\n", __func__, kret);
-        res = kern_return_to_errno(kret);
+        res = mach_to_bsd_errno(kret);
         goto out_dealloc_xnuspy_lck;
     }
 

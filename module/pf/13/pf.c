@@ -69,6 +69,7 @@ uint64_t g_strncmp_addr;
 uint64_t g_memset_addr;
 uint64_t g_memmove_addr;
 uint64_t g_panic_addr;
+uint64_t g_mach_to_bsd_errno_addr;
 uint64_t g_xnuspy_sysctl_mib_ptr = 0;
 uint64_t g_xnuspy_sysctl_mib_count_ptr = 0;
 uint64_t g_xnuspy_ctl_callnum = 0;
@@ -1218,6 +1219,20 @@ bool panic_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     g_panic_addr = xnu_ptr_to_va(opcode_stream);
 
     puts("xnuspy: found panic");
+
+    return true;
+}
+
+/* confirmed working on all kernels 13.0-14.4 */
+bool mach_to_bsd_errno_finder_13(xnu_pf_patch_t *patch,
+        void *cacheable_stream){
+    xnu_pf_disable_patch(patch);
+
+    g_mach_to_bsd_errno_addr = xnu_ptr_to_va(cacheable_stream);
+
+    puts("xnuspy: found mach_to_bsd_errno");
+    printf("%s: mach_to_bsd_errno @ %p\n", __func__,
+            g_mach_to_bsd_errno_addr-kernel_slide);
 
     return true;
 }

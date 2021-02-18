@@ -74,6 +74,7 @@ extern uint64_t g_strncmp_addr;
 extern uint64_t g_memset_addr;
 extern uint64_t g_memmove_addr;
 extern uint64_t g_panic_addr;
+extern uint64_t g_mach_to_bsd_errno_addr;
 extern uint64_t g_xnuspy_sysctl_mib_ptr;
 extern uint64_t g_xnuspy_sysctl_mib_count_ptr;
 extern uint64_t g_xnuspy_ctl_callnum;

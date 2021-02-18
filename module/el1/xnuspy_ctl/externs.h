@@ -61,6 +61,7 @@ extern int (*lck_rw_lock_shared_to_exclusive)(lck_rw_t *lck);
 extern kern_return_t (*_mach_make_memory_entry_64)(void *target_map,
         uint64_t *size, uint64_t offset, vm_prot_t prot, void **object_handle,
         void *parent_handle);
+extern int (*mach_to_bsd_errno)(kern_return_t mach_err);
 extern kern_return_t (*mach_vm_map_external)(void *target_map,
         uint64_t *address, uint64_t size, uint64_t mask, int flags,
         void *memory_object, uint64_t offset, int copy,

@@ -79,6 +79,7 @@ static struct xnuspy_ctl_kernel_symbol {
     { "_lck_rw_lock_shared", &g_lck_rw_lock_shared_addr },
     { "_lck_rw_lock_shared_to_exclusive", &g_lck_rw_lock_shared_to_exclusive_addr },
     { "__mach_make_memory_entry_64", &g_mach_make_memory_entry_64_addr },
+    { "_mach_to_bsd_errno", &g_mach_to_bsd_errno_addr },
     { "_mach_vm_map_external", &g_mach_vm_map_external_addr },
     { "__memmove", &g_memmove_addr },
     { "__memset", &g_memset_addr },
@@ -191,6 +192,7 @@ static void anything_missing(void){
     chk(!g_memset_addr, "memset not found\n");
     chk(!g_memmove_addr, "memmove not found\n");
     chk(!g_panic_addr, "panic not found\n");
+    chk(!g_mach_to_bsd_errno_addr, "mach_to_bsd_errno not found\n");
 
     /* if we printed the error header, something is missing */
     if(printed_err_hdr)
