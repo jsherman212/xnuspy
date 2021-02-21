@@ -48,5 +48,7 @@ bool memset_finder_13(xnu_pf_patch_t *, void *);
 bool memmove_finder_13(xnu_pf_patch_t *, void *);
 bool panic_finder_13(xnu_pf_patch_t *, void *);
 bool mach_to_bsd_errno_finder_13(xnu_pf_patch_t *, void *);
+bool DAIFSet_patcher_13(xnu_pf_patch_t *, void *);
+bool LowResetVectorBase_patcher_13(xnu_pf_patch_t *, void *);
 
 #endif

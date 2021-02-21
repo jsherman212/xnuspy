@@ -1468,6 +1468,70 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
             }),
             4, mach_to_bsd_errno_finder_13, "__TEXT_EXEC"),
     },
+    {
+        PF_DECL32("DAIFSet patcher iOS 13",
+            LISTIZE({
+                0xd50340df,     /* msr DAIFSet, #imm4 */
+            }),
+            LISTIZE({
+                0xfffff0ff,     /* ignore imm4 */
+            }),
+            1, DAIFSet_patcher_13, "__TEXT_EXEC"),
+        PF_DECL32("DAIFSet patcher iOS 14",
+            LISTIZE({
+                0xd50340df,     /* msr DAIFSet, #imm4 */
+            }),
+            LISTIZE({
+                0xfffff0ff,     /* ignore imm4 */
+            }),
+            1, DAIFSet_patcher_13, "__TEXT_EXEC"),
+    },
+    {
+        PF_DECL32("LowResetVectorBase patcher iOS 13",
+            LISTIZE({
+                0x14000000,     /* b n */
+                0xd503201f,     /* nop */
+                0xd503201f,     /* nop */
+                0xd503201f,     /* nop */
+                0xd503201f,     /* nop */
+                0xd503201f,     /* nop */
+                0xd503201f,     /* nop */
+                0xd503201f,     /* nop */
+            }),
+            LISTIZE({
+                0xfc000000,     /* ignore immediate */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+            }),
+            8, LowResetVectorBase_patcher_13, "__TEXT_EXEC"),
+        PF_DECL32("LowResetVectorBase patcher iOS 14",
+            LISTIZE({
+                0x14000000,     /* b n */
+                0xd503201f,     /* nop */
+                0xd503201f,     /* nop */
+                0xd503201f,     /* nop */
+                0xd503201f,     /* nop */
+                0xd503201f,     /* nop */
+                0xd503201f,     /* nop */
+                0xd503201f,     /* nop */
+            }),
+            LISTIZE({
+                0xfc000000,     /* ignore immediate */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+            }),
+            8, LowResetVectorBase_patcher_13, "__TEXT_EXEC"),
+    },
     { PF_END, PF_END },
 };
 

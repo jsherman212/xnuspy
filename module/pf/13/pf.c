@@ -1234,3 +1234,63 @@ bool mach_to_bsd_errno_finder_13(xnu_pf_patch_t *patch,
 
     return true;
 }
+
+/* confirmed working on all kernels 13.0-14.2 */
+bool DAIFSet_patcher_13(xnu_pf_patch_t *patch, void *cacheable_stream){
+    /* PSTATE.D must stay unmasked for hardware breakpoints/watchpoints
+     * and software-step to fire inside EL1.
+     *
+     * DAIFSet controls the setting of PSTATE.{D,A,I,F} to 1, so for every
+     * msr DAIFSet, #n we find, we turn off the bit that represents PSTATE.D
+     * in its immediate. */
+    *(uint32_t *)cacheable_stream &= ~0x800;
+
+    return true;
+}
+
+/* confirmed working on all kernels 13.0-14.2 */
+bool LowResetVectorBase_patcher_13(xnu_pf_patch_t *patch,
+        void *cacheable_stream){
+    /* PSTATE.D is masked before the device returns to LowResetVectorBase
+     * upon reset. See the pseudocode for AArch64.TakeReset in the ARMv8
+     * reference manual. In order to keep our debug stuff alive, we need to
+     * unmask PSTATE.D.
+     *
+     * This decides if we're at LowResetVectorBase. If we are, we modify it to
+     * look like this:
+     *      MSR DAIFClr, #0x8
+     *      B _reset_vector
+     */
+    uint32_t *opcode_stream = cacheable_stream;
+    uint32_t *maybe_reset_vector = get_branch_dst_ptr(opcode_stream);
+
+    /* First instruction is msr oslar_el1, xzr? */
+    if(*maybe_reset_vector != 0xd510109f)
+        return false;
+
+    /* Third instruction is not mov x0, x20? */
+    if(maybe_reset_vector[2] == 0xaa0003f4)
+        return false;
+
+    xnu_pf_disable_patch(patch);
+
+    /* If we're here, we found LowResetVectorBase */
+    uint32_t *LowResetVectorBase = opcode_stream;
+    uint32_t saved_branch = *LowResetVectorBase;
+
+    /* MSR DAIFClr, #0x8 */
+    *LowResetVectorBase = 0xd50348ff;
+
+    /* The branch is now 4 bytes closer to reset_vector, so update its
+     * immediate */
+    int32_t new_imm26 = bits(saved_branch, 0, 25) - 1;
+
+    saved_branch &= ~0x3ffffff;
+    saved_branch |= new_imm26;
+
+    LowResetVectorBase[1] = saved_branch;
+
+    puts("xnuspy: patched LowResetVectorBase");
+
+    return true;
+}
