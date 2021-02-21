@@ -10,11 +10,19 @@
 
 #include "xnuspy_ctl.h"
 
+#define SPYDBG(fmt, args...) do { kprintf("[HOOK] "fmt, ##args); } while(0)
+
 __attribute__ ((naked)) static void *current_thread(void){
     asm(""
         "mrs x0, tpidr_el1\n"
         "ret\n"
        );
+}
+
+static uint8_t curcpu(void){
+    uint64_t mpidr_el1;
+    asm volatile("mrs %0, mpidr_el1" : "=r" (mpidr_el1));
+    return (uint8_t)(mpidr_el1 & 0xff);
 }
 
 typedef	void (*thread_continue_t)(void *param, int wait_result);
@@ -31,22 +39,35 @@ static uint64_t kernel_slide, hookme_addr;
 static int time_to_die = 0;
 
 static void kernel_thread_fxn(void *param, int wait_result){
+    uint64_t addr = 0xfffffff007004000 + kernel_slide;
+    uint64_t bcr = 0x1e7;
+    /* Should not fire as long as the control reg's E bit isn't set */
+    /* asm volatile("msr dbgbcr0_el1, xzr"); */
+    asm volatile("msr dbgbcr0_el1, %0" : : "r" (bcr));
+    asm volatile("msr dbgbvr0_el1, %0" : : "r" (addr));
+
     while(!time_to_die){
-        kprintf("%s: alive, but at what cost?\n", __func__);
-        IOSleep(1000);
+        SPYDBG("%s: alive, but at what cost? CPU %d\n", __func__,
+                (uint32_t)curcpu());
+
+        uint64_t dbgbcr0, dbgbvr0;
+        asm volatile("mrs %0, dbgbcr0_el1" : "=r" (dbgbcr0));
+        asm volatile("mrs %0, dbgbvr0_el1" : "=r" (dbgbvr0));
+
+        SPYDBG("%s: This CPU's dbgbcr0 %p dbgbvr0 %p\n", __func__,
+                dbgbcr0, dbgbvr0);
+
+/* nap: */
+/*         IOSleep(1000); */
     }
 
-    kprintf("%s: goodbye\n", __func__);
-
+    SPYDBG("%s: goodbye\n", __func__);
     _thread_terminate(current_thread());
-
-    /* We shouldn't reach here */
-
-    kprintf("%s: we are still alive?\n", __func__);
+    SPYDBG("%s: we are still alive?\n", __func__);
 }
 
 static void death_callback(void){
-    kprintf("%s: called\n", __func__);
+    SPYDBG("%s: called\n", __func__);
     time_to_die = 1;
 }
 
@@ -67,89 +88,52 @@ static int kernel_thread_made = 0;
 #define PMSR "s3_1_c15_c13_0"
 
 static void hookme_hook(void){
-    kprintf("%s: we were called!\n", __func__);
+    SPYDBG("%s: we were called!\n", __func__);
 
-    uint64_t PMCR2_val, PMCR3_val, PMCR4_val;
-    asm volatile("mrs %0, "PMCR2"" : "=r" (PMCR2_val));
-    asm volatile("mrs %0, "PMCR3"" : "=r" (PMCR3_val));
-    asm volatile("mrs %0, "PMCR4"" : "=r" (PMCR4_val));
+    /* uint64_t PMCR2_val, PMCR3_val, PMCR4_val; */
+    /* asm volatile("mrs %0, "PMCR2"" : "=r" (PMCR2_val)); */
+    /* asm volatile("mrs %0, "PMCR3"" : "=r" (PMCR3_val)); */
+    /* asm volatile("mrs %0, "PMCR4"" : "=r" (PMCR4_val)); */
 
-    kprintf("%s: PMCR2 %p PMCR3 %p PMCR4 %p\n", __func__, PMCR2_val,
-            PMCR3_val, PMCR4_val);
+    /* SPYDBG("%s: PMCR2 %p PMCR3 %p PMCR4 %p\n", __func__, PMCR2_val, */
+    /*         PMCR3_val, PMCR4_val); */
 
-    /* if(kernel_thread_made) */
-    /*     return; */
+    if(kernel_thread_made)
+        return;
 
-    /* void *thread; */
-    /* kern_return_t kret = kernel_thread_start(kernel_thread_fxn, NULL, &thread); */
+    void *thread;
+    kern_return_t kret = kernel_thread_start(kernel_thread_fxn, NULL, &thread);
 
-    /* if(kret) */
-    /*     kprintf("%s: could not make kernel thread: %#x\n", __func__, kret); */
-    /* else{ */
-    /*     /1* Throw away the reference from kernel_thread_start *1/ */
-    /*     thread_deallocate(thread); */
-    /*     kernel_thread_made = 1; */
-    /*     kprintf("%s: created kernel thread\n", __func__); */
-    /* } */
+    if(kret)
+        SPYDBG("%s: could not make kernel thread: %#x\n", __func__, kret);
+    else{
+        /* Throw away the reference from kernel_thread_start */
+        thread_deallocate(thread);
+        kernel_thread_made = 1;
+        SPYDBG("%s: created kernel thread\n", __func__);
+    }
 }
 
 static long SYS_xnuspy_ctl = 0;
 
 static int gather_kernel_offsets(void){
     int ret;
+#define GET(a, b) \
+    do { \
+        ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, a, b, 0); \
+        if(ret){ \
+            printf("%s: failed getting %s\n", __func__, #a); \
+            return ret; \
+        } \
+    } while (0)
 
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, IOSLEEP, &IOSleep, 0);
-
-    if(ret){
-        printf("Failed getting IOSleep\n");
-        return ret;
-    }
-
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, KERNEL_THREAD_START,
-            &kernel_thread_start, 0);
-
-    if(ret){
-        printf("Failed getting kernel_thread_start\n");
-        return ret;
-    }
-
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, THREAD_DEALLOCATE,
-            &thread_deallocate, 0);
-
-    if(ret){
-        printf("Failed getting thread_deallocate\n");
-        return ret;
-    }
-
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, THREAD_TERMINATE,
-            &_thread_terminate, 0);
-
-    if(ret){
-        printf("Failed getting thread_terminate\n");
-        return ret;
-    }
-
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, KPRINTF, &kprintf, 0);
-
-    if(ret){
-        printf("Failed getting kprintf\n");
-        return ret;
-    }
-
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, KERNEL_SLIDE,
-            &kernel_slide, 0);
-
-    if(ret){
-        printf("Failed getting kernel slide\n");
-        return ret;
-    }
-
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, HOOKME, &hookme_addr, 0);
-
-    if(ret){
-        printf("Failed getting hookme\n");
-        return ret;
-    }
+    GET(IOSLEEP, &IOSleep);
+    GET(KERNEL_THREAD_START, &kernel_thread_start);
+    GET(THREAD_DEALLOCATE, &thread_deallocate);
+    GET(THREAD_TERMINATE, &_thread_terminate);
+    GET(KPRINTF, &kprintf);
+    GET(KERNEL_SLIDE, &kernel_slide);
+    GET(HOOKME, &hookme_addr);
 
     return 0;
 }
