@@ -12,6 +12,7 @@
 
 #define SPYDBG(fmt, args...) do { kprintf("[HOOK] "fmt, ##args); } while(0)
 
+
 __attribute__ ((naked)) static void *current_thread(void){
     asm(""
         "mrs x0, tpidr_el1\n"
@@ -35,15 +36,82 @@ static void (*thread_deallocate)(void *thread);
 static void (*_thread_terminate)(void *thread);
 
 static uint64_t kernel_slide, hookme_addr;
+static uint64_t gSocPhys = 0;
+
+static uint64_t (*ml_io_map)(uint64_t phys_addr, uint64_t size);
+
+static void kdump(void *ptr, size_t size){
+    char ascii[17];
+    size_t i, j;
+    ascii[16] = '\0';
+    int putloc = 0;
+    uint64_t curaddr = (uint64_t)ptr;
+    for (i = 0; i < size; ++i) {
+        if(!putloc){
+            SPYDBG("%#llx: ", curaddr);
+            curaddr += 0x10;
+            putloc = 1;
+        }
+
+        kprintf("%02X ", ((unsigned char*)ptr)[i]);
+        if (((unsigned char*)ptr)[i] >= ' ' && ((unsigned char*)ptr)[i] <= '~') {
+            ascii[i % 16] = ((unsigned char*)ptr)[i];
+        } else {
+            ascii[i % 16] = '.';
+        }
+        if ((i+1) % 8 == 0 || i+1 == size) {
+            kprintf(" ");
+            if ((i+1) % 16 == 0) {
+                kprintf("|  %s \n", ascii);
+                putloc = 0;
+            } else if (i+1 == size) {
+                ascii[(i+1) % 16] = '\0';
+                if ((i+1) % 16 <= 8) {
+                    kprintf(" ");
+                }
+                for (j = (i+1) % 16; j < 16; ++j) {
+                    kprintf("   ");
+                }
+                kprintf("|  %s \n", ascii);
+                putloc = 0;
+            }
+        }
+    }
+}
 
 static int time_to_die = 0;
 
 static void kernel_thread_fxn(void *param, int wait_result){
+    if(!gSocPhys){
+        gSocPhys = *(uint64_t *)(0xFFFFFFF00925D458 + kernel_slide);
+    }
+
+    SPYDBG("%s: gSocPhys %p\n", __func__, gSocPhys);
+
+    uint64_t ct = (uint64_t)current_thread();
+    uint64_t cpuDatap = *(uint64_t *)(ct + 0x478);
+
+    SPYDBG("%s: cpudatap %p\n", __func__, cpuDatap);
+
+    if(cpuDatap){
+        uint64_t cpu_debug_interface_map = *(uint64_t *)(cpuDatap + 0x1a8);
+
+        SPYDBG("%s: debug interface map %p\n", __func__,
+                cpu_debug_interface_map);
+    }
+
+    /* iphone 8 13.6.1 */
+    uint64_t light_em_up = ml_io_map(0x208040000, 0x10000);
+    SPYDBG("%s: light em up mapped @ %p\n", __func__, light_em_up);
+
+    if(light_em_up){
+        kdump((void *)light_em_up, 0x1000);
+    }
     uint64_t addr = 0xfffffff007004000 + kernel_slide;
     uint64_t bcr = 0x1e7;
     /* Should not fire as long as the control reg's E bit isn't set */
-    /* asm volatile("msr dbgbcr0_el1, xzr"); */
-    asm volatile("msr dbgbcr0_el1, %0" : : "r" (bcr));
+    asm volatile("msr dbgbcr0_el1, xzr");
+    /* asm volatile("msr dbgbcr0_el1, %0" : : "r" (bcr)); */
     asm volatile("msr dbgbvr0_el1, %0" : : "r" (addr));
 
     while(!time_to_die){
@@ -57,8 +125,8 @@ static void kernel_thread_fxn(void *param, int wait_result){
         SPYDBG("%s: This CPU's dbgbcr0 %p dbgbvr0 %p\n", __func__,
                 dbgbcr0, dbgbvr0);
 
-/* nap: */
-/*         IOSleep(1000); */
+nap:
+        IOSleep(1000);
     }
 
     SPYDBG("%s: goodbye\n", __func__);
@@ -162,6 +230,9 @@ int main(int argc, char **argv){
         printf("something failed: %s\n", strerror(errno));
         return 1;
     }
+
+    /* iphone 8 13.6.1 */
+    ml_io_map = (uint64_t (*)(uint64_t, uint64_t))(0xFFFFFFF007D0E5C8 + kernel_slide);
 
     /* xnuspy does not operate on slid addresses */
     hookme_addr -= kernel_slide;
