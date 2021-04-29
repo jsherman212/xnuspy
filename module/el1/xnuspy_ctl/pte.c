@@ -1,5 +1,6 @@
 #include <stdint.h>
 
+#include "debug.h"
 #include "externs.h"
 #include "pte.h"
 
@@ -8,14 +9,25 @@ static pte_t *ptep(uint64_t ttbr, uint64_t addr){
     uint64_t l1_idx = (addr >> ARM_TT_L1_SHIFT) & 0x7;
     uint64_t *l1_ttep = (uint64_t *)(l1_table + (0x8 * l1_idx));
 
+    SPYDBG("%s: l1 table %#llx idx %#llx ttep %p tte %#llx\n", __func__,
+            l1_table, l1_idx, l1_ttep, *l1_ttep);
+
     uint64_t l2_table = phystokv(*l1_ttep & ARM_TTE_TABLE_MASK);
     uint64_t l2_idx = (addr >> ARM_TT_L2_SHIFT) & 0x7ff;
     uint64_t *l2_ttep = (uint64_t *)(l2_table + (0x8 * l2_idx));
 
+    SPYDBG("%s: l2 table %#llx idx %#llx ttep %p tte %#llx\n", __func__,
+            l2_table, l2_idx, l2_ttep, *l2_ttep);
+
     uint64_t l3_table = phystokv(*l2_ttep & ARM_TTE_TABLE_MASK);
     uint64_t l3_idx = (addr >> ARM_TT_L3_SHIFT) & 0x7ff;
 
-    return (pte_t *)(l3_table + (0x8 * l3_idx));
+    pte_t *l3_ptep = (pte_t *)(l3_table + (0x8 * l3_idx));
+
+    SPYDBG("%s: l3 table %#llx idx %#llx ptep %p pte %#llx\n", __func__,
+            l3_table, l3_idx, l3_ptep, *l3_ptep);
+
+    return l3_ptep;
 }
 
 pte_t *el0_ptep(void *uaddr){

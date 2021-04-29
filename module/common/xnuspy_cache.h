@@ -33,4 +33,6 @@
 #define iOS_13_x                                        (19)
 #define iOS_14_x                                        (20)
 
+#define KERN_VERSION_MINOR                              (0xa8)
+
 #endif

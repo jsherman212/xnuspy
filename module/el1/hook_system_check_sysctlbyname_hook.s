@@ -31,8 +31,8 @@ _hook_system_check_sysctlbyname_hook:
     mov w20, w3
 
     /* This function does not take sysctl_geometry_lock */
-    ldr x0, [x28, SYSCTL_GEOMETRY_LOCK_PTR]
-    ldr x0, [x0]
+    mov x0, x28
+    bl _get_sysctl_geo_lck
     ldr x21, [x28, LCK_RW_LOCK_SHARED]
     blr x21
     /* If this sysctl hasn't been added yet, register it */
@@ -66,8 +66,8 @@ Lmib_check_loop:
     cbnz x26, Lmib_check_loop
 
 Lours:
-    ldr x0, [x28, SYSCTL_GEOMETRY_LOCK_PTR]
-    ldr x0, [x0]
+    mov x0, x28
+    bl _get_sysctl_geo_lck
     ldr x19, [x28, LCK_RW_DONE]
     blr x19
     /* If it is ours, branch right to hook_system_check_sysctlbyname's
@@ -79,8 +79,8 @@ Lours:
     /* Not reached */
 
 Lregister_xnuspy_ctl_callnum_sysctl:
-    ldr x0, [x28, SYSCTL_GEOMETRY_LOCK_PTR]
-    ldr x0, [x0]
+    mov x0, x28
+    bl _get_sysctl_geo_lck
     ldr x19, [x28, LCK_RW_DONE]
     blr x19
 
@@ -138,8 +138,8 @@ Lregister:
     /* Figure out what the MIB array looks like for this new sysctl.
     Unfortunately I can't just reserve space for this because this
     page is r-x. name2oid expects sysctl_geometry_lock to be held */
-    ldr x0, [x28, SYSCTL_GEOMETRY_LOCK_PTR]
-    ldr x0, [x0]
+    mov x0, x28
+    bl _get_sysctl_geo_lck
     ldr x19, [x28, LCK_RW_LOCK_SHARED]
     blr x19
 
@@ -163,8 +163,8 @@ Lcopy_name:
     str x19, [x28, DID_REGISTER_SYSCTL]
 
 Lnot_ours:
-    ldr x0, [x28, SYSCTL_GEOMETRY_LOCK_PTR]
-    ldr x0, [x0]
+    mov x0, x28
+    bl _get_sysctl_geo_lck
     ldr x19, [x28, LCK_RW_DONE]
     blr x19
     ldp x29, x30, [sp, #(STACK-0x10)]
@@ -194,3 +194,37 @@ oid_fmt: .asciz "L"
 /* Align so we can write four bytes every time and not have to worry about
     scratch_space being unaligned when we go to write other instructions */
 .align 2
+
+/* Cursed case: are we on 14.5? If we are, we get a pointer to
+sysctl_geometry_lock from *(xnuspy_cache+SYSCTL_GEOMETRY_LOCK_PTR),
+as opposed to a pointer to a pointer to sysctl_geometry_lock on
+13.0 - 14.4.2. This is the case for both old and new 14.5 kernels.
+
+One parameter, a pointer to the xnuspy cache. Returns a pointer to
+sysctl_geometry_lock */
+.align 2
+_get_sysctl_geo_lck:
+    stp x19, x20, [sp, #-0x10]!
+    stp x29, x30, [sp, #-0x10]!
+
+    ldr x19, [x0, SYSCTL_GEOMETRY_LOCK_PTR]
+    ldr x20, [x0, IOS_VERSION]
+    cmp x20, iOS_13_x
+    b.eq Lout_not_14_5
+    ldr x20, [x0, KERN_VERSION_MINOR]
+    cmp x20, #0x4
+    /* ge in case a new version of 14 is released that does the
+    same thing 14.5 does */
+    b.ge Lout_14_5
+
+Lout_not_14_5:
+    ldr x0, [x19]
+    b Lout
+
+Lout_14_5:
+    mov x0, x19
+
+Lout:
+    ldp x29, x30, [sp], #0x10
+    ldp x19, x20, [sp], #0x10
+    ret

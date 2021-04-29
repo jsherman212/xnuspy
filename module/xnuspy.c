@@ -13,8 +13,8 @@
 #include "preboot_hook.h"
 
 uint64_t g_kern_version_major = 0;
+uint64_t g_kern_version_minor = 0;
 
-static uint32_t g_kern_version_minor = 0;
 static uint32_t g_kern_version_revision = 0;
 
 static bool getkernelv_callback(xnu_pf_patch_t *patch, void *cacheable_stream){
@@ -44,8 +44,8 @@ static bool getkernelv_callback(xnu_pf_patch_t *patch, void *cacheable_stream){
     for(int i=0; *version != ':'; i++, version++)
         revision_s[i] = *version;
 
-    /* currently, I only use major, but I get the rest in case I need
-     * them in the future */
+    /* currently, I only use major and minor, but I get the rest in
+     * case I need them in the future */
     g_kern_version_major = atoi(major_s);
     g_kern_version_minor = atoi(minor_s);
     g_kern_version_revision = atoi(revision_s);

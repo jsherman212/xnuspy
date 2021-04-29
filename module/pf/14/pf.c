@@ -11,59 +11,39 @@
 uint64_t g_kalloc_external_addr = 0;
 uint64_t g_kfree_ext_addr = 0;
 
-/* confirmed working 14.0-14.4 */
+/* confirmed working 14.0-14.5 */
 bool kalloc_external_finder_14(xnu_pf_patch_t *patch, void *cacheable_stream){
+    /* We've landed somewhere inside AMFI, kalloc_external is the
+     * branch six instructions down */
     xnu_pf_disable_patch(patch);
 
     uint32_t *opcode_stream = cacheable_stream;
+    uint32_t *kalloc_external = get_branch_dst_ptr(opcode_stream + 6);
 
-    /* we've landed inside kalloc_external, find its prologue
-     *
-     * looking for stp x29, x30, [sp, -0x10]!
-     */
-    uint32_t instr_limit = 200;
-
-    while(*opcode_stream != 0xa9bf7bfd){
-        if(instr_limit-- == 0)
-            return false;
-
-        opcode_stream--;
-    }
-
-    g_kalloc_external_addr = xnu_ptr_to_va(opcode_stream);
+    g_kalloc_external_addr = xnu_ptr_to_va(kalloc_external);
 
     puts("xnuspy: found kalloc_external");
 
     return true;
 }
 
-/* confirmed working 14.0-14.4 */
+/* confirmed working 14.0-14.5 */
 bool kfree_ext_finder_14(xnu_pf_patch_t *patch, void *cacheable_stream){
+    /* We've landed somewhere in mach_gss_accept_sec_context, kfree_ext
+     * is the branch three instructions down */
     xnu_pf_disable_patch(patch);
 
     uint32_t *opcode_stream = cacheable_stream;
+    uint32_t *kfree_ext = get_branch_dst_ptr(opcode_stream + 3);
 
-    /* we've landed inside kfree_ext, find its prologue
-     *
-     * looking for stp x29, x30, [sp, -0x10]!
-     */
-    uint32_t instr_limit = 200;
-
-    while(*opcode_stream != 0xa9bf7bfd){
-        if(instr_limit-- == 0)
-            return false;
-
-        opcode_stream--;
-    }
-
-    g_kfree_ext_addr = xnu_ptr_to_va(opcode_stream);
+    g_kfree_ext_addr = xnu_ptr_to_va(kfree_ext);
 
     puts("xnuspy: found kfree_ext");
 
     return true;
 }
 
-/* confirmed working 14.0-14.4 */
+/* confirmed working 14.0-14.5 */
 bool ExceptionVectorsBase_finder_14(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     xnu_pf_disable_patch(patch);
@@ -103,7 +83,7 @@ bool ExceptionVectorsBase_finder_14(xnu_pf_patch_t *patch,
     return true;
 }
 
-/* confirmed working 14.0-14.4 */
+/* confirmed working 14.0-14.5 */
 bool sysctl__kern_children_and_register_oid_finder_14(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     xnu_pf_disable_patch(patch);
@@ -140,7 +120,7 @@ bool sysctl__kern_children_and_register_oid_finder_14(xnu_pf_patch_t *patch,
     return true;
 }
 
-/* confirmed working 14.0-14.4 */
+/* confirmed working 14.0-14.5 */
 bool lck_grp_alloc_init_finder_14(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     xnu_pf_disable_patch(patch);
@@ -156,7 +136,7 @@ bool lck_grp_alloc_init_finder_14(xnu_pf_patch_t *patch,
     return true;
 }
 
-/* confirmed working 14.0-14.4 */
+/* confirmed working 14.0-14.5 */
 bool lck_rw_alloc_init_finder_14(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     xnu_pf_disable_patch(patch);
@@ -172,7 +152,7 @@ bool lck_rw_alloc_init_finder_14(xnu_pf_patch_t *patch,
     return true;
 }
 
-/* confirmed working on all KTRR kernels 14.0-14.4 */
+/* confirmed working on all KTRR kernels 14.0-14.5 */
 bool ktrr_lockdown_patcher_14(xnu_pf_patch_t *patch, void *cacheable_stream){
     /* This also hits rorgn_lockdown, where the AMCC CTRR patches are,
      * but it's easier for me to separate them since the instruction
@@ -194,7 +174,7 @@ bool ktrr_lockdown_patcher_14(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
-/* confirmed working on all KTRR kernels 14.0-14.4 */
+/* confirmed working on all KTRR kernels 14.0-14.5 */
 bool amcc_ctrr_lockdown_patcher_14(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     /* On 14.x A10+ there doesn't seem to be a specific lock for
@@ -213,6 +193,63 @@ bool amcc_ctrr_lockdown_patcher_14(xnu_pf_patch_t *patch,
     }
 
     count++;
+
+    return true;
+}
+
+/* confirmed working 14.0-14.5 */
+bool name2oid_and_its_dependencies_finder_14(xnu_pf_patch_t *patch,
+        void *cacheable_stream){
+    /* This finds name2oid and three other things:
+     *      sysctl_geometry_lock (needs to be held when we call name2oid)
+     *      lck_rw_lock_shared
+     *      lck_rw_done
+     *
+     * We are currently sitting on a branch to lck_rw_lock_shared.
+     * The first ADRP we see before this point is getting the address
+     * of sysctl_geometry_lock. Four instructions down is a branch to
+     * name2oid, and seven instructions down is a branch to lck_rw_done.
+     */
+    xnu_pf_disable_patch(patch);
+
+    bool already_found = g_lck_rw_lock_shared_addr != 0;
+
+    uint32_t *opcode_stream = cacheable_stream;
+
+    uint32_t *lck_rw_lock_shared = get_branch_dst_ptr(opcode_stream);
+    uint32_t *name2oid = get_branch_dst_ptr(opcode_stream + 4);
+    uint32_t *lck_rw_done = get_branch_dst_ptr(opcode_stream + 7);
+
+    /* Find the first ADRP or ADR before this point */
+    uint32_t instr_limit = 20;
+
+    while((*opcode_stream & 0x1f000000) != 0x10000000){
+        if(instr_limit-- == 0){
+            printf("%s: ran out of instr limit before adrp\n", __func__);
+            return false;
+        }
+
+        opcode_stream--;
+    }
+
+    uint32_t *sysctl_geometry_lock_addr = (uint32_t *)get_pc_rel_target(opcode_stream);
+
+    g_sysctl_geometry_lock_addr = xnu_ptr_to_va(sysctl_geometry_lock_addr);
+    g_lck_rw_lock_shared_addr = xnu_ptr_to_va(lck_rw_lock_shared);
+    g_name2oid_addr = xnu_ptr_to_va(name2oid);
+    g_lck_rw_done_addr = xnu_ptr_to_va(lck_rw_done);
+
+    if(!already_found)
+        puts("xnuspy: found lck_rw_lock_shared");
+
+    puts("xnuspy: found name2oid");
+    puts("xnuspy: found lck_rw_done");
+    puts("xnuspy: found sysctl_geometry_lock");
+
+    printf("%s: name2oid @ %#llx\n", __func__, g_name2oid_addr-kernel_slide);
+    printf("%s: lck_rw_lock_shared @ %#llx\n", __func__, g_lck_rw_lock_shared_addr-kernel_slide);
+    printf("%s: lck_rw_done @ %#llx\n", __func__, g_lck_rw_done_addr-kernel_slide);
+    printf("%s: sysctl_geometry_lock @ %#llx\n", __func__, g_sysctl_geometry_lock_addr-kernel_slide);
 
     return true;
 }

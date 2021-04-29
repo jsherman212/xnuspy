@@ -74,7 +74,7 @@ uint64_t g_xnuspy_sysctl_mib_ptr = 0;
 uint64_t g_xnuspy_sysctl_mib_count_ptr = 0;
 uint64_t g_xnuspy_ctl_callnum = 0;
 
-/* confirmed working on all kernels 13.0-14.4 */
+/* confirmed working on all kernels 13.0-14.5 */
 bool sysent_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     uint32_t *opcode_stream = cacheable_stream;
 
@@ -260,7 +260,7 @@ bool sysctl_register_oid_finder_13(xnu_pf_patch_t *patch,
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.4 */
+/* confirmed working on all kernels 13.0-14.5 */
 bool sysctl_handle_long_finder_13(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     uint32_t *opcode_stream = cacheable_stream;
@@ -278,7 +278,7 @@ bool sysctl_handle_long_finder_13(xnu_pf_patch_t *patch,
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.4 */
+/* confirmed working on all kernels 13.0-13.7 */
 bool name2oid_and_its_dependencies_finder_13(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     uint32_t *opcode_stream = cacheable_stream;
@@ -315,7 +315,7 @@ bool name2oid_and_its_dependencies_finder_13(xnu_pf_patch_t *patch,
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.4 */
+/* confirmed working on all kernels 13.0-14.5 */
 bool hook_system_check_sysctlbyname_finder_13(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     uint32_t *opcode_stream = cacheable_stream;
@@ -420,7 +420,7 @@ bool lck_rw_alloc_init_finder_13(xnu_pf_patch_t *patch,
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.4 */
+/* confirmed working on all kernels 13.0-14.5 */
 bool bcopy_phys_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     uint32_t *opcode_stream = cacheable_stream;
 
@@ -457,7 +457,7 @@ bool bcopy_phys_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.4 */
+/* confirmed working on all kernels 13.0-14.5 */
 bool phystokv_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     xnu_pf_disable_patch(patch);
 
@@ -507,7 +507,7 @@ bool amcc_lockdown_patcher_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.4 */
+/* confirmed working on all kernels 13.0-14.5 */
 bool copyin_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     xnu_pf_disable_patch(patch);
 
@@ -533,7 +533,7 @@ bool copyin_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.4 */
+/* confirmed working on all kernels 13.0-14.5 */
 bool copyout_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     uint32_t *opcode_stream = cacheable_stream;
 
@@ -567,7 +567,7 @@ bool copyout_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.4 */
+/* confirmed working on all kernels 13.0-14.5 */
 bool IOSleep_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     xnu_pf_disable_patch(patch);
 
@@ -578,7 +578,7 @@ bool IOSleep_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.4 */
+/* confirmed working on all kernels 13.0-14.5 */
 bool kprintf_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     xnu_pf_disable_patch(patch);
 
@@ -601,7 +601,7 @@ bool kprintf_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.4 */
+/* confirmed working on all kernels 13.0-14.5 */
 bool kernel_map_vm_deallocate_vm_map_unwire_finder_13(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     xnu_pf_disable_patch(patch);
@@ -652,7 +652,7 @@ bool kernel_map_vm_deallocate_vm_map_unwire_finder_13(xnu_pf_patch_t *patch,
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.4 */
+/* confirmed working on all kernels 13.0-14.5 */
 bool kernel_thread_start_thread_deallocate_finder_13(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     /* There's two hits for this, but they're identical, so whatever is
@@ -673,7 +673,7 @@ bool kernel_thread_start_thread_deallocate_finder_13(xnu_pf_patch_t *patch,
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.4 */
+/* confirmed working on all kernels 13.0-14.5 */
 bool mach_make_memory_entry_64_finder_13(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     xnu_pf_disable_patch(patch);
@@ -685,7 +685,7 @@ bool mach_make_memory_entry_64_finder_13(xnu_pf_patch_t *patch,
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.4 */
+/* confirmed working on all kernels 13.0-14.5 */
 bool offsetof_struct_thread_map_finder_13(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     /* We landed in mmap, the first LDR we matched contains the offset
@@ -705,7 +705,7 @@ bool offsetof_struct_thread_map_finder_13(xnu_pf_patch_t *patch,
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.4 */
+/* confirmed working on all kernels 13.0-14.5 */
 bool proc_stuff0_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     /* We've landed in proc_self. This finds:
      *      - current_proc
@@ -788,7 +788,7 @@ bool proc_stuff0_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.4 */
+/* confirmed working on all kernels 13.0-14.5 */
 bool proc_stuff1_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     /* We've landed in sandbox_reference_retain. This finds:
      *      - proc_pid
@@ -831,7 +831,7 @@ bool proc_stuff1_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.4 */
+/* confirmed working on all kernels 13.0-14.5 */
 bool allproc_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     /* The ADRP three instructions past this point is for allproc */
     xnu_pf_disable_patch(patch);
@@ -845,7 +845,7 @@ bool allproc_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.4 */
+/* confirmed working on all kernels 13.0-14.5 */
 bool misc_lck_stuff_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     /* We've landed in sflt_initsock. This finds:
      *      - lck_rw_lock_shared
@@ -854,26 +854,80 @@ bool misc_lck_stuff_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
      *
      * From a programming perspective, lck_rw_lock would satisfy both the
      * first and third, but from a patchfinding perspective, it's so much
-     * easier to get all three of these at once. */
+     * easier to get all three of these at once. (note: name2oid and its
+     * dependencies finder also gets lck_rw_lock_shared on 14.x, but
+     * not on 13.x)
+     *
+     * The first three BLs we see are for lck_rw_lock_shared,
+     * lck_rw_lock_shared_to_exclusive, and lck_rw_lock_exclusive */
+    bool already_found = g_lck_rw_lock_shared_addr != 0;
+
     uint32_t *opcode_stream = cacheable_stream;
+    uint32_t seen_bls = 0;
+    uint32_t instr_limit = 100;
 
-    uint32_t *lck_rw_lock_shared = get_branch_dst_ptr(opcode_stream);
-    uint32_t *lck_rw_lock_shared_to_exclusive = get_branch_dst_ptr(opcode_stream + 4);
-    uint32_t *lck_rw_lock_exclusive = get_branch_dst_ptr(opcode_stream + 7);
+    uint64_t *offs[] = { &g_lck_rw_lock_shared_addr,
+        &g_lck_rw_lock_shared_to_exclusive_addr,
+        &g_lck_rw_lock_exclusive_addr };
 
-    g_lck_rw_lock_shared_addr = xnu_ptr_to_va(lck_rw_lock_shared);
-    g_lck_rw_lock_shared_to_exclusive_addr =
-        xnu_ptr_to_va(lck_rw_lock_shared_to_exclusive);
-    g_lck_rw_lock_exclusive_addr = xnu_ptr_to_va(lck_rw_lock_exclusive);
+    while(seen_bls < 3){
+        if(instr_limit-- == 0)
+            return false;
 
-    puts("xnuspy: found lck_rw_lock_shared");
+        if((*opcode_stream & 0xfc000000) == 0x94000000){
+            uint32_t *dst = get_branch_dst_ptr(opcode_stream);
+
+            *offs[seen_bls] = xnu_ptr_to_va(dst);
+
+            /* if(seen_bls == 0) */
+            /*     g_lck_rw_lock_shared_addr = xnu_ptr_to_va(dst); */
+            /* else if(seen_bls == 1){ */
+            /*     g_ */
+            /*     uint32_t *lck_rw_lock_shared_to_exclusive = (uint32_t *)((intptr_t)opcode_stream + imm26); */
+            /*     printf("%s: lck_rw_lock_shared_to_exclusive:\n", __func__); */
+
+            /*     for(int i=0; i<10; i++){ */
+            /*         char *d = disas(lck_rw_lock_shared_to_exclusive[i], pc); */
+            /*         printf("\t%s\n", d); */
+            /*         free(d); */
+            /*     } */
+            /* } */
+            /* else if(seen_bls == 2){ */
+            /*     uint32_t *lck_rw_lock_exclusive = (uint32_t *)((intptr_t)opcode_stream + imm26); */
+            /*     printf("%s: lck_rw_lock_exclusive:\n", __func__); */
+
+            /*     for(int i=0; i<10; i++){ */
+            /*         char *d = disas(lck_rw_lock_exclusive[i], pc); */
+            /*         printf("\t%s\n", d); */
+            /*         free(d); */
+            /*     } */
+            /* } */
+
+            seen_bls++;
+        }
+
+        opcode_stream++;
+    }
+
+    /* uint32_t *lck_rw_lock_shared = get_branch_dst_ptr(opcode_stream); */
+    /* uint32_t *lck_rw_lock_shared_to_exclusive = get_branch_dst_ptr(opcode_stream + 4); */
+    /* uint32_t *lck_rw_lock_exclusive = get_branch_dst_ptr(opcode_stream + 7); */
+
+    /* g_lck_rw_lock_shared_addr = xnu_ptr_to_va(lck_rw_lock_shared); */
+    /* g_lck_rw_lock_shared_to_exclusive_addr = */
+    /*     xnu_ptr_to_va(lck_rw_lock_shared_to_exclusive); */
+    /* g_lck_rw_lock_exclusive_addr = xnu_ptr_to_va(lck_rw_lock_exclusive); */
+
+    if(!already_found)
+        puts("xnuspy: found lck_rw_lock_shared");
+
     puts("xnuspy: found lck_rw_lock_shared_to_exclusive");
     puts("xnuspy: found lck_rw_lock_exclusive");
 
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.4 */
+/* confirmed working on all kernels 13.0-14.5 */
 bool vm_map_wire_external_finder_13(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     /* We've matched a ton of places, we're in vm_map_wire_external if
@@ -903,7 +957,7 @@ bool vm_map_wire_external_finder_13(xnu_pf_patch_t *patch,
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.4 */
+/* confirmed working on all kernels 13.0-14.5 */
 bool mach_vm_map_external_finder_13(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     /* We've matched a couple places, we are in mach_vm_map_external if the
@@ -928,20 +982,22 @@ bool mach_vm_map_external_finder_13(xnu_pf_patch_t *patch,
     g_mach_vm_map_external_addr = xnu_ptr_to_va(opcode_stream);
 
     puts("xnuspy: found mach_vm_map_external");
+    printf("%s: mach_vm_map_external @ %#llx\n", __func__,
+            g_mach_vm_map_external_addr-kernel_slide);
 
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.4 */
+/* confirmed working on all kernels 13.0-14.5 */
 bool ipc_port_release_send_finder_13(xnu_pf_patch_t *patch,
         void *cacheable_stream){
-    /* We've landed inside exception_deliver, the 4th instruction from
-     * this point is a BL to ipc_port_release_send */
+    /* We've landed inside exception_deliver, or if we're on 14.5,
+     * exception_triage_thread, the 2nd instruction from this
+     * point is a BL to ipc_port_release_send */
     xnu_pf_disable_patch(patch);
 
     uint32_t *opcode_stream = cacheable_stream;
-
-    uint32_t *ipc_port_release_send = get_branch_dst_ptr(opcode_stream + 3);
+    uint32_t *ipc_port_release_send = get_branch_dst_ptr(opcode_stream + 1);
 
     g_ipc_port_release_send_addr = xnu_ptr_to_va(ipc_port_release_send);
 
@@ -950,7 +1006,7 @@ bool ipc_port_release_send_finder_13(xnu_pf_patch_t *patch,
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.4 */
+/* confirmed working on all kernels 13.0-14.5 */
 bool lck_rw_free_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     /* We've landed inside IORWLockFree, the unconditional branch is to
      * lck_rw_free */
@@ -967,7 +1023,7 @@ bool lck_rw_free_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.4 */
+/* confirmed working on all kernels 13.0-14.5 */
 bool lck_grp_free_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     /* We've landed inside ipf_init, the 5th instruction from this point
      * is branching to lck_grp_free */
@@ -984,7 +1040,7 @@ bool lck_grp_free_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.4 */
+/* confirmed working on all kernels 13.0-14.5 */
 bool doprnt_hide_pointers_patcher_13(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     /* XNU only respects -show_pointers when debug_enabled is non-zero,
@@ -1012,7 +1068,7 @@ bool doprnt_hide_pointers_patcher_13(xnu_pf_patch_t *patch,
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.4 */
+/* confirmed working on all kernels 13.0-14.5 */
 bool copyinstr_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     /* We've landed inside copyinstr, find its prologue. Looking for
      * sub sp, sp, n */
@@ -1035,7 +1091,7 @@ bool copyinstr_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.4 */
+/* confirmed working on all kernels 13.0-14.5 */
 bool thread_terminate_finder_13(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     /* We landed inside of _Call_continuation, the branch four
@@ -1053,7 +1109,7 @@ bool thread_terminate_finder_13(xnu_pf_patch_t *patch,
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.4 */
+/* confirmed working on all kernels 13.0-14.5 */
 bool pinst_set_tcr_patcher_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     /* We need to keep TCR_EL1.HPD0 and TCR_EL1.HPD1 set if we want
      * A10+ to respect PTE permission bits as they are. We landed inside
@@ -1079,7 +1135,7 @@ bool pinst_set_tcr_patcher_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.4 */
+/* confirmed working on all kernels 13.0-14.5 */
 bool msr_tcr_el1_x18_patcher_13(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     /* These patches don't need to be done on A9(x) */
@@ -1118,7 +1174,7 @@ bool msr_tcr_el1_x18_patcher_13(xnu_pf_patch_t *patch,
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.4 */
+/* confirmed working on all kernels 13.0-14.5 */
 bool proc_name_snprintf_strlen_finder_13(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     xnu_pf_disable_patch(patch);
@@ -1140,7 +1196,7 @@ bool proc_name_snprintf_strlen_finder_13(xnu_pf_patch_t *patch,
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.4 */
+/* confirmed working on all kernels 13.0-14.5 */
 bool strncmp_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     xnu_pf_disable_patch(patch);
 
@@ -1151,7 +1207,7 @@ bool strncmp_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.4 */
+/* confirmed working on all kernels 13.0-14.5 */
 bool memset_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     xnu_pf_disable_patch(patch);
 
@@ -1175,7 +1231,7 @@ bool memset_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.4 */
+/* confirmed working on all kernels 13.0-14.5 */
 bool memmove_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     xnu_pf_disable_patch(patch);
 
@@ -1199,7 +1255,7 @@ bool memmove_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.4 */
+/* confirmed working on all kernels 13.0-14.5 */
 bool panic_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     xnu_pf_disable_patch(patch);
 
@@ -1223,7 +1279,7 @@ bool panic_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.4 */
+/* confirmed working on all kernels 13.0-14.5 */
 bool mach_to_bsd_errno_finder_13(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     xnu_pf_disable_patch(patch);

@@ -238,6 +238,8 @@ static void initialize_xnuspy_cache(void){
         XNUSPY_CACHE_WRITE(g_kfree_ext_addr);
     }
 
+    XNUSPY_CACHE_WRITE(g_kern_version_minor);
+
     puts("xnuspy: initialized xnuspy cache");
 }
 
