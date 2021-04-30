@@ -73,6 +73,7 @@ uint64_t g_mach_to_bsd_errno_addr;
 uint64_t g_xnuspy_sysctl_mib_ptr = 0;
 uint64_t g_xnuspy_sysctl_mib_count_ptr = 0;
 uint64_t g_xnuspy_ctl_callnum = 0;
+uint64_t g_io_lock_addr = 0;
 
 /* confirmed working on all kernels 13.0-14.5 */
 bool sysent_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
@@ -993,7 +994,12 @@ bool ipc_port_release_send_finder_13(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     /* We've landed inside exception_deliver, or if we're on 14.5,
      * exception_triage_thread, the 2nd instruction from this
-     * point is a BL to ipc_port_release_send */
+     * point is a BL to ipc_port_release_send. Also on 14.5, Apple seemed
+     * to have moved the code which takes the port's lock from this
+     * function to another smaller function. The smaller function is
+     * inlined all over the place, but it calls io_lock, so we'll be able
+     * to find a branch to io_lock right above where we landed. If we're
+     * not on 14.5, this branch will be to ipc_port_release send. */
     xnu_pf_disable_patch(patch);
 
     uint32_t *opcode_stream = cacheable_stream;
@@ -1002,6 +1008,20 @@ bool ipc_port_release_send_finder_13(xnu_pf_patch_t *patch,
     g_ipc_port_release_send_addr = xnu_ptr_to_va(ipc_port_release_send);
 
     puts("xnuspy: found ipc_port_release_send");
+
+    if(!is_14_5_and_above__pongo())
+        return true;
+
+    /* uint32_t possible_bl = opcode_stream[-1]; */
+
+    /* if((possible_bl & 0xfc000000) != 0x94000000) */
+    /*     return false; */
+
+    uint32_t *io_lock = get_branch_dst_ptr(opcode_stream - 1);
+
+    g_io_lock_addr = xnu_ptr_to_va(io_lock);
+
+    puts("xnuspy(>=14.5): found io_lock");
 
     return true;
 }

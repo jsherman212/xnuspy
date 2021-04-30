@@ -163,8 +163,8 @@ int main(int argc, char **argv){
         return 1;
     }
 
-    /* iphone se 14.3 */
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xfffffff0072da190,
+    /* iPhone 7 14.5 */
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xfffffff00733b960,
             open1, &open1_orig);
 
     if(ret){

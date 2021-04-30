@@ -58,11 +58,13 @@ static struct xnuspy_ctl_kernel_symbol {
     { "_copyout", &g_copyout_addr },
     { "_current_proc", &g_current_proc_addr },
     { "_hookme_in_range", &g_hookme_in_range },
+    { "_io_lock", &g_io_lock_addr },
     { "_iOS_version", &g_kern_version_major },
     { "_IOSleep", &g_IOSleep_addr },
     { "_ipc_port_release_send", &g_ipc_port_release_send_addr },
     { "_kalloc_canblock", &g_kalloc_canblock_addr },
     { "_kalloc_external", &g_kalloc_external_addr },
+    { "_kern_version_minor", &g_kern_version_minor },
     { "_kernel_mapp", &g_kernel_map_addr },
     { "_kernel_slide", &kernel_slide },
     { "_kernel_thread_start", &g_kernel_thread_start_addr },
@@ -193,6 +195,9 @@ static void anything_missing(void){
     chk(!g_memmove_addr, "memmove not found\n");
     chk(!g_panic_addr, "panic not found\n");
     chk(!g_mach_to_bsd_errno_addr, "mach_to_bsd_errno not found\n");
+
+    if(is_14_5_and_above__pongo())
+        chk(!g_io_lock_addr, "io_lock not found\n");
 
     /* if we printed the error header, something is missing */
     if(printed_err_hdr)

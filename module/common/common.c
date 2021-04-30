@@ -1,8 +1,23 @@
 #include <mach-o/loader.h>
+#include <stdbool.h>
 #include <stdio.h>
 
+#include "common.h"
+
+#include "../pf/offsets.h"
+
+bool is_14_5_and_above__pongo(void){
+    if(g_kern_version_major == iOS_13_x)
+        return false;
+
+    if(g_kern_version_minor < 4)
+        return false;
+
+    return true;
+}
+
 /* no sign support */
-int atoi(char *s){
+int atoi(const char *s){
     int res = 0;
 
     while(*s){

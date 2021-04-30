@@ -2,6 +2,9 @@
 #define COMMON
 
 #include <mach-o/loader.h>
+#include <stdbool.h>
+
+bool is_14_5_and_above__pongo(void);
 
 int atoi(const char *);
 int isdigit(int);

@@ -135,11 +135,14 @@ MARK_AS_KERNEL_OFFSET void *(*current_proc)(void);
 /* Keep these all aligned 8 bytes */
 MARK_AS_KERNEL_OFFSET uint64_t hookme_in_range;
 MARK_AS_KERNEL_OFFSET uint64_t iOS_version;
+/* This will only be io_lock on 14.5 and above */
+MARK_AS_KERNEL_OFFSET void (*io_lock)(void *io);
 MARK_AS_KERNEL_OFFSET void (*IOSleep)(unsigned int millis);
 MARK_AS_KERNEL_OFFSET void (*ipc_port_release_send)(void *port);
 MARK_AS_KERNEL_OFFSET void *(*kalloc_canblock)(vm_size_t *sizep, bool canblock,
         void *site);
 MARK_AS_KERNEL_OFFSET void *(*kalloc_external)(vm_size_t sz);
+MARK_AS_KERNEL_OFFSET uint64_t kern_version_minor;
 MARK_AS_KERNEL_OFFSET void **kernel_mapp;
 MARK_AS_KERNEL_OFFSET uint64_t kernel_slide;
 MARK_AS_KERNEL_OFFSET kern_return_t (*kernel_thread_start)(thread_continue_t cont,
@@ -203,6 +206,27 @@ __attribute__ ((naked)) static uint64_t current_thread(void){
 
 static struct _vm_map *current_map(void){
     return *(struct _vm_map **)(current_thread() + offsetof_struct_thread_map);
+}
+
+static bool is_14_5_and_above(void){
+    if(iOS_version == iOS_13_x)
+        return false;
+
+    if(kern_version_minor < 4)
+        return false;
+
+    return true;
+}
+
+static void ipc_port_release_send_wrapper(void *port){
+    if(is_14_5_and_above()){
+        if(*(void **)io_lock == NULL)
+            _panic("%s: io_lock is still 0 on >=14.5??", __func__);
+
+        io_lock(port);
+    }
+
+    ipc_port_release_send(port);
 }
 
 lck_rw_t *xnuspy_rw_lck = NULL;
@@ -675,7 +699,7 @@ failed_unwire_kernel_mapping:
 failed_dealloc_kernel_mapping:
     _vm_deallocate(kernel_map, shm_addr, copysz);
 failed_dealloc_mementry:
-    ipc_port_release_send(shm_entry);
+    ipc_port_release_send_wrapper(shm_entry);
 failed_unwire_user_segments:
     vm_map_unwire(current_map, copystart, copystart + copysz, 1);
 failed:;
@@ -898,7 +922,24 @@ out:
 /* proc_list_unlock has been inlined so aggressively on all kernels that there
  * are no xrefs to the actual function so we need to do it like this */
 static void proc_list_unlock(void){
-    lck_mtx_unlock(*proc_list_mlockp);
+    /* On 14.5, the patchfinder for proc_list_mlock yields a pointer
+     * to it, not a pointer to a pointer to it like on 13.0 - 14.4.2 */
+    void *mtx = proc_list_mlockp;
+
+    if(is_14_5_and_above())
+        lck_mtx_unlock(mtx);
+    else
+        lck_mtx_unlock(*(void **)mtx);
+
+    /* if(iOS_version == iOS_13_x) */
+    /*     lck_mtx_unlock(*(void **)mtx); */
+    /* else{ */
+    /*     /1* 14.5 or above? *1/ */
+    /*     if(kern_version_minor >= 4) */
+    /*         lck_mtx_unlock(mtx); */
+    /*     else */
+    /*         lck_mtx_unlock(*(void **)mtx); */
+    /* } */
 }
 
 /* By default, allow around 1 mb of kernel memory to be leaked by us */
@@ -931,7 +972,7 @@ static void xnuspy_do_gc(void){
 
         struct orphan_mapping *om = entry->elem;
 
-        ipc_port_release_send(om->memory_entry);
+        ipc_port_release_send_wrapper(om->memory_entry);
 
         /* If we fail from this point on, make sure we don't update
          * g_num_leaked_pages */
@@ -1273,7 +1314,7 @@ static int xnuspy_cache_read(enum xnuspy_cache_id which,
             what = bzero;
             break;
         case IPC_PORT_RELEASE_SEND:
-            what = ipc_port_release_send;
+            what = ipc_port_release_send_wrapper;
             break;
         case KERNEL_MAP:
             what = *kernel_mapp;

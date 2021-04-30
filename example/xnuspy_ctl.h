@@ -49,6 +49,10 @@ enum {
     ALLPROC,
 
     BZERO,
+
+    /* IMPORTANT: the ipc_port_release_send found by xnuspy's patchfinder
+     * does not take the port's lock, so I wrote a tiny wrapper which does.
+     * IPC_PORT_RELEASE_SEND will export that wrapper instead. */
     IPC_PORT_RELEASE_SEND,
 
     /* vm_map_t kernel_map @ osfmk/vm/vm_kern.h */
