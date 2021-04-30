@@ -176,8 +176,8 @@ int main(int argc, char **argv){
         return 1;
     }
 
-    /* iphone se 14.3 */
-    getClassName = (const char *(*)(const void *))(0xfffffff00762e3e4 + kernel_slide);
+    /* iPhone SE 14.5 */
+    getClassName = (const char *(*)(const void *))(0xfffffff007652c80 + kernel_slide);
 
     printf("kernel slide: %#llx\n", kernel_slide);
     printf("current_proc @ %#llx\n", (uint64_t)current_proc);
@@ -185,7 +185,7 @@ int main(int argc, char **argv){
     printf("kprintf @ %#llx\n", (uint64_t)kprintf);
     printf("proc_pid @ %#llx\n", (uint64_t)proc_pid);
 
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xfffffff0076e3104,
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xfffffff007708dac,
             is_io_service_open_extended, &is_io_service_open_extended_orig);
 
     if(ret){

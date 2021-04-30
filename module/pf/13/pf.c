@@ -877,47 +877,12 @@ bool misc_lck_stuff_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
 
         if((*opcode_stream & 0xfc000000) == 0x94000000){
             uint32_t *dst = get_branch_dst_ptr(opcode_stream);
-
             *offs[seen_bls] = xnu_ptr_to_va(dst);
-
-            /* if(seen_bls == 0) */
-            /*     g_lck_rw_lock_shared_addr = xnu_ptr_to_va(dst); */
-            /* else if(seen_bls == 1){ */
-            /*     g_ */
-            /*     uint32_t *lck_rw_lock_shared_to_exclusive = (uint32_t *)((intptr_t)opcode_stream + imm26); */
-            /*     printf("%s: lck_rw_lock_shared_to_exclusive:\n", __func__); */
-
-            /*     for(int i=0; i<10; i++){ */
-            /*         char *d = disas(lck_rw_lock_shared_to_exclusive[i], pc); */
-            /*         printf("\t%s\n", d); */
-            /*         free(d); */
-            /*     } */
-            /* } */
-            /* else if(seen_bls == 2){ */
-            /*     uint32_t *lck_rw_lock_exclusive = (uint32_t *)((intptr_t)opcode_stream + imm26); */
-            /*     printf("%s: lck_rw_lock_exclusive:\n", __func__); */
-
-            /*     for(int i=0; i<10; i++){ */
-            /*         char *d = disas(lck_rw_lock_exclusive[i], pc); */
-            /*         printf("\t%s\n", d); */
-            /*         free(d); */
-            /*     } */
-            /* } */
-
             seen_bls++;
         }
 
         opcode_stream++;
     }
-
-    /* uint32_t *lck_rw_lock_shared = get_branch_dst_ptr(opcode_stream); */
-    /* uint32_t *lck_rw_lock_shared_to_exclusive = get_branch_dst_ptr(opcode_stream + 4); */
-    /* uint32_t *lck_rw_lock_exclusive = get_branch_dst_ptr(opcode_stream + 7); */
-
-    /* g_lck_rw_lock_shared_addr = xnu_ptr_to_va(lck_rw_lock_shared); */
-    /* g_lck_rw_lock_shared_to_exclusive_addr = */
-    /*     xnu_ptr_to_va(lck_rw_lock_shared_to_exclusive); */
-    /* g_lck_rw_lock_exclusive_addr = xnu_ptr_to_va(lck_rw_lock_exclusive); */
 
     if(!already_found)
         puts("xnuspy: found lck_rw_lock_shared");
@@ -983,8 +948,6 @@ bool mach_vm_map_external_finder_13(xnu_pf_patch_t *patch,
     g_mach_vm_map_external_addr = xnu_ptr_to_va(opcode_stream);
 
     puts("xnuspy: found mach_vm_map_external");
-    printf("%s: mach_vm_map_external @ %#llx\n", __func__,
-            g_mach_vm_map_external_addr-kernel_slide);
 
     return true;
 }
@@ -1011,11 +974,6 @@ bool ipc_port_release_send_finder_13(xnu_pf_patch_t *patch,
 
     if(!is_14_5_and_above__pongo())
         return true;
-
-    /* uint32_t possible_bl = opcode_stream[-1]; */
-
-    /* if((possible_bl & 0xfc000000) != 0x94000000) */
-    /*     return false; */
 
     uint32_t *io_lock = get_branch_dst_ptr(opcode_stream - 1);
 

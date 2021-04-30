@@ -12,7 +12,9 @@ Some offsets I already have for `open1`:
 iPhone X 13.3.1:        0xfffffff007d70534
 iPhone 8 13.6.1:        0xfffffff007d99c1c
 iPhone 7 14.1:          0xfffffff00730aa64
+iPhone 7 14.5:          0xfffffff00733b960
 iPhone SE (2016) 14.3:  0xfffffff0072da190
+iPhone SE (2016) 14.5:  0xfffffff0072fd3dc
 ```
 
 ### user_client_monitor
@@ -34,9 +36,17 @@ iPhone 7 14.1:
     getClassName: 0xfffffff00765be54
     is_io_service_open_extended: 0xfffffff00770d114
 
+iPhone 7 14.5:
+    getClassName: 0xfffffff00769130c
+    is_io_service_open_extended: 0xfffffff0077473a8
+
 iPhone SE (2016) 14.3:
     getClassName: 0xfffffff00762e3e4
     is_io_service_open_extended: 0xfffffff0076e3104
+
+iPhone SE (2016) 14.5:
+    getClassName: 0xfffffff007652c80
+    is_io_service_open_extended: 0xfffffff007708dac
 ```
 
 ### kernel_thread

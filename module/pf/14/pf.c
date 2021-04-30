@@ -224,10 +224,8 @@ bool name2oid_and_its_dependencies_finder_14(xnu_pf_patch_t *patch,
     uint32_t instr_limit = 20;
 
     while((*opcode_stream & 0x1f000000) != 0x10000000){
-        if(instr_limit-- == 0){
-            printf("%s: ran out of instr limit before adrp\n", __func__);
+        if(instr_limit-- == 0)
             return false;
-        }
 
         opcode_stream--;
     }
@@ -245,11 +243,6 @@ bool name2oid_and_its_dependencies_finder_14(xnu_pf_patch_t *patch,
     puts("xnuspy: found name2oid");
     puts("xnuspy: found lck_rw_done");
     puts("xnuspy: found sysctl_geometry_lock");
-
-    printf("%s: name2oid @ %#llx\n", __func__, g_name2oid_addr-kernel_slide);
-    printf("%s: lck_rw_lock_shared @ %#llx\n", __func__, g_lck_rw_lock_shared_addr-kernel_slide);
-    printf("%s: lck_rw_done @ %#llx\n", __func__, g_lck_rw_done_addr-kernel_slide);
-    printf("%s: sysctl_geometry_lock @ %#llx\n", __func__, g_sysctl_geometry_lock_addr-kernel_slide);
 
     return true;
 }

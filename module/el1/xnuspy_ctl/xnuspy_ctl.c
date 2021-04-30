@@ -220,7 +220,7 @@ static bool is_14_5_and_above(void){
 
 static void ipc_port_release_send_wrapper(void *port){
     if(is_14_5_and_above()){
-        if(*(void **)io_lock == NULL)
+        if(io_lock == NULL)
             _panic("%s: io_lock is still 0 on >=14.5??", __func__);
 
         io_lock(port);
@@ -930,16 +930,6 @@ static void proc_list_unlock(void){
         lck_mtx_unlock(mtx);
     else
         lck_mtx_unlock(*(void **)mtx);
-
-    /* if(iOS_version == iOS_13_x) */
-    /*     lck_mtx_unlock(*(void **)mtx); */
-    /* else{ */
-    /*     /1* 14.5 or above? *1/ */
-    /*     if(kern_version_minor >= 4) */
-    /*         lck_mtx_unlock(mtx); */
-    /*     else */
-    /*         lck_mtx_unlock(*(void **)mtx); */
-    /* } */
 }
 
 /* By default, allow around 1 mb of kernel memory to be leaked by us */
