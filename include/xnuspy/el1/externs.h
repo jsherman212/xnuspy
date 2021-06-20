@@ -35,11 +35,13 @@ extern int (*copyout)(const void *kaddr, uint64_t uaddr,
 extern void *(*current_proc)(void);
 extern uint64_t hookme_in_range;
 extern uint64_t iOS_version;
+extern void (*io_lock)(void *io);
 extern void (*IOSleep)(unsigned int millis);
 extern void (*ipc_port_release_send)(void *port);
 extern void *(*kalloc_canblock)(vm_size_t *sizep, bool canblock,
         void *site);
 extern void *(*kalloc_external)(vm_size_t sz);
+extern uint64_t kern_version_minor;
 extern void **kernel_mapp;
 extern uint64_t kernel_slide;
 extern kern_return_t (*kernel_thread_start)(thread_continue_t cont,

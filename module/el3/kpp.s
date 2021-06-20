@@ -1,7 +1,7 @@
 /* The code in this file replaces the function which is called by KPP's
     lower EL synchronous exception handler */
 
-#include "../common/asm_support.h"
+#include <asm/asm_support.h>
 
 #define MONITOR_SET_ENTRY 0x800
 

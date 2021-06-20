@@ -1,6 +1,8 @@
 #ifndef ASM
 #define ASM
 
+#include <stdint.h>
+
 uint64_t sign_extend(uint64_t, uint32_t);
 
 uint32_t assemble_adrp(uint64_t, uint64_t, uint32_t);

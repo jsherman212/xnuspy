@@ -1,6 +1,8 @@
 #ifndef PTE
 #define PTE
 
+#include <stdint.h>
+
 typedef uint64_t pte_t;
 
 pte_t *el0_ptep(void *);

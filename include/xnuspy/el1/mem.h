@@ -1,6 +1,9 @@
 #ifndef MEM
 #define MEM
 
+#include <stddef.h>
+#include <stdint.h>
+
 __attribute__((naked)) uint64_t kvtophys(uint64_t);
 __attribute__((naked)) uint64_t uvtophys(uint64_t);
 
@@ -12,6 +15,9 @@ int uprotect(void *, uint64_t, vm_prot_t);
 
 void kwrite_static(void *, void *, size_t);
 void kwrite_instr(uint64_t, uint32_t);
+
+int mkshmem_ktou(uint64_t, uint64_t, uint64_t *, void **);
+int mkshmem_utok(uint64_t, uint64_t, uint64_t *, void **);
 
 void *unified_kalloc(size_t);
 void unified_kfree(void *);

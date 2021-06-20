@@ -2,11 +2,12 @@
 #include <stdio.h>
 #include <stdint.h>
 
-#include "../offsets.h"
+#include <pongo.h>
 
-#include "../../common/asm.h"
-#include "../../common/common.h"
-#include "../../common/pongo.h"
+#include <asm/asm.h>
+#include <common/common.h>
+#include <pf/offsets.h>
+#include <pf/pf_common.h>
 
 uint64_t g_kalloc_external_addr = 0;
 uint64_t g_kfree_ext_addr = 0;

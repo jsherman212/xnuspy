@@ -15,13 +15,11 @@ struct pf {
     uint32_t pf_access_type;
     bool (*pf_callback)(xnu_pf_patch_t *, void *);
     /* If applicable, the name of the kext used with xnu_pf_get_kext_header
-     * If not applicable, NULL
-     */
+     * If not applicable, NULL */
     const char *pf_kext;
     const char *pf_segment;
     /* If applicable, the section used with xnu_pf_section
-     * If not applicable, NULL
-     */
+     * If not applicable, NULL */
     const char *pf_section;
     uint8_t pf_unused;
 };

@@ -5,7 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#include "externs.h"
+#include <xnuspy/el1/externs.h>
 
 void bzero(void *p, size_t n){
     uint8_t *p0 = p;

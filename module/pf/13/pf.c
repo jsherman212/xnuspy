@@ -3,12 +3,12 @@
 #include <stdint.h>
 #include <sys/sysctl.h>
 
-#include "../offsets.h"
-#include "../pf_common.h"
+#include <pongo.h>
 
-#include "../../common/asm.h"
-#include "../../common/common.h"
-#include "../../common/pongo.h"
+#include <asm/asm.h>
+#include <common/common.h>
+#include <pf/offsets.h>
+#include <pf/pf_common.h>
 
 uint64_t g_sysent_addr = 0;
 uint64_t g_kalloc_canblock_addr = 0;

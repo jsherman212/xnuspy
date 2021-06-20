@@ -1,6 +1,8 @@
 #ifndef OFFSETS
 #define OFFSETS
 
+#include <stdint.h>
+
 extern uint64_t *xnuspy_cache_base;
 
 /* This file contains offsets which will be written to the xnuspy cache

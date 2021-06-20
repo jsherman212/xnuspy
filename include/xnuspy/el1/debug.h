@@ -1,7 +1,7 @@
 #ifndef DEBUG
 #define DEBUG
 
-#include "../../common/xnuspy_structs.h"
+#include <xnuspy/xnuspy_structs.h>
 
 #if defined(XNUSPY_DEBUG)
 #define SPYDBG(fmt, args...) do { kprintf(fmt, ##args); } while(0)

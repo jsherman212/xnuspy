@@ -5,15 +5,17 @@
 #include <stdint.h>
 #include <unistd.h>
 
-#include "../../common/asm.h"
-#include "../../common/xnuspy_structs.h"
+#include <asm/asm.h>
+#include <xnuspy/xnuspy_structs.h>
 
-#include "debug.h"
-#include "libc.h"
-#include "mem.h"
-#include "pte.h"
-#include "tramp.h"
+#include <xnuspy/el1/debug.h>
+#include <xnuspy/el1/libc.h>
+#include <xnuspy/el1/mem.h>
+#include <xnuspy/el1/pte.h>
+#include <xnuspy/el1/tramp.h>
+#include <xnuspy/el1/utils.h>
 
+#undef current_map
 #undef current_thread
 #undef PAGE_SIZE
 
@@ -111,7 +113,9 @@ enum xnuspy_cache_id {
     TLB_FLUSH,
     UNIFIED_KALLOC,
     UNIFIED_KFREE,
-    MAX_CACHE = UNIFIED_KFREE
+    MKSHMEM_KTOU,
+    MKSHMEM_UTOK,
+    MAX_CACHE = MKSHMEM_UTOK,
 };
 
 #define MAP_MEM_VM_SHARE            0x400000 /* extract a VM range for remap */
@@ -196,38 +200,6 @@ MARK_AS_KERNEL_OFFSET kern_return_t (*vm_map_wire_external)(void *map,
         uint64_t start, uint64_t end, vm_prot_t prot, int user_wire);
 MARK_AS_KERNEL_OFFSET struct xnuspy_tramp *xnuspy_tramp_mem;
 MARK_AS_KERNEL_OFFSET struct xnuspy_tramp *xnuspy_tramp_mem_end;
-
-__attribute__ ((naked)) static uint64_t current_thread(void){
-    asm(""
-        "mrs x0, tpidr_el1\n"
-        "ret\n"
-       );
-}
-
-static struct _vm_map *current_map(void){
-    return *(struct _vm_map **)(current_thread() + offsetof_struct_thread_map);
-}
-
-static bool is_14_5_and_above(void){
-    if(iOS_version == iOS_13_x)
-        return false;
-
-    if(kern_version_minor < 4)
-        return false;
-
-    return true;
-}
-
-static void ipc_port_release_send_wrapper(void *port){
-    if(is_14_5_and_above()){
-        if(io_lock == NULL)
-            _panic("%s: io_lock is still 0 on >=14.5??", __func__);
-
-        io_lock(port);
-    }
-
-    ipc_port_release_send(port);
-}
 
 lck_rw_t *xnuspy_rw_lck = NULL;
 
@@ -480,8 +452,7 @@ static uint64_t shared_mapping_kva(struct xnuspy_mapping *m,
  * On failure, returns NULL and sets retval.
  */
 static struct xnuspy_mapping *
-map_segments(struct mach_header_64 * /* __user */ umh,
-        struct _vm_map *current_map, int *retval){
+map_segments(struct mach_header_64 * /* __user */ umh, int *retval){
     struct mach_header_64 umh_kern;
 
     int res = copyin(umh, &umh_kern, sizeof(umh_kern));
@@ -601,86 +572,24 @@ nextcmd:
     m = unified_kalloc(sizeof(*m));
 
     if(!m){
-        SPYDBG("%s: unified_kalloc returned NULL when allocating mapping obj\n",
-                __func__);
+        SPYDBG("%s: unified_kalloc returned NULL when allocating "
+                "mapping obj\n", __func__);
         *retval = ENOMEM;
         goto failed;
     }
 
-    bzero(m, sizeof(*m));
+    _memset(m, 0, sizeof(*m));
 
     need_free_on_error = true;
 
-    void *kernel_map = *kernel_mapp;
+    uint64_t shm_addr;
+    void *shm_entry;
 
-    /* Wire down __TEXT and __DATA of the calling process so they are not
-     * swapped out. We only set VM_PROT_READ in case there were some segments
-     * in between __TEXT and __DATA. Also, vm_map_wire_nested needs to be
-     * patched to not bail when VM_PROT_EXECUTE is given, so that's also one
-     * less patchfinder for me to write :D We also set from_user to one because
-     * we're dealing with a user map. */
-    kern_return_t kret = vm_map_wire_external(current_map, copystart, copysz,
-            VM_PROT_READ, 1);
+    res = mkshmem_utok(copystart, copysz, &shm_addr, &shm_entry);
 
-    if(kret){
-        SPYDBG("%s: vm_map_wire_external failed when wiring down "
-                "[copystart, copysz): %d\n", __func__, kret);
-        *retval = mach_to_bsd_errno(kret);
+    if(res){
+        SPYDBG("%s: mkshmem_utok failed: %d\n", __func__, res);
         goto failed;
-    }
-
-    /* We create the mapping with only VM_PROT_READ because that is the
-     * minimum VM protections for a segment (unless they have none, which won't
-     * happen, unless the user does something weird). Additionally, we map
-     * [copystart, copystart+copysz) in one shot, so it's easier to map
-     * everything with the minimum permissions.
-     *
-     * Eventually these permissions will be changed to rwx through the PTEs
-     * of this mapping. */
-    vm_prot_t shm_prot = VM_PROT_READ;
-
-    /* ipc_port_t */
-    void *shm_entry = NULL;
-
-    uint64_t copysz_before = copysz;
-
-    kret = _mach_make_memory_entry_64(current_map, &copysz, copystart,
-            MAP_MEM_VM_SHARE | shm_prot, &shm_entry, NULL);
-
-    if(kret){
-        SPYDBG("%s: mach_make_memory_entry_64 failed: %d\n", __func__, kret);
-        *retval = mach_to_bsd_errno(kret);
-        goto failed_unwire_user_segments;
-    }
-
-    if(copysz_before != copysz){
-        SPYDBG("%s: did not map the entirety of copystart? got %#llx "
-                "expected %#llx\n", __func__, copysz, copysz_before);
-        /* Probably not the best option */
-        *retval = EIO;
-        goto failed_dealloc_mementry;
-    }
-
-    uint64_t shm_addr = 0;
-
-    kret = mach_vm_map_external(kernel_map, &shm_addr, copysz, 0,
-            VM_FLAGS_ANYWHERE, shm_entry, 0, 0, shm_prot, shm_prot,
-            VM_INHERIT_NONE);
-
-    if(kret){
-        SPYDBG("%s: mach_vm_map_external failed: %d\n", __func__, kret);
-        *retval = mach_to_bsd_errno(kret);
-        goto failed_dealloc_mementry;
-    }
-
-    /* Wire down the shared mapping */
-    kret = vm_map_wire_external(kernel_map, shm_addr, shm_addr + copysz,
-            shm_prot, 0);
-
-    if(kret){
-        SPYDBG("%s: vm_map_wire_external failed: %d\n", __func__, kret);
-        *retval = mach_to_bsd_errno(kret);
-        goto failed_dealloc_kernel_mapping;
     }
 
     m->memory_entry = shm_entry;
@@ -694,14 +603,6 @@ nextcmd:
 
     return m;
 
-failed_unwire_kernel_mapping:
-    vm_map_unwire(kernel_map, shm_addr, shm_addr + copysz, 0);
-failed_dealloc_kernel_mapping:
-    _vm_deallocate(kernel_map, shm_addr, copysz);
-failed_dealloc_mementry:
-    ipc_port_release_send_wrapper(shm_entry);
-failed_unwire_user_segments:
-    vm_map_unwire(current_map, copystart, copystart + copysz, 1);
 failed:;
    if(need_free_on_error)
        unified_kfree(m);
@@ -873,7 +774,7 @@ static int xnuspy_install_hook(uint64_t target,
         SPYDBG("%s: no shared mapping for %#llx, creating it now\n",
                 __func__, replacement);
 
-        m = map_segments(umh, cm, &res);
+        m = map_segments(umh, &res);
 
         if(!m){
             SPYDBG("%s: could not make mapping: %d\n", __func__, res);
@@ -1210,21 +1111,21 @@ static int xnuspy_register_death_callback(uint64_t /* __user */ addr){
     return 0;
 }
 
-__attribute__ ((naked)) static void _hookme(void){
+__attribute__ ((naked)) static void _hookme(void *arg){
     asm(""
         "nop\n"
         "ret\n"
        );
 }
 
-static int hookme(void){
+static int hookme(void *arg){
     if(!hookme_in_range){
         SPYDBG("%s: _hookme is unable to be hooked, but if it was, calling"
                 " it would panic, bailing.\n", __func__);
         return ENOTSUP;
     }
 
-    _hookme();
+    _hookme(arg);
 
     return 0;
 }
@@ -1462,6 +1363,12 @@ static int xnuspy_cache_read(enum xnuspy_cache_id which,
         case UNIFIED_KFREE:
             what = unified_kfree;
             break;
+        case MKSHMEM_KTOU:
+            what = mkshmem_ktou;
+            break;
+        case MKSHMEM_UTOK:
+            what = mkshmem_utok;
+            break;
         default:
             return EINVAL;
     };
@@ -1539,7 +1446,7 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
             res = xnuspy_register_death_callback(uap->arg1);
             break;
         case XNUSPY_CALL_HOOKME:
-            res = hookme();
+            res = hookme((void *)uap->arg1);
             break;
         case XNUSPY_CACHE_READ:
             {

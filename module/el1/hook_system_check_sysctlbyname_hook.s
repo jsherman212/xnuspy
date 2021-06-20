@@ -1,5 +1,5 @@
-#include "../common/asm_support.h"
-#include "../common/xnuspy_cache.h"
+#include <asm/asm_support.h>
+#include <xnuspy/xnuspy_cache.h>
 
 #include "hook_system_check_sysctlbyname_hook.h"
 

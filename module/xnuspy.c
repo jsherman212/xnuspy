@@ -2,15 +2,14 @@
 #include <stdlib.h>
 #include <stdbool.h>
 
-#include "common/common.h"
-#include "common/pongo.h"
+#include <pongo.h>
 
-#include "el3/kpp.h"
+#include <common/common.h>
+#include <common/preboot_hook.h>
+#include <pf/offsets.h>
+#include <pf/pfs.h>
 
-#include "pf/offsets.h"
-#include "pf/pfs.h"
-
-#include "preboot_hook.h"
+#include <xnuspy/el3/kpp.h>
 
 uint64_t g_kern_version_major = 0;
 uint64_t g_kern_version_minor = 0;

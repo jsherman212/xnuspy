@@ -1,3 +1,7 @@
+RP = $(realpath $(shell pwd))
+
+export RP
+
 TARGET_DIRS = loader opdump module
 
 all : $(TARGET_DIRS)

@@ -2,9 +2,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "externs.h"
+#include <asm/asm.h>
 
-#include "../../common/asm.h"
+#include <xnuspy/el1/externs.h>
 
 static void generate_b_cond_equivalent(uint32_t orig_instr, uint32_t **tramp,
         uint32_t *len_out){

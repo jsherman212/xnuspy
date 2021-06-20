@@ -114,6 +114,37 @@ static kern_return_t is_io_service_open_extended(void *_service,
     return kret;
 }
 
+static kern_return_t (*is_io_connect_method)(struct IOUserClient *,
+        uint32_t selector, uint64_t *scalar_input,
+        uint32_t scalar_input_sz, uint8_t *struct_input,
+        uint32_t struct_input_sz, uint64_t ool_input, uint64_t ool_input_sz,
+        uint8_t *struct_output, uint32_t *struct_output_szp,
+        uint64_t *scalar_output, uint64_t *scalar_output_szp,
+        uint64_t ool_output, uint64_t *ool_output_szp);
+
+static kern_return_t _is_io_connect_method(struct IOUserClient *uc,
+        uint32_t selector, uint64_t *scalar_input,
+        uint32_t scalar_input_sz, uint8_t *struct_input,
+        uint32_t struct_input_sz, uint64_t ool_input, uint64_t ool_input_sz,
+        uint8_t *struct_output, uint32_t *struct_output_szp,
+        uint64_t *scalar_output, uint64_t *scalar_output_szp,
+        uint64_t ool_output, uint64_t *ool_output_szp){
+    kern_return_t kret = is_io_connect_method(uc, selector, scalar_input,
+            scalar_input_sz, struct_input, struct_input_sz, ool_input,
+            ool_input_sz, struct_output, struct_output_szp, scalar_output,
+            scalar_output_szp, ool_output, ool_output_szp);
+
+    const char *class_name = getClassName(uc);
+
+    if(!class_name)
+        return kret;
+
+    kprintf("user_client_monitor: '%s' invoked external method %d\n",
+            class_name, selector);
+
+    return kret;
+}
+
 static long SYS_xnuspy_ctl = 0;
 
 static int gather_kernel_offsets(void){
@@ -190,6 +221,15 @@ int main(int argc, char **argv){
 
     if(ret){
         printf("Could not hook is_io_service_open_extended: %s\n",
+                strerror(errno));
+        return 1;
+    }
+
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF00770A22C,
+            _is_io_connect_method, &is_io_connect_method);
+
+    if(ret){
+        printf("Could not hook is_io_connect_method: %s\n",
                 strerror(errno));
         return 1;
     }

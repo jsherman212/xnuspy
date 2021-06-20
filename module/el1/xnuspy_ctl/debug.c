@@ -2,11 +2,11 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "../../common/xnuspy_structs.h"
+#include <xnuspy/xnuspy_structs.h>
 
-#include "debug.h"
-#include "externs.h"
-#include "mem.h"
+#include <xnuspy/el1/debug.h>
+#include <xnuspy/el1/externs.h>
+#include <xnuspy/el1/mem.h>
 
 void desc_freelist(void){
     lck_rw_lock_shared(xnuspy_rw_lck);

@@ -1,13 +1,14 @@
-ASM_INSTR_HDRS = $(patsubst %.s, %_instrs.h, $(wildcard *.s))
+ASM_INSTR_HDRS = $(patsubst %.s, $(RP)/include/xnuspy/el1/%_instrs.h, $(wildcard *.s))
 TARGET_DIRS = xnuspy_ctl
 
 all : $(ASM_INSTR_HDRS) target_dirs
 
-%_instrs.h : %.s %.h ../common/asm_support.h ../common/xnuspy_cache.h
+$(RP)/include/xnuspy/el1/%_instrs.h : %.s %.h \
+	$(RP)/include/asm/asm_support.h $(RP)/include/xnuspy/xnuspy_cache.h
 	$(eval OUTFILE = $(subst .s,,$<))
-	$(CC) -arch arm64 -isysroot $(SDK) -e _$(OUTFILE) $< -o $(OUTFILE)
+	$(CC) -arch arm64 -isysroot $(SDK) -I$(RP)/include -e _$(OUTFILE) $< -o $(OUTFILE)
 	$(OPDUMP) -td -i ./$(OUTFILE) -a $(OUTFILE) -o $(OUTFILE)_instrs.h
-	#rm ./$(OUTFILE)
+	mv $(OUTFILE)_instrs.h $(RP)/include/xnuspy/el1/
 
 .PHONY : target_dirs $(TARGET_DIRS)
 

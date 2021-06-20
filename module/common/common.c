@@ -2,9 +2,8 @@
 #include <stdbool.h>
 #include <stdio.h>
 
-#include "common.h"
-
-#include "../pf/offsets.h"
+#include <common/common.h>
+#include <pf/offsets.h>
 
 bool is_14_5_and_above__pongo(void){
     if(g_kern_version_major == iOS_13_x)

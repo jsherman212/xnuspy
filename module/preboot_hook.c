@@ -4,17 +4,17 @@
 #include <stdint.h>
 #include <sys/sysctl.h>
 
-#include "common/asm.h"
-#include "common/asm_support.h"
-#include "common/common.h"
-#include "common/pongo.h"
-#include "common/xnuspy_structs.h"
+#include <pongo.h>
 
-#include "el1/hook_system_check_sysctlbyname_hook_instrs.h"
-#include "el1/xnuspy_ctl_tramp_instrs.h"
+#include <asm/asm.h>
+#include <asm/asm_support.h>
+#include <common/common.h>
+#include <pf/offsets.h>
+#include <pf/pf_common.h>
+#include <xnuspy/xnuspy_structs.h>
 
-#include "pf/offsets.h"
-#include "pf/pf_common.h"
+#include <xnuspy/el1/hook_system_check_sysctlbyname_hook_instrs.h>
+#include <xnuspy/el1/xnuspy_ctl_tramp_instrs.h>
 
 static uint64_t g_xnuspy_ctl_addr = 0;
 /* address of start of __TEXT_EXEC in xnuspy_ctl image */

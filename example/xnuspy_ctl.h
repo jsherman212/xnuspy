@@ -104,7 +104,7 @@ enum {
     
     /* Everything below is from xnuspy, everything above is from XNU */
 
-    /* void hookme(void)
+    /* void hookme(void *arg)
      *
      * This function is a stub for you to hook to easily gain kernel code
      * execution without having to hook an actual kernel function. You can
@@ -275,6 +275,35 @@ enum {
      */
     UNIFIED_KALLOC,
     UNIFIED_KFREE,
+
+    /* The next two functions deal with shared memory. One is for mapping
+     * userspace memory into the kernel and the other is for mapping kernel
+     * memory into userspace.
+     *
+     * int mkshmem_ktou(uint64_t kaddr, uint64_t sz, uint64_t *shm_uaddrp,
+     *         void **shm_entryp)
+     *
+     * Parameters:
+     *  kaddr:      kva of where to start mapping from
+     *  shm_uaddrp: pointer to uva of newly-created shared mapping
+     *
+     * int mkshmem_utok(uint64_t uaddr, uint64_t sz, uint64_t *shm_kaddrp,
+     *         void **shm_entryp)
+     *
+     * Parameters:
+     *  uaddr:      uva of where to start mapping from
+     *  shm_kaddrp: pointer to kva of newly-created shared mapping
+     *
+     * For both functions:
+     *  sz:         desired length of shared mapping, page multiple
+     *  shm_entryp: pointer to the memory object (ipc_port_t) that
+     *     represents this shared mapping. 
+     *
+     * Returns:
+     *  Zero on success, non-zero errno on failure.
+     */
+    MKSHMEM_KTOU,
+    MKSHMEM_UTOK,
 };
 
 #define iOS_13_x    (19)

@@ -1,10 +1,15 @@
+#include <errno.h>
 #include <mach/mach.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <unistd.h>
 
-#include "externs.h"
-#include "pte.h"
+#include <xnuspy/xnuspy_structs.h>
+
+#include <xnuspy/el1/debug.h>
+#include <xnuspy/el1/externs.h>
+#include <xnuspy/el1/pte.h>
+#include <xnuspy/el1/utils.h>
 
 __attribute__ ((naked)) uint64_t kvtophys(uint64_t kaddr){
     asm volatile(""
@@ -198,6 +203,107 @@ void kwrite_instr(uint64_t dst, uint32_t instr){
     icache_invalidate_PoU((void *)dst, sizeof(uint32_t));
 
     kprotect((void *)dst, sizeof(uint32_t), VM_PROT_READ | VM_PROT_EXECUTE);
+}
+
+static int mkshmem_common(uint64_t start, uint64_t sz, struct _vm_map *from,
+        struct _vm_map *to, uint64_t *shm_addrp, void **shm_entryp){
+    int retval = 0;
+
+    /* kern_return_t kret = vm_map_wire_external(current_map, copystart, copysz, */
+    /*         VM_PROT_READ, 1); */
+    kern_return_t kret = vm_map_wire_external(from, start, sz,
+            VM_PROT_READ, from != *kernel_mapp);
+
+    if(kret){
+        SPYDBG("%s: vm_map_wire_external failed when wiring down "
+                "[%#llx,%#llx): %#x\n", __func__, start, start+sz, kret);
+        retval = mach_to_bsd_errno(kret);
+        goto failed;
+    }
+
+    vm_prot_t shm_prot = VM_PROT_READ;
+
+    /* ipc_port_t */
+    void *shm_entry = NULL;
+
+    uint64_t sz_before = sz;
+
+    /* kret = _mach_make_memory_entry_64(current_map, &copysz, copystart, */
+    /*         MAP_MEM_VM_SHARE | shm_prot, &shm_entry, NULL); */
+    kret = _mach_make_memory_entry_64(from, &sz, start,
+            MAP_MEM_VM_SHARE | shm_prot, &shm_entry, NULL);
+
+    if(kret){
+        SPYDBG("%s: mach_make_memory_entry_64 failed: %d\n", __func__, kret);
+        retval = mach_to_bsd_errno(kret);
+        goto failed_unwire_orig_pages;
+    }
+
+    if(sz_before != sz){
+        SPYDBG("%s: did not map the entirety of sz? got %#llx, "
+                "expected %#llx\n", __func__, sz, sz_before);
+        /* Probably not the best option */
+        retval = EIO;
+        goto failed_dealloc_shm_entry;
+    }
+
+    uint64_t shm_addr = 0;
+
+    /* kret = mach_vm_map_external(kernel_map, &shm_addr, copysz, 0, */
+    /*         VM_FLAGS_ANYWHERE, shm_entry, 0, 0, shm_prot, shm_prot, */
+    /*         VM_INHERIT_NONE); */
+    kret = mach_vm_map_external(to, &shm_addr, sz, 0, VM_FLAGS_ANYWHERE,
+            shm_entry, 0, 0, shm_prot, shm_prot, VM_INHERIT_NONE);
+
+    if(kret){
+        SPYDBG("%s: mach_vm_map_external failed: %d\n", __func__, kret);
+        retval = mach_to_bsd_errno(kret);
+        goto failed_dealloc_shm_entry;
+    }
+
+    /* kret = vm_map_wire_external(kernel_map, shm_addr, shm_addr + copysz, */
+    /*         shm_prot, 0); */
+    kret = vm_map_wire_external(to, shm_addr, shm_addr + sz,
+            shm_prot, to != *kernel_mapp);
+
+    if(kret){
+        SPYDBG("%s: vm_map_wire_external failed: %d\n", __func__, kret);
+        retval = mach_to_bsd_errno(kret);
+        goto failed_dealloc_created_mapping;
+    }
+
+    *shm_addrp = shm_addr;
+    *shm_entryp = shm_entry;
+
+    return 0;
+
+failed_dealloc_created_mapping:
+    /* _vm_deallocate(kernel_map, shm_addr, copysz); */
+    _vm_deallocate(to, shm_addr, sz);
+failed_dealloc_shm_entry:
+    ipc_port_release_send_wrapper(shm_entry);
+failed_unwire_orig_pages:
+    /* vm_map_unwire(current_map, copystart, copystart + copysz, 1); */
+    vm_map_unwire(from, start, start + sz, to != *kernel_mapp);
+failed:
+    return retval;
+}
+
+/* This maps kernel pages into userspace as shared memory.
+ * On success, it returns 0 and sets the two output parameters.
+ * On failure, it returns non-zero. */
+int mkshmem_ktou(uint64_t kaddr, uint64_t sz, uint64_t *shm_uaddrp,
+        void **shm_entryp){
+    return mkshmem_common(kaddr, sz, *kernel_mapp, current_map(),
+            shm_uaddrp, shm_entryp);
+}
+
+/* Same as the above function, but this maps kernel pages into userspace
+ * as shared memory. */
+int mkshmem_utok(uint64_t uaddr, uint64_t sz, uint64_t *shm_kaddrp,
+        void **shm_entryp){
+    return mkshmem_common(uaddr, sz, current_map(), *kernel_mapp,
+            shm_kaddrp, shm_entryp);
 }
 
 struct unifiedhdr {

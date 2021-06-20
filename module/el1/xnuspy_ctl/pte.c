@@ -1,8 +1,8 @@
 #include <stdint.h>
 
-#include "debug.h"
-#include "externs.h"
-#include "pte.h"
+#include <xnuspy/el1/debug.h>
+#include <xnuspy/el1/externs.h>
+#include <xnuspy/el1/pte.h>
 
 static pte_t *ptep(uint64_t ttbr, uint64_t addr){
     uint64_t l1_table = phystokv(ttbr & 0xfffffffffffe);

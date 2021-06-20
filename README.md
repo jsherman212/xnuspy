@@ -85,7 +85,8 @@ for you to hook. Invoking `xnuspy_ctl` with this flavor will cause `hookme` to
 get called, providing a way for you to easily gain kernel code execution without
 having to hook an actual kernel function.
 
-There are no arguments for this flavor.
+`arg1` is an argument that will be passed to `hookme` when it is invoked.
+This can be `NULL`.
 
 ## `XNUSPY_CACHE_READ`
 This flavor gives you a way to read from the xnuspy cache. It contains many useful
