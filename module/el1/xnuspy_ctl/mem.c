@@ -205,12 +205,15 @@ void kwrite_instr(uint64_t dst, uint32_t instr){
     kprotect((void *)dst, sizeof(uint32_t), VM_PROT_READ | VM_PROT_EXECUTE);
 }
 
+/* #define XNUSPY_SHMEM_KERNEL_TO_USER (0) */
+/* #define XNUSPY_SHMEM_USER_TO_KERNEL (1) */
+
+/* static int mkshmem_common(uint64_t start, uint64_t sz, struct _vm_map *from, */
+/*         struct _vm_map *to, uint64_t *shm_addrp, void **shm_entryp){ */
 static int mkshmem_common(uint64_t start, uint64_t sz, struct _vm_map *from,
-        struct _vm_map *to, uint64_t *shm_addrp, void **shm_entryp){
+        struct _vm_map *to, struct xnuspy_shmem *shmemp){
     int retval = 0;
 
-    /* kern_return_t kret = vm_map_wire_external(current_map, copystart, copysz, */
-    /*         VM_PROT_READ, 1); */
     kern_return_t kret = vm_map_wire_external(from, start, sz,
             VM_PROT_READ, from != *kernel_mapp);
 
@@ -228,8 +231,6 @@ static int mkshmem_common(uint64_t start, uint64_t sz, struct _vm_map *from,
 
     uint64_t sz_before = sz;
 
-    /* kret = _mach_make_memory_entry_64(current_map, &copysz, copystart, */
-    /*         MAP_MEM_VM_SHARE | shm_prot, &shm_entry, NULL); */
     kret = _mach_make_memory_entry_64(from, &sz, start,
             MAP_MEM_VM_SHARE | shm_prot, &shm_entry, NULL);
 
@@ -249,9 +250,6 @@ static int mkshmem_common(uint64_t start, uint64_t sz, struct _vm_map *from,
 
     uint64_t shm_addr = 0;
 
-    /* kret = mach_vm_map_external(kernel_map, &shm_addr, copysz, 0, */
-    /*         VM_FLAGS_ANYWHERE, shm_entry, 0, 0, shm_prot, shm_prot, */
-    /*         VM_INHERIT_NONE); */
     kret = mach_vm_map_external(to, &shm_addr, sz, 0, VM_FLAGS_ANYWHERE,
             shm_entry, 0, 0, shm_prot, shm_prot, VM_INHERIT_NONE);
 
@@ -261,8 +259,6 @@ static int mkshmem_common(uint64_t start, uint64_t sz, struct _vm_map *from,
         goto failed_dealloc_shm_entry;
     }
 
-    /* kret = vm_map_wire_external(kernel_map, shm_addr, shm_addr + copysz, */
-    /*         shm_prot, 0); */
     kret = vm_map_wire_external(to, shm_addr, shm_addr + sz,
             shm_prot, to != *kernel_mapp);
 
@@ -272,18 +268,23 @@ static int mkshmem_common(uint64_t start, uint64_t sz, struct _vm_map *from,
         goto failed_dealloc_created_mapping;
     }
 
-    *shm_addrp = shm_addr;
-    *shm_entryp = shm_entry;
+    /* XXX XXX XXX vm_map_reference from and to */
+    shmemp->shm_base = (void *)shm_addr;
+    shmemp->shm_sz = sz;
+    shmemp->shm_entry = shm_entry;
+    shmemp->shm_map_from = from;
+    shmemp->shm_map_to = to;
+
+    /* *shm_addrp = shm_addr; */
+    /* *shm_entryp = shm_entry; */
 
     return 0;
 
 failed_dealloc_created_mapping:
-    /* _vm_deallocate(kernel_map, shm_addr, copysz); */
     _vm_deallocate(to, shm_addr, sz);
 failed_dealloc_shm_entry:
     ipc_port_release_send_wrapper(shm_entry);
 failed_unwire_orig_pages:
-    /* vm_map_unwire(current_map, copystart, copystart + copysz, 1); */
     vm_map_unwire(from, start, start + sz, to != *kernel_mapp);
 failed:
     return retval;
@@ -292,18 +293,53 @@ failed:
 /* This maps kernel pages into userspace as shared memory.
  * On success, it returns 0 and sets the two output parameters.
  * On failure, it returns non-zero. */
-int mkshmem_ktou(uint64_t kaddr, uint64_t sz, uint64_t *shm_uaddrp,
-        void **shm_entryp){
-    return mkshmem_common(kaddr, sz, *kernel_mapp, current_map(),
-            shm_uaddrp, shm_entryp);
+/* int mkshmem_ktou(uint64_t kaddr, uint64_t sz, uint64_t *shm_uaddrp, */
+/*         void **shm_entryp){ */
+int mkshmem_ktou(uint64_t kaddr, uint64_t sz, struct xnuspy_shmem *shmemp){
+    return mkshmem_common(kaddr, sz, *kernel_mapp, current_map(), shmemp);
 }
 
-/* Same as the above function, but this maps kernel pages into userspace
- * as shared memory. */
-int mkshmem_utok(uint64_t uaddr, uint64_t sz, uint64_t *shm_kaddrp,
-        void **shm_entryp){
-    return mkshmem_common(uaddr, sz, current_map(), *kernel_mapp,
-            shm_kaddrp, shm_entryp);
+/* Same as the above function, but this maps userspace pages into the
+ * kernel as shared memory. */
+/* int mkshmem_utok(uint64_t uaddr, uint64_t sz, uint64_t *shm_kaddrp, */
+/*         void **shm_entryp){ */
+int mkshmem_utok(uint64_t uaddr, uint64_t sz, struct xnuspy_shmem *shmemp){
+    return mkshmem_common(uaddr, sz, current_map(), *kernel_mapp, shmemp);
+}
+
+int shmem_destroy(struct xnuspy_shmem *shmemp){
+    int retval = 0;
+
+    ipc_port_release_send_wrapper(shmemp->shm_entry);
+
+    kern_return_t kret = vm_map_unwire(shmemp->shm_map_to,
+            (uint64_t)shmemp->shm_base,
+            (uint64_t)shmemp->shm_base + shmemp->shm_sz,
+            shmemp->shm_map_to != *kernel_mapp);
+
+    /* I don't know if it's safe to deallocate if we failed to unwire */
+    if(kret){
+        SPYDBG("%s: vm_map_unwire failed: %#x\n", __func__, kret);
+        retval = mach_to_bsd_errno(kret);
+        goto out_failed_release;
+    }
+
+    kret = _vm_deallocate(shmemp->shm_map_to, (uint64_t)shmemp->shm_base,
+            shmemp->shm_sz);
+
+    if(kret){
+        SPYDBG("%s: vm_deallocate failed: %#x\n", __func__, kret);
+        retval = mach_to_bsd_errno(kret);
+        goto out_failed_release;
+    }
+
+    return 0;
+
+out_failed_release:;
+    /* XXX XXX XXX vm_map_deallocate from and to */
+
+
+    return retval;
 }
 
 struct unifiedhdr {

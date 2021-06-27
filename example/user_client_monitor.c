@@ -225,6 +225,7 @@ int main(int argc, char **argv){
         return 1;
     }
 
+    /* I don't remember what device/version this offset corresponds to */
     ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF00770A22C,
             _is_io_connect_method, &is_io_connect_method);
 

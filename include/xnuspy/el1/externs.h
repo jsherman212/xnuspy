@@ -86,6 +86,8 @@ extern size_t (*_strlen)(const char *s);
 extern int (*_strncmp)(const char *s1, const char *s2, size_t n);
 extern void (*thread_deallocate)(void *thread);
 extern void (*_thread_terminate)(void *thread);
+extern kern_return_t (*vm_allocate_external)(void *map, uint64_t *addr,
+        uint64_t size, int flags);
 extern kern_return_t (*_vm_deallocate)(void *map,
         uint64_t start, uint64_t size);
 extern kern_return_t (*vm_map_unwire)(void *map, uint64_t start,

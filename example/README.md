@@ -11,6 +11,7 @@ Some offsets I already have for `open1`:
 ```
 iPhone X 13.3.1:        0xfffffff007d70534
 iPhone 8 13.6.1:        0xfffffff007d99c1c
+iPhone 8 14.6:          0xfffffff007c4c8c4
 iPhone 7 14.1:          0xfffffff00730aa64
 iPhone 7 14.5:          0xfffffff00733b960
 iPhone SE (2016) 14.3:  0xfffffff0072da190

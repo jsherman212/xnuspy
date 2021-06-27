@@ -15,10 +15,23 @@ struct slist_entry {
 
 /* This structure represents a shared mapping that's been added to the
  * unmaplist */
-struct orphan_mapping {
-    uint64_t mapping_addr;
-    uint64_t mapping_size;
-    void *memory_entry;
+/* struct orphan_mapping { */
+/*     uint64_t mapping_addr; */
+/*     uint64_t mapping_size; */
+/*     void *memory_entry; */
+/* }; */
+
+struct xnuspy_shmem {
+    /* Base of shared memory */
+    void *shm_base;
+    /* Size of shared memory, page multiple */
+    uint64_t shm_sz;
+    /* Memory entry for the shared memory, ipc_port_t */
+    void *shm_entry;
+    /* The vm_map_t which the source pages belonged to */
+    void *shm_map_from;
+    /* The vm_map_t which the source pages were mapped into */
+    void *shm_map_to;
 };
 
 #define MAX_MAPPING_REFERENCES (0x1000000)
@@ -30,16 +43,19 @@ struct orphan_mapping {
 struct xnuspy_mapping {
     /* Reference count for this mapping, NOT the mapping metadata */
     _Atomic int64_t refcnt;
-    /* Memory entry for this shared mapping, ipc_port_t */
-    void *memory_entry;
-    /* User address of the start of what this mapping represents */
+    /* Pointer to caller's Mach-O header */
     uint64_t mapping_addr_uva;
-    /* Kernel address of the start of this mapping */
-    uint64_t mapping_addr_kva;
-    /* Size of this mapping, same for user and kernel */
-    uint64_t mapping_size;
     /* Death callback to invoke when refcnt hits zero */
     void (*death_callback)(void);
+    /* Kernel's mapping of the shared __TEXT and __DATA. This has
+     * to be a pointer so I can easily enqueue it onto the unmaplist */
+    struct xnuspy_shmem *segment_shmem;
+    /* /1* Memory entry for this shared mapping, ipc_port_t *1/ */
+    /* void *memory_entry; */
+    /* /1* Kernel address of the start of this mapping *1/ */
+    /* uint64_t mapping_addr_kva; */
+    /* /1* Size of this mapping, same for user and kernel *1/ */
+    /* uint64_t mapping_size; */
 };
 
 /* This structure maintains all shared mappings for a given process. There

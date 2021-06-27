@@ -83,5 +83,6 @@ extern uint64_t g_xnuspy_ctl_callnum;
 extern uint64_t g_kern_version_major;
 extern uint64_t g_kern_version_minor;
 extern uint64_t g_io_lock_addr;
+extern uint64_t g_vm_allocate_external_addr;
 
 #endif

@@ -52,7 +52,7 @@ static void death_callback(void){
 
 static int kernel_thread_made = 0;
 
-static void hookme_hook(void){
+static void hookme_hook(void *arg){
     kprintf("%s: we were called!\n", __func__);
 
     if(kernel_thread_made)

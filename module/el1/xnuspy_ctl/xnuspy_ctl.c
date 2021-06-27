@@ -92,6 +92,7 @@ enum xnuspy_cache_id {
     STRNCMP,
     STRSTR,
     STRNSTR,
+    VM_ALLOCATE_EXTERNAL,
     VM_DEALLOCATE,
     VM_MAP_UNWIRE,
     VM_MAP_WIRE_EXTERNAL,
@@ -192,6 +193,8 @@ MARK_AS_KERNEL_OFFSET size_t (*_strlen)(const char *s);
 MARK_AS_KERNEL_OFFSET int (*_strncmp)(const char *s1, const char *s2, size_t n);
 MARK_AS_KERNEL_OFFSET void (*thread_deallocate)(void *thread);
 MARK_AS_KERNEL_OFFSET void (*_thread_terminate)(void *thread);
+MARK_AS_KERNEL_OFFSET kern_return_t (*vm_allocate_external)(void *map,
+        uint64_t *addr, uint64_t size, int flags);
 MARK_AS_KERNEL_OFFSET kern_return_t (*_vm_deallocate)(void *map,
         uint64_t start, uint64_t size);
 MARK_AS_KERNEL_OFFSET kern_return_t (*vm_map_unwire)(void *map, uint64_t start,
@@ -247,16 +250,18 @@ static bool xnuspy_mapping_release(struct xnuspy_mapping *m){
             m->death_callback();
         }
 
-        g_num_leaked_pages += m->mapping_size / PAGE_SIZE;
+        g_num_leaked_pages += m->segment_shmem->shm_sz / PAGE_SIZE;
 
-        struct orphan_mapping *om = unified_kalloc(sizeof(*om));
+        /* struct xnuspy_shmem *orphan = m->segment_shmem; */
 
-        /* I don't care for allocation failures here, we just won't be able to
-         * ever unmap this mapping. This shouldn't happen too often? */
-        if(!om){
-            SPYDBG("%s: om allocation failed\n", __func__);
-            return last;
-        }
+        /* struct orphan_mapping *om = unified_kalloc(sizeof(*om)); */
+
+        /* /1* I don't care for allocation failures here, we just won't be able to */
+        /*  * ever unmap this mapping. This shouldn't happen too often? *1/ */
+        /* if(!om){ */
+        /*     SPYDBG("%s: om allocation failed\n", __func__); */
+        /*     return last; */
+        /* } */
 
         struct stailq_entry *stqe = unified_kalloc(sizeof(*stqe));
 
@@ -265,18 +270,19 @@ static bool xnuspy_mapping_release(struct xnuspy_mapping *m){
             return last;
         }
 
-        om->mapping_addr = m->mapping_addr_kva;
-        om->mapping_size = m->mapping_size;
-        om->memory_entry = m->memory_entry;
+        /* om->mapping_addr = m->mapping_addr_kva; */
+        /* om->mapping_size = m->mapping_size; */
+        /* om->memory_entry = m->memory_entry; */
 
-        stqe->elem = om;
+        stqe->elem = m->segment_shmem;
 
         STAILQ_INSERT_TAIL(&unmaplist, stqe, link);
 
-        SPYDBG("%s: added mapping @ %#llx to the unmaplist\n", __func__,
-                om->mapping_addr);
+        SPYDBG("%s: added mapping @ %p to the unmaplist\n", __func__,
+                m->segment_shmem->shm_base);
 
-        desc_orphan_mapping(om);
+        /* desc_orphan_mapping(om); */
+        desc_xnuspy_shmem(m->segment_shmem);
 
         unified_kfree(m);
     }
@@ -307,19 +313,22 @@ static void xnuspy_tramp_teardown(struct xnuspy_tramp *t){
 
     SLIST_FOREACH_SAFE(entry, &mm->mappings, link, tmp){
         struct xnuspy_mapping *m = entry->elem;
+        struct xnuspy_shmem *xs = m->segment_shmem;
 
-        uint64_t start = m->mapping_addr_kva;
-        uint64_t end = start + m->mapping_size;
+        uint64_t start = (uint64_t)xs->shm_base;
+        uint64_t end = start + xs->shm_sz;
 
         if(replacement_kva >= start && replacement_kva < end){
             if(xnuspy_mapping_release(m)){
                 SPYDBG("%s: last ref on mapping was released, removing from"
                         " list\n", __func__);
+
                 SLIST_REMOVE(&mm->mappings, entry, slist_entry, link);
 
                 if(SLIST_EMPTY(&mm->mappings)){
                     SPYDBG("%s: mappings list is empty, freeing mm\n",
                             __func__);
+
                     unified_kfree(mm);
                 }
             }
@@ -388,7 +397,7 @@ static int xnuspy_mapping_add(struct xnuspy_mapping_metadata *mm,
     return 0;
 }
 
-static struct xnuspy_mapping_metadata *find_mapping_metadata(void){
+static struct xnuspy_mapping_metadata *caller_mapping_metadata(void){
     uint64_t cuniqueid = proc_uniqueid(current_proc());
     struct stailq_entry *entry;
 
@@ -409,7 +418,7 @@ static struct xnuspy_mapping_metadata *find_mapping_metadata(void){
     return NULL;
 }
 
-static int hook_already_exists(uint64_t target){
+static bool hook_already_exists(uint64_t target){
     struct stailq_entry *entry;
 
     lck_rw_lock_shared(xnuspy_rw_lck);
@@ -419,13 +428,13 @@ static int hook_already_exists(uint64_t target){
 
         if(tramp->tramp_metadata->hooked == target){
             lck_rw_done(xnuspy_rw_lck);
-            return 1;
+            return true;
         }
     }
 
     lck_rw_done(xnuspy_rw_lck);
 
-    return 0;
+    return false;
 }
 
 /* Figure out the kernel virtual address of a user address on a shared
@@ -433,11 +442,12 @@ static int hook_already_exists(uint64_t target){
 static uint64_t shared_mapping_kva(struct xnuspy_mapping *m,
         uint64_t /* __user */ uaddr){
     uint64_t dist = uaddr - m->mapping_addr_uva;
+    uintptr_t shm_base = (uintptr_t)m->segment_shmem->shm_base;
 
     SPYDBG("%s: dist %#llx uaddr %#llx umh %#llx kmh %#llx\n", __func__,
-            dist, uaddr, m->mapping_addr_uva, m->mapping_addr_kva);
+            dist, uaddr, m->mapping_addr_uva, shm_base);
 
-    return m->mapping_addr_kva + dist;
+    return shm_base + dist;
 }
 
 /* Create a shared mapping of __TEXT and __DATA from the Mach-O header passed
@@ -561,10 +571,10 @@ nextcmd:
     SPYDBG("%s: ended with copystart %#llx copysz %#llx\n", __func__,
             copystart, copysz);
 
-    bool need_free_on_error = false;
     struct xnuspy_mapping *m = NULL;
 
     if(!copystart || !copysz){
+        SPYDBG("%s: text and data are not present?\n", __func__);
         *retval = ENOENT;
         goto failed;
     }
@@ -580,22 +590,32 @@ nextcmd:
 
     _memset(m, 0, sizeof(*m));
 
-    need_free_on_error = true;
+    struct xnuspy_shmem *xs = unified_kalloc(sizeof(*xs));
 
-    uint64_t shm_addr;
-    void *shm_entry;
-
-    res = mkshmem_utok(copystart, copysz, &shm_addr, &shm_entry);
-
-    if(res){
-        SPYDBG("%s: mkshmem_utok failed: %d\n", __func__, res);
+    if(!xs){
+        SPYDBG("%s: unified_kalloc failed for xnuspy_shmem alloc\n",
+                __func__);
+        *retval = ENOMEM;
         goto failed;
     }
 
-    m->memory_entry = shm_entry;
+    res = mkshmem_utok(copystart, copysz, xs);
+
+    if(res){
+        SPYDBG("%s: mkshmem_utok failed: %d\n", __func__, res);
+        *retval = res;
+        goto failed;
+    }
+
     m->mapping_addr_uva = (uint64_t)umh;
-    m->mapping_addr_kva = shm_addr;
-    m->mapping_size = copysz;
+    m->segment_shmem = xs;
+
+    /* _memmove(&m->segment_shmem, &segment_shmem, sizeof(segment_shmem)); */
+
+    /* m->memory_entry = shm_entry; */
+    /* m->mapping_addr_uva = (uint64_t)umh; */
+    /* m->mapping_addr_kva = shm_addr; */
+    /* m->mapping_size = copysz; */
 
     xnuspy_mapping_reference(m);
 
@@ -604,8 +624,11 @@ nextcmd:
     return m;
 
 failed:;
-   if(need_free_on_error)
-       unified_kfree(m);
+    if(m)
+        unified_kfree(m);
+
+    if(xs)
+        unified_kfree(xs);
 
     return NULL;
 }
@@ -619,9 +642,10 @@ find_mapping_for_uaddr(struct xnuspy_mapping_metadata *mm,
 
     SLIST_FOREACH(entry, &mm->mappings, link){
         struct xnuspy_mapping *m = entry->elem;
+        struct xnuspy_shmem *xs = m->segment_shmem;
 
         uint64_t /* __user */ start = m->mapping_addr_uva;
-        uint64_t /* __user */ end = m->mapping_size + start;
+        uint64_t /* __user */ end = start + xs->shm_sz;
 
         if(addr >= start && addr < end){
             xnuspy_mapping_reference(m);
@@ -653,7 +677,7 @@ static struct mach_header_64 * /* __user */ mh_for_addr(struct _vm_map *cm,
         if(addr >= start && addr < end){
             lck_rw_done(&cm->lck);
 
-            SPYDBG("%s: found mach header for %#llx @ %#llx\n", __func__,
+            SPYDBG("%s: found Mach-O header for %#llx @ %#llx\n", __func__,
                     addr, start);
 
             return (struct mach_header_64 *)start;
@@ -731,7 +755,7 @@ static int xnuspy_install_hook(uint64_t target,
     /* Check if we've got mapping metadata for the calling process already.
      * If we don't, this is the first hook being installed for this process,
      * so we need to create it. */
-    struct xnuspy_mapping_metadata *mm = find_mapping_metadata();
+    struct xnuspy_mapping_metadata *mm = caller_mapping_metadata();
 
     bool need_mm_kfree_on_fail = false;
 
@@ -790,8 +814,8 @@ static int xnuspy_install_hook(uint64_t target,
         }
 
         /* Easier to just grant rwx to all pages of the shared mapping */
-        kprotect((void *)m->mapping_addr_kva, m->mapping_size, VM_PROT_READ |
-                VM_PROT_WRITE | VM_PROT_EXECUTE);
+        kprotect(m->segment_shmem->shm_base, m->segment_shmem->shm_sz,
+                VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE);
     }
 
     uint32_t branch = assemble_b(target, (uint64_t)tramp->tramp);
@@ -823,7 +847,7 @@ out:
 /* proc_list_unlock has been inlined so aggressively on all kernels that there
  * are no xrefs to the actual function so we need to do it like this */
 static void proc_list_unlock(void){
-    /* On 14.5, the patchfinder for proc_list_mlock yields a pointer
+    /* On 14.5+, the patchfinder for proc_list_mlock yields a pointer
      * to it, not a pointer to a pointer to it like on 13.0 - 14.4.2 */
     void *mtx = proc_list_mlockp;
 
@@ -861,48 +885,62 @@ static void xnuspy_do_gc(void){
             return;
         }
 
-        struct orphan_mapping *om = entry->elem;
+        /* struct orphan_mapping *om = entry->elem; */
+        struct xnuspy_shmem *orphan = entry->elem;
 
-        ipc_port_release_send_wrapper(om->memory_entry);
+        int res = shmem_destroy(orphan);
 
-        /* If we fail from this point on, make sure we don't update
-         * g_num_leaked_pages */
-        bool didfail = false;
-
-        kern_return_t kret = vm_map_unwire(*kernel_mapp, om->mapping_addr,
-                om->mapping_addr + om->mapping_size, 0);
-
-        if(kret){
-            SPYDBG("%s: vm_map_unwire failed: %#x\n", __func__, kret);
-            didfail = true;
-
-            /* Maybe it's unsafe to deallocate if we failed to unwire?
-             * Honestly don't know */
-            goto end;
-        }
-
-        kret = _vm_deallocate(*kernel_mapp, om->mapping_addr,
-                om->mapping_size);
-
-        if(kret){
-            SPYDBG("%s: vm_deallocate failed: %#x\n", __func__, kret);
-            didfail = true;
-        }
-
-end:;
-        if(didfail){
-            SPYDBG("%s: failed to gc :( those pages will be leaked forever\n",
-                    __func__);
+        if(res){
+            SPYDBG("%s: failed to gc :( (%d) those pages will be"
+                    " leaked forever\n", __func__, res);
         }
         else{
             SPYDBG("%s: gc okay\n", __func__);
-            g_num_leaked_pages -= om->mapping_size / PAGE_SIZE;
+            g_num_leaked_pages -= orphan->shm_sz / PAGE_SIZE;
         }
+
+        /* ipc_port_release_send_wrapper(om->memory_entry); */
+
+        /* /1* If we fail from this point on, make sure we don't update */
+        /*  * g_num_leaked_pages *1/ */
+        /* bool didfail = false; */
+
+        /* kern_return_t kret = vm_map_unwire(*kernel_mapp, om->mapping_addr, */
+        /*         om->mapping_addr + om->mapping_size, 0); */
+
+        /* if(kret){ */
+        /*     SPYDBG("%s: vm_map_unwire failed: %#x\n", __func__, kret); */
+        /*     didfail = true; */
+
+        /*     /1* Maybe it's unsafe to deallocate if we failed to unwire? */
+        /*      * Honestly don't know *1/ */
+        /*     goto end; */
+        /* } */
+
+        /* kret = _vm_deallocate(*kernel_mapp, om->mapping_addr, */
+        /*         om->mapping_size); */
+
+        /* if(kret){ */
+        /*     SPYDBG("%s: vm_deallocate failed: %#x\n", __func__, kret); */
+        /*     didfail = true; */
+        /* } */
+
+/* end:; */
+        /* if(didfail){ */
+        /*     SPYDBG("%s: failed to gc :( those pages will be leaked forever\n", */
+        /*             __func__); */
+        /* } */
+        /* else{ */
+        /*     SPYDBG("%s: gc okay\n", __func__); */
+        /*     g_num_leaked_pages -= om->mapping_size / PAGE_SIZE; */
+        /* } */
 
         STAILQ_REMOVE(&unmaplist, entry, stailq_entry, link);
 
+        /* XXX XXX WILL NEED TO UPDATE THIS */
         unified_kfree(entry);
-        unified_kfree(om);
+        /* unified_kfree(om); */
+        unified_kfree(orphan);
     }
 }
 
@@ -967,7 +1005,7 @@ static void xnuspy_gc_thread(void *param, int wait_result){
                 }
 
                 curproc = nextproc;
-            } while(pid != 0);
+            } while (pid != 0);
 
             proc_list_unlock();
 
@@ -1086,7 +1124,7 @@ static int xnuspy_register_death_callback(uint64_t /* __user */ addr){
 
     /* Find mapping metadata for this processes, if none, no hooks are
      * installed, so it doesn't make sense to install a callback */
-    struct xnuspy_mapping_metadata *mm = find_mapping_metadata();
+    struct xnuspy_mapping_metadata *mm = caller_mapping_metadata();
 
     if(!mm){
         SPYDBG("%s: no hooks, not installing callback\n", __func__);
@@ -1309,6 +1347,9 @@ static int xnuspy_cache_read(enum xnuspy_cache_id which,
         case STRNSTR:
             what = strnstr;
             break;
+        case VM_ALLOCATE_EXTERNAL:
+            what = vm_allocate_external;
+            break;
         case VM_DEALLOCATE:
             what = _vm_deallocate;
             break;
@@ -1417,12 +1458,6 @@ struct xnuspy_ctl_args {
 int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
     uint64_t flavor = uap->flavor;
 
-    if(flavor > XNUSPY_MAX_FLAVOR){
-        SPYDBG("%s: bad flavor %d\n", __func__, flavor);
-        *retval = -1;
-        return EINVAL;
-    }
-
     if(flavor == XNUSPY_CHECK_IF_PATCHED){
         SPYDBG("%s: we exist!\n", __func__);
         *retval = 999;
@@ -1465,6 +1500,7 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
                 break;
             }
         default:
+            SPYDBG("%s: bad flavor %d\n", __func__, flavor);
             *retval = -1;
             return EINVAL;
     };

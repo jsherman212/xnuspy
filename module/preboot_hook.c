@@ -101,6 +101,7 @@ static struct xnuspy_ctl_kernel_symbol {
     { "_thread_deallocate", &g_thread_deallocate_addr },
     { "__thread_terminate", &g_thread_terminate_addr },
     { "__vm_deallocate", &g_vm_deallocate_addr },
+    { "_vm_allocate_external", &g_vm_allocate_external_addr },
     { "_vm_map_unwire", &g_vm_map_unwire_addr },
     { "_vm_map_wire_external", &g_vm_map_wire_external_addr },
     { "_xnuspy_tramp_mem", &g_xnuspy_tramp_mem_addr },
@@ -108,7 +109,7 @@ static struct xnuspy_ctl_kernel_symbol {
 };
 
 static void anything_missing(void){
-    static int printed_err_hdr = 0;
+    static bool printed_err_hdr = false;
 
 #define chk(expression, msg) \
     do { \
@@ -199,7 +200,9 @@ static void anything_missing(void){
     if(is_14_5_and_above__pongo())
         chk(!g_io_lock_addr, "io_lock not found\n");
 
-    /* if we printed the error header, something is missing */
+    chk(!g_vm_allocate_external_addr, "vm_allocate_external not found\n");
+
+    /* If we printed the error header, something is missing */
     if(printed_err_hdr)
         xnuspy_fatal_error();
 }

@@ -1,6 +1,8 @@
 #ifndef XNUSPY_CTL
 #define XNUSPY_CTL
 
+#include <stdint.h>
+
 /* Flavors for xnuspy_ctl */
 enum {
     XNUSPY_CHECK_IF_PATCHED = 0,
@@ -97,6 +99,7 @@ enum {
     STRNCMP,
     STRSTR,
     STRNSTR,
+    VM_ALLOCATE_EXTERNAL,
     VM_DEALLOCATE,
     VM_MAP_UNWIRE,
     VM_MAP_WIRE_EXTERNAL,
@@ -280,6 +283,10 @@ enum {
      * userspace memory into the kernel and the other is for mapping kernel
      * memory into userspace.
      *
+     * Change VM protections of returned kernel memory with kprotect.
+     * 
+     * TODO XXX XXX XXX CHANGE THIS WHEN DONE
+     *
      * int mkshmem_ktou(uint64_t kaddr, uint64_t sz, uint64_t *shm_uaddrp,
      *         void **shm_entryp)
      *
@@ -308,5 +315,45 @@ enum {
 
 #define iOS_13_x    (19)
 #define iOS_14_x    (20)
+#define iOS_15_x    (21)
+
+/* Structures for locks that work in both kernelspace and userspace.
+ * Any locks you declare must be declared globally so they
+ * are mapped as shared memory when you install your kernel hooks */
+/* kuslck_t: a simple spinlock */
+typedef struct {
+    uint32_t word;
+} kuslck_t;
+
+#define KUSLCK_UNLOCKED (0)
+#define KUSLCK_LOCKED   (1)
+
+#define KUSLCK_INITIALIZER { .word = KUSLCK_UNLOCKED }
+
+#define kuslck_lock(lck) \
+    do { \
+        while(__atomic_exchange_n(&(lck).word, KUSLCK_LOCKED, \
+                    __ATOMIC_ACQ_REL) == 0){} \
+    } while (0) \
+
+#define kuslck_unlock(lck) \
+    do { \
+        __atomic_store_n(&(lck).word, KUSLCK_UNLOCKED, __ATOMIC_RELEASE); \
+    } while (0) \
+
+/* The structure which the shmem functions interact with */
+
+struct xnuspy_shmem {
+    /* Base of shared memory */
+    void *shm_base;
+    /* Size of shared memory, page multiple */
+    uint64_t shm_sz;
+    /* Memory entry for the shared memory, ipc_port_t */
+    void *shm_entry;
+    /* The vm_map_t to which the source pages belong to */
+    void *shm_map_from;
+    /* The vm_map_t to which the source pages were mapped into */
+    void *shm_map_to;
+};
 
 #endif

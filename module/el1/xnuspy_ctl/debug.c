@@ -31,16 +31,18 @@ void desc_freelist(void){
     lck_rw_done(xnuspy_rw_lck);
 }
 
-void desc_orphan_mapping(struct orphan_mapping *om){
-    if(!om){
+void desc_xnuspy_shmem(struct xnuspy_shmem *xs){
+    if(!xs){
         SPYDBG("%s: NULL\n", __func__);
         return;
     }
 
-    SPYDBG("This orphan mapping is at %#llx\n", om);
-    SPYDBG("Mapping addr: %#llx\n", om->mapping_addr);
-    SPYDBG("Mapping size: %#llx\n", om->mapping_size);
-    SPYDBG("Mapping memory entry: %#llx\n", om->memory_entry);
+    SPYDBG("This xnuspy_shmem object is at %p\n", xs);
+    SPYDBG("\tRange: [%p, %p)\n", xs->shm_base,
+            (uintptr_t)xs->shm_base + xs->shm_sz);
+    SPYDBG("\tMemory entry: %p\n", xs->shm_entry);
+    SPYDBG("\tOrigin map: %p\n", xs->shm_map_from);
+    SPYDBG("\tDestination map: %p\n", xs->shm_map_to);
 }
 
 /* XXX ONLY meant to be called from xnuspy_gc_thread, hence the lack
@@ -85,11 +87,13 @@ void desc_usedlist(void){
 }
 
 static void _desc_xnuspy_mapping(struct xnuspy_mapping *m){
+    struct xnuspy_shmem *xs = m->segment_shmem;
+
     SPYDBG("\tMapping metadata refcnt: %lld\n", m->refcnt);
-    SPYDBG("\tMemory entry: %#llx\n", m->memory_entry);
-    SPYDBG("\tUserspace version of this mapping: %#llx\n", m->mapping_addr_uva);
-    SPYDBG("\tShared mapping addr/size: %#llx/%#llx\n", m->mapping_addr_kva,
-            m->mapping_size);
+    SPYDBG("\tMemory entry: %p\n", xs->shm_entry);
+    SPYDBG("\tUserspace Mach-O header source: %#llx\n", m->mapping_addr_uva);
+    SPYDBG("\tShared mapping addr/size: %p/%#llx\n", xs->shm_base,
+            (uintptr_t)xs->shm_base + xs->shm_sz);
 
     SPYDBG("\tDeath callback: ");
 
@@ -100,11 +104,13 @@ static void _desc_xnuspy_mapping(struct xnuspy_mapping *m){
 }
 
 void desc_xnuspy_mapping(struct xnuspy_mapping *m){
+    struct xnuspy_shmem *xs = m->segment_shmem;
+
     SPYDBG("Mapping metadata refcnt: %lld\n", m->refcnt);
-    SPYDBG("Memory entry: %#llx\n", m->memory_entry);
-    SPYDBG("Userspace version of this mapping: %#llx\n", m->mapping_addr_uva);
-    SPYDBG("Shared mapping addr/size: %#llx/%#llx\n", m->mapping_addr_kva,
-            m->mapping_size);
+    SPYDBG("Memory entry: %p\n", xs->shm_entry);
+    SPYDBG("Userspace Mach-O header source: %#llx\n", m->mapping_addr_uva);
+    SPYDBG("Shared mapping addr/size: %p/%#llx\n", xs->shm_base,
+            (uintptr_t)xs->shm_base + xs->shm_sz);
 
     SPYDBG("Death callback: ");
 

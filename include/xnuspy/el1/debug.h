@@ -10,7 +10,7 @@
 #endif
 
 void desc_freelist(void);
-void desc_orphan_mapping(struct orphan_mapping *);
+void desc_xnuspy_shmem(struct xnuspy_shmem *);
 /* XXX ONLY meant to be called from xnuspy_gc_thread, hence the lack
  * of locking. */
 void desc_unmaplist(void);

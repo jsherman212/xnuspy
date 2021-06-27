@@ -1462,6 +1462,28 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
             }),
             4, mach_to_bsd_errno_finder_13, "__TEXT_EXEC"),
     },
+    {
+        PF_DECL32("vm_allocate_external finder iOS 13",
+            LISTIZE({
+                0x53187C64,     /* lsr w4, w3, #0x18 */
+                0x14000000,     /* b n */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+                0xfc000000,     /* ignore immediate */
+            }),
+            2, vm_allocate_external_finder_13, "__TEXT_EXEC"),
+        PF_DECL32("vm_allocate_external finder iOS 14",
+            LISTIZE({
+                0x53187C64,     /* lsr w4, w3, #0x18 */
+                0x14000000,     /* b n */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+                0xfc000000,     /* ignore immediate */
+            }),
+            2, vm_allocate_external_finder_13, "__TEXT_EXEC"),
+    },
     { PF_END, PF_END },
 };
 
