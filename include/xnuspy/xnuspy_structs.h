@@ -13,14 +13,6 @@ struct slist_entry {
     SLIST_ENTRY(slist_entry) link;
 };
 
-/* This structure represents a shared mapping that's been added to the
- * unmaplist */
-/* struct orphan_mapping { */
-/*     uint64_t mapping_addr; */
-/*     uint64_t mapping_size; */
-/*     void *memory_entry; */
-/* }; */
-
 struct xnuspy_shmem {
     /* Base of shared memory */
     void *shm_base;
@@ -28,7 +20,7 @@ struct xnuspy_shmem {
     uint64_t shm_sz;
     /* Memory entry for the shared memory, ipc_port_t */
     void *shm_entry;
-    /* The vm_map_t which the source pages belonged to */
+    /* The vm_map_t which the source pages belong to */
     void *shm_map_from;
     /* The vm_map_t which the source pages were mapped into */
     void *shm_map_to;
@@ -50,12 +42,6 @@ struct xnuspy_mapping {
     /* Kernel's mapping of the shared __TEXT and __DATA. This has
      * to be a pointer so I can easily enqueue it onto the unmaplist */
     struct xnuspy_shmem *segment_shmem;
-    /* /1* Memory entry for this shared mapping, ipc_port_t *1/ */
-    /* void *memory_entry; */
-    /* /1* Kernel address of the start of this mapping *1/ */
-    /* uint64_t mapping_addr_kva; */
-    /* /1* Size of this mapping, same for user and kernel *1/ */
-    /* uint64_t mapping_size; */
 };
 
 /* This structure maintains all shared mappings for a given process. There
