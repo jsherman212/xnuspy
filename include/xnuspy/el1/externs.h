@@ -72,6 +72,7 @@ extern kern_return_t (*mach_vm_map_external)(void *target_map,
 extern void *(*_memmove)(void *dest, const void *src, size_t n);
 extern void *(*_memset)(void *s, int c, size_t n);
 extern uint64_t offsetof_struct_thread_map;
+extern uint64_t offsetof_struct_vm_map_refcnt;
 extern __attribute__ ((noreturn)) void (*_panic)(const char *fmt, ...);
 extern uint64_t (*phystokv)(uint64_t pa);
 extern void (*proc_list_lock)(void);
@@ -90,6 +91,7 @@ extern kern_return_t (*vm_allocate_external)(void *map, uint64_t *addr,
         uint64_t size, int flags);
 extern kern_return_t (*_vm_deallocate)(void *map,
         uint64_t start, uint64_t size);
+extern void (*vm_map_deallocate)(void *map);
 extern kern_return_t (*vm_map_unwire)(void *map, uint64_t start,
         uint64_t end, int user);
 extern kern_return_t (*vm_map_wire_external)(void *map,

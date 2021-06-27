@@ -178,6 +178,7 @@ MARK_AS_KERNEL_OFFSET kern_return_t (*mach_vm_map_external)(void *target_map,
 MARK_AS_KERNEL_OFFSET void *(*_memmove)(void *dest, const void *src, size_t n);
 MARK_AS_KERNEL_OFFSET void *(*_memset)(void *s, int c, size_t n);
 MARK_AS_KERNEL_OFFSET uint64_t offsetof_struct_thread_map;
+MARK_AS_KERNEL_OFFSET uint64_t offsetof_struct_vm_map_refcnt;
 MARK_AS_KERNEL_OFFSET __attribute__ ((noreturn)) void (*_panic)(const char *fmt, ...);
 MARK_AS_KERNEL_OFFSET uint64_t (*phystokv)(uint64_t pa);
 MARK_AS_KERNEL_OFFSET void (*proc_list_lock)(void);
@@ -197,6 +198,7 @@ MARK_AS_KERNEL_OFFSET kern_return_t (*vm_allocate_external)(void *map,
         uint64_t *addr, uint64_t size, int flags);
 MARK_AS_KERNEL_OFFSET kern_return_t (*_vm_deallocate)(void *map,
         uint64_t start, uint64_t size);
+MARK_AS_KERNEL_OFFSET void (*vm_map_deallocate)(void *map);
 MARK_AS_KERNEL_OFFSET kern_return_t (*vm_map_unwire)(void *map, uint64_t start,
         uint64_t end, int user);
 MARK_AS_KERNEL_OFFSET kern_return_t (*vm_map_wire_external)(void *map,
@@ -880,17 +882,15 @@ static void xnuspy_do_gc(void){
 
     STAILQ_FOREACH_SAFE(entry, &unmaplist, link, tmp){
         if(g_num_leaked_pages <= XNUSPY_LEAKED_PAGE_LIMIT){
-            SPYDBG("%s: back around limit with %lld leaked pages\n", __func__,
-                    g_num_leaked_pages);
+            SPYDBG("%s: back around limit with %lld leaked pages\n",
+                    __func__, g_num_leaked_pages);
             return;
         }
 
         /* struct orphan_mapping *om = entry->elem; */
         struct xnuspy_shmem *orphan = entry->elem;
 
-        int res = shmem_destroy(orphan);
-
-        if(res){
+        if(shmem_destroy(orphan)){
             SPYDBG("%s: failed to gc :( (%d) those pages will be"
                     " leaked forever\n", __func__, res);
         }
@@ -899,47 +899,9 @@ static void xnuspy_do_gc(void){
             g_num_leaked_pages -= orphan->shm_sz / PAGE_SIZE;
         }
 
-        /* ipc_port_release_send_wrapper(om->memory_entry); */
-
-        /* /1* If we fail from this point on, make sure we don't update */
-        /*  * g_num_leaked_pages *1/ */
-        /* bool didfail = false; */
-
-        /* kern_return_t kret = vm_map_unwire(*kernel_mapp, om->mapping_addr, */
-        /*         om->mapping_addr + om->mapping_size, 0); */
-
-        /* if(kret){ */
-        /*     SPYDBG("%s: vm_map_unwire failed: %#x\n", __func__, kret); */
-        /*     didfail = true; */
-
-        /*     /1* Maybe it's unsafe to deallocate if we failed to unwire? */
-        /*      * Honestly don't know *1/ */
-        /*     goto end; */
-        /* } */
-
-        /* kret = _vm_deallocate(*kernel_mapp, om->mapping_addr, */
-        /*         om->mapping_size); */
-
-        /* if(kret){ */
-        /*     SPYDBG("%s: vm_deallocate failed: %#x\n", __func__, kret); */
-        /*     didfail = true; */
-        /* } */
-
-/* end:; */
-        /* if(didfail){ */
-        /*     SPYDBG("%s: failed to gc :( those pages will be leaked forever\n", */
-        /*             __func__); */
-        /* } */
-        /* else{ */
-        /*     SPYDBG("%s: gc okay\n", __func__); */
-        /*     g_num_leaked_pages -= om->mapping_size / PAGE_SIZE; */
-        /* } */
-
         STAILQ_REMOVE(&unmaplist, entry, stailq_entry, link);
 
-        /* XXX XXX WILL NEED TO UPDATE THIS */
         unified_kfree(entry);
-        /* unified_kfree(om); */
         unified_kfree(orphan);
     }
 }

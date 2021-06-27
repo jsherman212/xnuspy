@@ -8,6 +8,7 @@
 
 __attribute__ ((naked)) uint64_t current_thread(void);
 struct _vm_map *current_map(void);
+void vm_map_reference(void *);
 bool is_14_5_and_above(void);
 void ipc_port_release_send_wrapper(void *);
 

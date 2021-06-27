@@ -1,3 +1,4 @@
+#include <stdatomic.h>
 #include <stdbool.h>
 #include <stdint.h>
 
@@ -14,6 +15,12 @@ __attribute__ ((naked)) uint64_t current_thread(void){
 
 struct _vm_map *current_map(void){
     return *(struct _vm_map **)(current_thread() + offsetof_struct_thread_map);
+}
+
+void vm_map_reference(void *map){
+    uint64_t off = offsetof_struct_vm_map_refcnt;
+    _Atomic int *refcnt = (_Atomic int *)((uintptr_t)map + off);
+    atomic_fetch_add_explicit(refcnt, 1, memory_order_relaxed);
 }
 
 bool is_14_5_and_above(void){

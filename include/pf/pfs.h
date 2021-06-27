@@ -1484,6 +1484,42 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
             }),
             2, vm_allocate_external_finder_13, "__TEXT_EXEC"),
     },
+    {
+        PF_DECL32("vm_map_deallocate, offsetof(vm_map_t, refcnt) finder iOS 13",
+            LISTIZE({
+                0xb4000000,     /* cbz x0, n */
+                0x94000000,     /* bl n */
+                0xf900027f,     /* str xzr, [x19, n] */
+                0xf900027f,     /* str xzr, [x19, n] */
+                0xf900027f,     /* str xzr, [x19, n] */
+            }),
+            LISTIZE({
+                0xfc000000,     /* ignore immediate */
+                0xfc000000,     /* ignore immediate */
+                0xffc003ff,     /* ignore immediate */
+                0xffc003ff,     /* ignore immediate */
+                0xffc003ff,     /* ignore immediate */
+            }),
+            5, vm_map_deallocate_offsetof_vm_map_refcnt_finder_13,
+            "__TEXT_EXEC"),
+        PF_DECL32("vm_map_deallocate, offsetof(vm_map_t, refcnt) finder iOS 14",
+            LISTIZE({
+                0xb4000000,     /* cbz x0, n */
+                0x94000000,     /* bl n */
+                0xf900027f,     /* str xzr, [x19, n] */
+                0xf900027f,     /* str xzr, [x19, n] */
+                0xf900027f,     /* str xzr, [x19, n] */
+            }),
+            LISTIZE({
+                0xfc000000,     /* ignore immediate */
+                0xfc000000,     /* ignore immediate */
+                0xffc003ff,     /* ignore immediate */
+                0xffc003ff,     /* ignore immediate */
+                0xffc003ff,     /* ignore immediate */
+            }),
+            5, vm_map_deallocate_offsetof_vm_map_refcnt_finder_13,
+            "__TEXT_EXEC"),
+    },
     { PF_END, PF_END },
 };
 

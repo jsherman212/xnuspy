@@ -86,6 +86,7 @@ static struct xnuspy_ctl_kernel_symbol {
     { "__memmove", &g_memmove_addr },
     { "__memset", &g_memset_addr },
     { "_offsetof_struct_thread_map", &g_offsetof_struct_thread_map },
+    { "_offsetof_struct_vm_map_refcnt", &g_offsetof_struct_vm_map_refcnt },
     { "__panic", &g_panic_addr },
     { "_phystokv", &g_phystokv_addr },
     { "_proc_list_lock", &g_proc_list_lock_addr },
@@ -102,6 +103,7 @@ static struct xnuspy_ctl_kernel_symbol {
     { "__thread_terminate", &g_thread_terminate_addr },
     { "__vm_deallocate", &g_vm_deallocate_addr },
     { "_vm_allocate_external", &g_vm_allocate_external_addr },
+    { "_vm_map_deallocate", &g_vm_map_deallocate_addr },
     { "_vm_map_unwire", &g_vm_map_unwire_addr },
     { "_vm_map_wire_external", &g_vm_map_wire_external_addr },
     { "_xnuspy_tramp_mem", &g_xnuspy_tramp_mem_addr },
@@ -117,7 +119,7 @@ static void anything_missing(void){
             if(!printed_err_hdr){ \
                 printf("xnuspy: error(s) before\n" \
                         "  we continue:\n"); \
-                printed_err_hdr = 1; \
+                printed_err_hdr = true; \
             } \
             printf("  "msg); \
         } \
@@ -201,6 +203,8 @@ static void anything_missing(void){
         chk(!g_io_lock_addr, "io_lock not found\n");
 
     chk(!g_vm_allocate_external_addr, "vm_allocate_external not found\n");
+    chk(!g_vm_map_deallocate_addr, "vm_map_deallocate not found\n");
+    chk(!g_offsetof_struct_vm_map_refcnt, "offsetof(vm_map_t, refcnt) not found\n");
 
     /* If we printed the error header, something is missing */
     if(printed_err_hdr)

@@ -275,6 +275,10 @@ static int mkshmem_common(uint64_t start, uint64_t sz, struct _vm_map *from,
     shmemp->shm_map_from = from;
     shmemp->shm_map_to = to;
 
+    vm_map_reference(shmemp->shm_map_from);
+    vm_map_reference(shmemp->shm_map_to);
+
+
     /* *shm_addrp = shm_addr; */
     /* *shm_entryp = shm_entry; */
 
@@ -321,7 +325,7 @@ int shmem_destroy(struct xnuspy_shmem *shmemp){
     if(kret){
         SPYDBG("%s: vm_map_unwire failed: %#x\n", __func__, kret);
         retval = mach_to_bsd_errno(kret);
-        goto out_failed_release;
+        goto out;
     }
 
     kret = _vm_deallocate(shmemp->shm_map_to, (uint64_t)shmemp->shm_base,
@@ -330,14 +334,11 @@ int shmem_destroy(struct xnuspy_shmem *shmemp){
     if(kret){
         SPYDBG("%s: vm_deallocate failed: %#x\n", __func__, kret);
         retval = mach_to_bsd_errno(kret);
-        goto out_failed_release;
     }
 
-    return 0;
-
-out_failed_release:;
-    /* XXX XXX XXX vm_map_deallocate from and to */
-
+out:;
+    vm_map_deallocate(shmemp->shm_map_from);
+    vm_map_deallocate(shmemp->shm_map_to);
 
     return retval;
 }

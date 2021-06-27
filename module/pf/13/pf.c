@@ -75,6 +75,8 @@ uint64_t g_xnuspy_sysctl_mib_count_ptr = 0;
 uint64_t g_xnuspy_ctl_callnum = 0;
 uint64_t g_io_lock_addr = 0;
 uint64_t g_vm_allocate_external_addr = 0;
+uint64_t g_vm_map_deallocate_addr = 0;
+uint64_t g_offsetof_struct_vm_map_refcnt = 0;
 
 /* confirmed working on all kernels 13.0-14.6 */
 bool sysent_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
@@ -1270,17 +1272,59 @@ bool mach_to_bsd_errno_finder_13(xnu_pf_patch_t *patch,
     return true;
 }
 
+/* confirmed working on all kernels 13.0-14.6 */
 bool vm_allocate_external_finder_13(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     /* We are either inside mach_vm_allocate_external or
      * vm_allocate_external, same things on 64 bit, so let's
      * just take whatever this is as vm_allocate_external */
-
     xnu_pf_disable_patch(patch);
 
     g_vm_allocate_external_addr = xnu_ptr_to_va(cacheable_stream);
 
     puts("xnuspy: found vm_allocate_external");
+
+    return true;
+}
+
+/* confirmed working on all kernels 13.0-14.6 */
+bool vm_map_deallocate_offsetof_vm_map_refcnt_finder_13(xnu_pf_patch_t *patch,
+        void *cacheable_stream){
+    /* vm_map_reference does not exist on release kernels because it was
+     * inlined everywhere it is called. So I will get the offset to the
+     * reference count and then re-implement it in the kernel code.
+     *
+     * We landed in IOMemoryMap::taskDied, the call to vm_map_deallocate
+     * is one instruction below */
+    xnu_pf_disable_patch(patch);
+
+    uint32_t *opcode_stream = cacheable_stream;
+    uint32_t *vm_map_deallocate = get_branch_dst_ptr(opcode_stream + 1);
+
+    g_vm_map_deallocate_addr = xnu_ptr_to_va(vm_map_deallocate);
+
+    /* Now get the offset of the reference count. Searching
+     * for add xn, x19, #n */
+    uint32_t instr_limit = 100;
+
+    while((*vm_map_deallocate & 0xffc003e0) != 0x91000260){
+        if(instr_limit-- == 0)
+            return false;
+
+        vm_map_deallocate++;
+    }
+
+    uint32_t add = *vm_map_deallocate;
+    uint64_t imm12 = (add & 0x3ffc00) >> 10;
+    uint32_t sh = (add >> 22) & 1;
+
+    g_offsetof_struct_vm_map_refcnt = imm12;
+
+    if(sh)
+        g_offsetof_struct_vm_map_refcnt <<= 12;
+
+    puts("xnuspy: found vm_map_deallocate");
+    puts("xnuspy: found offsetof(vm_map_t, refcnt)");
 
     return true;
 }
