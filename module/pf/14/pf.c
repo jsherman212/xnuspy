@@ -12,7 +12,7 @@
 uint64_t g_kalloc_external_addr = 0;
 uint64_t g_kfree_ext_addr = 0;
 
-/* confirmed working 14.0-14.5 */
+/* confirmed working 14.0-14.6 */
 bool kalloc_external_finder_14(xnu_pf_patch_t *patch, void *cacheable_stream){
     /* We've landed somewhere inside AMFI, kalloc_external is the
      * branch six instructions down */
@@ -28,7 +28,7 @@ bool kalloc_external_finder_14(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
-/* confirmed working 14.0-14.5 */
+/* confirmed working 14.0-14.6 */
 bool kfree_ext_finder_14(xnu_pf_patch_t *patch, void *cacheable_stream){
     /* We've landed somewhere in mach_gss_accept_sec_context, kfree_ext
      * is the branch three instructions down */
@@ -44,7 +44,7 @@ bool kfree_ext_finder_14(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
-/* confirmed working 14.0-14.5 */
+/* confirmed working 14.0-14.6 */
 bool ExceptionVectorsBase_finder_14(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     xnu_pf_disable_patch(patch);
@@ -84,7 +84,7 @@ bool ExceptionVectorsBase_finder_14(xnu_pf_patch_t *patch,
     return true;
 }
 
-/* confirmed working 14.0-14.5 */
+/* confirmed working 14.0-14.6 */
 bool sysctl__kern_children_and_register_oid_finder_14(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     xnu_pf_disable_patch(patch);
@@ -121,7 +121,7 @@ bool sysctl__kern_children_and_register_oid_finder_14(xnu_pf_patch_t *patch,
     return true;
 }
 
-/* confirmed working 14.0-14.5 */
+/* confirmed working 14.0-14.6 */
 bool lck_grp_alloc_init_finder_14(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     xnu_pf_disable_patch(patch);
@@ -137,7 +137,7 @@ bool lck_grp_alloc_init_finder_14(xnu_pf_patch_t *patch,
     return true;
 }
 
-/* confirmed working 14.0-14.5 */
+/* confirmed working 14.0-14.6 */
 bool lck_rw_alloc_init_finder_14(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     xnu_pf_disable_patch(patch);
@@ -153,7 +153,7 @@ bool lck_rw_alloc_init_finder_14(xnu_pf_patch_t *patch,
     return true;
 }
 
-/* confirmed working on all KTRR kernels 14.0-14.5 */
+/* confirmed working on all KTRR kernels 14.0-14.6 */
 bool ktrr_lockdown_patcher_14(xnu_pf_patch_t *patch, void *cacheable_stream){
     /* This also hits rorgn_lockdown, where the AMCC CTRR patches are,
      * but it's easier for me to separate them since the instruction
@@ -175,7 +175,7 @@ bool ktrr_lockdown_patcher_14(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
-/* confirmed working on all KTRR kernels 14.0-14.5 */
+/* confirmed working on all KTRR kernels 14.0-14.6 */
 bool amcc_ctrr_lockdown_patcher_14(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     /* On 14.x A10+ there doesn't seem to be a specific lock for
@@ -198,7 +198,7 @@ bool amcc_ctrr_lockdown_patcher_14(xnu_pf_patch_t *patch,
     return true;
 }
 
-/* confirmed working 14.0-14.5 */
+/* confirmed working 14.0-14.6 */
 bool name2oid_and_its_dependencies_finder_14(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     /* This finds name2oid and three other things:

@@ -77,6 +77,7 @@ enum xnuspy_cache_id {
     MEMRCHR,
     MEMSET,
     OFFSETOF_STRUCT_THREAD_MAP,
+    OFFSETOF_STRUCT_VM_MAP_REFCNT,
     PROC_LIST_LOCK,
     PROC_LIST_UNLOCK,
     PROC_LIST_MLOCK,
@@ -94,6 +95,8 @@ enum xnuspy_cache_id {
     STRNSTR,
     VM_ALLOCATE_EXTERNAL,
     VM_DEALLOCATE,
+    VM_MAP_DEALLOCATE,
+    VM_MAP_REFERENCE,
     VM_MAP_UNWIRE,
     VM_MAP_WIRE_EXTERNAL,
     IOSLEEP,
@@ -116,7 +119,9 @@ enum xnuspy_cache_id {
     UNIFIED_KFREE,
     MKSHMEM_KTOU,
     MKSHMEM_UTOK,
-    MAX_CACHE = MKSHMEM_UTOK,
+    MKSHMEM_RAW,
+    SHMEM_DESTROY,
+    MAX_CACHE = SHMEM_DESTROY,
 };
 
 #define MAP_MEM_VM_SHARE            0x400000 /* extract a VM range for remap */
@@ -254,27 +259,12 @@ static bool xnuspy_mapping_release(struct xnuspy_mapping *m){
 
         g_num_leaked_pages += m->segment_shmem->shm_sz / PAGE_SIZE;
 
-        /* struct xnuspy_shmem *orphan = m->segment_shmem; */
-
-        /* struct orphan_mapping *om = unified_kalloc(sizeof(*om)); */
-
-        /* /1* I don't care for allocation failures here, we just won't be able to */
-        /*  * ever unmap this mapping. This shouldn't happen too often? *1/ */
-        /* if(!om){ */
-        /*     SPYDBG("%s: om allocation failed\n", __func__); */
-        /*     return last; */
-        /* } */
-
         struct stailq_entry *stqe = unified_kalloc(sizeof(*stqe));
 
         if(!stqe){
             SPYDBG("%s: stqe allocation failed\n", __func__);
             return last;
         }
-
-        /* om->mapping_addr = m->mapping_addr_kva; */
-        /* om->mapping_size = m->mapping_size; */
-        /* om->memory_entry = m->memory_entry; */
 
         stqe->elem = m->segment_shmem;
 
@@ -283,7 +273,6 @@ static bool xnuspy_mapping_release(struct xnuspy_mapping *m){
         SPYDBG("%s: added mapping @ %p to the unmaplist\n", __func__,
                 m->segment_shmem->shm_base);
 
-        /* desc_orphan_mapping(om); */
         desc_xnuspy_shmem(m->segment_shmem);
 
         unified_kfree(m);
@@ -601,7 +590,9 @@ nextcmd:
         goto failed;
     }
 
-    res = mkshmem_utok(copystart, copysz, xs);
+    vm_prot_t allprot = VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE;
+
+    res = mkshmem_utok(copystart, copysz, allprot, xs);
 
     if(res){
         SPYDBG("%s: mkshmem_utok failed: %d\n", __func__, res);
@@ -611,13 +602,6 @@ nextcmd:
 
     m->mapping_addr_uva = (uint64_t)umh;
     m->segment_shmem = xs;
-
-    /* _memmove(&m->segment_shmem, &segment_shmem, sizeof(segment_shmem)); */
-
-    /* m->memory_entry = shm_entry; */
-    /* m->mapping_addr_uva = (uint64_t)umh; */
-    /* m->mapping_addr_kva = shm_addr; */
-    /* m->mapping_size = copysz; */
 
     xnuspy_mapping_reference(m);
 
@@ -814,10 +798,6 @@ static int xnuspy_install_hook(uint64_t target,
                     " for this process: %d\n", __func__, res);
             goto out_release_mapping;
         }
-
-        /* Easier to just grant rwx to all pages of the shared mapping */
-        kprotect(m->segment_shmem->shm_base, m->segment_shmem->shm_sz,
-                VM_PROT_READ | VM_PROT_WRITE | VM_PROT_EXECUTE);
     }
 
     uint32_t branch = assemble_b(target, (uint64_t)tramp->tramp);
@@ -887,10 +867,11 @@ static void xnuspy_do_gc(void){
             return;
         }
 
-        /* struct orphan_mapping *om = entry->elem; */
         struct xnuspy_shmem *orphan = entry->elem;
+        
+        int res = shmem_destroy(orphan);
 
-        if(shmem_destroy(orphan)){
+        if(res){
             SPYDBG("%s: failed to gc :( (%d) those pages will be"
                     " leaked forever\n", __func__, res);
         }
@@ -1264,6 +1245,9 @@ static int xnuspy_cache_read(enum xnuspy_cache_id which,
         case OFFSETOF_STRUCT_THREAD_MAP:
             what = (void *)offsetof_struct_thread_map;
             break;
+        case OFFSETOF_STRUCT_VM_MAP_REFCNT:
+            what = (void *)offsetof_struct_vm_map_refcnt;
+            break;
         case PROC_NAME:
             what = proc_name;
             break;
@@ -1314,6 +1298,12 @@ static int xnuspy_cache_read(enum xnuspy_cache_id which,
             break;
         case VM_DEALLOCATE:
             what = _vm_deallocate;
+            break;
+        case VM_MAP_DEALLOCATE:
+            what = vm_map_deallocate;
+            break;
+        case VM_MAP_REFERENCE:
+            what = vm_map_reference;
             break;
         case VM_MAP_UNWIRE:
             what = vm_map_unwire;
@@ -1371,6 +1361,12 @@ static int xnuspy_cache_read(enum xnuspy_cache_id which,
             break;
         case MKSHMEM_UTOK:
             what = mkshmem_utok;
+            break;
+        case MKSHMEM_RAW:
+            what = mkshmem_raw;
+            break;
+        case SHMEM_DESTROY:
+            what = shmem_destroy;
             break;
         default:
             return EINVAL;

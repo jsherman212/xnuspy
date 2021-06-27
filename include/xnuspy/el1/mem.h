@@ -17,8 +17,10 @@ int uprotect(void *, uint64_t, vm_prot_t);
 void kwrite_static(void *, void *, size_t);
 void kwrite_instr(uint64_t, uint32_t);
 
-int mkshmem_ktou(uint64_t, uint64_t, struct xnuspy_shmem *);
-int mkshmem_utok(uint64_t, uint64_t, struct xnuspy_shmem *);
+int mkshmem_ktou(uint64_t, uint64_t, vm_prot_t, struct xnuspy_shmem *);
+int mkshmem_utok(uint64_t, uint64_t, vm_prot_t, struct xnuspy_shmem *);
+int mkshmem_raw(uint64_t, uint64_t, vm_prot_t, struct _vm_map *,
+        struct _vm_map *, struct xnuspy_shmem *);
 
 int shmem_destroy(struct xnuspy_shmem *);
 

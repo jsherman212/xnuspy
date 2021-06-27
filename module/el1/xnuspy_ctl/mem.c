@@ -205,13 +205,9 @@ void kwrite_instr(uint64_t dst, uint32_t instr){
     kprotect((void *)dst, sizeof(uint32_t), VM_PROT_READ | VM_PROT_EXECUTE);
 }
 
-/* #define XNUSPY_SHMEM_KERNEL_TO_USER (0) */
-/* #define XNUSPY_SHMEM_USER_TO_KERNEL (1) */
-
-/* static int mkshmem_common(uint64_t start, uint64_t sz, struct _vm_map *from, */
-/*         struct _vm_map *to, uint64_t *shm_addrp, void **shm_entryp){ */
-static int mkshmem_common(uint64_t start, uint64_t sz, struct _vm_map *from,
-        struct _vm_map *to, struct xnuspy_shmem *shmemp){
+static int mkshmem_common(uint64_t start, uint64_t sz, vm_prot_t prot,
+        struct _vm_map *from, struct _vm_map *to,
+        struct xnuspy_shmem *shmemp){
     int retval = 0;
 
     kern_return_t kret = vm_map_wire_external(from, start, sz,
@@ -268,7 +264,6 @@ static int mkshmem_common(uint64_t start, uint64_t sz, struct _vm_map *from,
         goto failed_dealloc_created_mapping;
     }
 
-    /* XXX XXX XXX vm_map_reference from and to */
     shmemp->shm_base = (void *)shm_addr;
     shmemp->shm_sz = sz;
     shmemp->shm_entry = shm_entry;
@@ -278,9 +273,12 @@ static int mkshmem_common(uint64_t start, uint64_t sz, struct _vm_map *from,
     vm_map_reference(shmemp->shm_map_from);
     vm_map_reference(shmemp->shm_map_to);
 
-
-    /* *shm_addrp = shm_addr; */
-    /* *shm_entryp = shm_entry; */
+    /* Set requested protections on the new mapping. We leave the
+     * original pages alone. */
+    if(to == *kernel_mapp)
+        kprotect(shmemp->shm_base, shmemp->shm_sz, prot);
+    else
+        uprotect(shmemp->shm_base, shmemp->shm_sz, prot);
 
     return 0;
 
@@ -297,18 +295,25 @@ failed:
 /* This maps kernel pages into userspace as shared memory.
  * On success, it returns 0 and sets the two output parameters.
  * On failure, it returns non-zero. */
-/* int mkshmem_ktou(uint64_t kaddr, uint64_t sz, uint64_t *shm_uaddrp, */
-/*         void **shm_entryp){ */
-int mkshmem_ktou(uint64_t kaddr, uint64_t sz, struct xnuspy_shmem *shmemp){
-    return mkshmem_common(kaddr, sz, *kernel_mapp, current_map(), shmemp);
+int mkshmem_ktou(uint64_t kaddr, uint64_t sz, vm_prot_t prot,
+        struct xnuspy_shmem *shmemp){
+    return mkshmem_common(kaddr, sz, prot, *kernel_mapp,
+            current_map(), shmemp);
 }
 
 /* Same as the above function, but this maps userspace pages into the
  * kernel as shared memory. */
-/* int mkshmem_utok(uint64_t uaddr, uint64_t sz, uint64_t *shm_kaddrp, */
-/*         void **shm_entryp){ */
-int mkshmem_utok(uint64_t uaddr, uint64_t sz, struct xnuspy_shmem *shmemp){
-    return mkshmem_common(uaddr, sz, current_map(), *kernel_mapp, shmemp);
+int mkshmem_utok(uint64_t uaddr, uint64_t sz, vm_prot_t prot,
+        struct xnuspy_shmem *shmemp){
+    return mkshmem_common(uaddr, sz, prot, current_map(),
+            *kernel_mapp, shmemp);
+}
+
+/* Allows specification of source/destination maps */
+int mkshmem_raw(uint64_t addr, uint64_t sz, vm_prot_t prot,
+        struct _vm_map *from, struct _vm_map *to,
+        struct xnuspy_shmem *shmemp){
+    return mkshmem_common(addr, sz, prot, from, to, shmemp);
 }
 
 int shmem_destroy(struct xnuspy_shmem *shmemp){
@@ -321,7 +326,11 @@ int shmem_destroy(struct xnuspy_shmem *shmemp){
             (uint64_t)shmemp->shm_base + shmemp->shm_sz,
             shmemp->shm_map_to != *kernel_mapp);
 
-    /* I don't know if it's safe to deallocate if we failed to unwire */
+    /* I don't know if it's safe to deallocate if we failed to unwire.
+     * But if this failed because we tried to unwire some userspace
+     * mapping after its task has died, then the pages of the userspace
+     * shmem won't be in its vm_map anymore. That's fine, we'll just
+     * release the references we hold on both maps. */
     if(kret){
         SPYDBG("%s: vm_map_unwire failed: %#x\n", __func__, kret);
         retval = mach_to_bsd_errno(kret);

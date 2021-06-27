@@ -1,13 +1,6 @@
 #include <stdio.h>
 #include <stdint.h>
 
-/* #include "kpp_patches.h" */
-
-/* #include "../common/asm.h" */
-/* #include "../common/asm_support.h" */
-/* #include "../common/common.h" */
-/* #include "../common/pongo.h" */
-
 #include <pongo.h>
 
 #include <asm/asm.h>

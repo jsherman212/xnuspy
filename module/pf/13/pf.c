@@ -982,7 +982,7 @@ bool ipc_port_release_send_finder_13(xnu_pf_patch_t *patch,
 
     g_io_lock_addr = xnu_ptr_to_va(io_lock);
 
-    puts("xnuspy(>=14.6): found io_lock");
+    puts("xnuspy(>=14.5): found io_lock");
 
     return true;
 }

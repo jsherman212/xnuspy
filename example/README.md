@@ -66,6 +66,10 @@ iPhone X 13.3.1: 0x320
 iPhone 7 14.1:   0x330
 ```
 
+### shmem
+Demonstrates kernel-user shared data synchronization with shared memory
+returned by `mkshmem_ktou`.
+
 ### Compiling (on device)
 ```
 clang-10 -Wno-deprecated-declarations -isysroot <your sdk> open1_hook.c -o open1_hook
@@ -85,4 +89,9 @@ ldid -Sent.xml -P ./kernel_thread
 ```
 clang-10 -Wno-deprecated-declarations -isysroot <your sdk> kaddr_of_port.c -o kaddr_of_port 
 ldid -Sent.xml -P ./kaddr_of_port
+```
+
+```
+clang-10 -Wno-deprecated-declarations -isysroot ~/theos/sdks/iPhoneOS11.2.sdk shmem.c -o shmem
+ldid -Sent.xml -P ./shmem
 ```

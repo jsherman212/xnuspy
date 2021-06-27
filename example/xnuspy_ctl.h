@@ -80,6 +80,8 @@ enum {
 
     /* offsetof(struct thread, map), vm_map_t */
     OFFSETOF_STRUCT_THREAD_MAP,
+    /* offsetof(struct _vm_map, map_refcnt), int (yes, int) */
+    OFFSETOF_STRUCT_VM_MAP_REFCNT,
 
     PROC_LIST_LOCK,
     PROC_LIST_UNLOCK,
@@ -101,6 +103,8 @@ enum {
     STRNSTR,
     VM_ALLOCATE_EXTERNAL,
     VM_DEALLOCATE,
+    VM_MAP_DEALLOCATE,
+    VM_MAP_REFERENCE,
     VM_MAP_UNWIRE,
     VM_MAP_WIRE_EXTERNAL,
     IOSLEEP,
@@ -279,38 +283,61 @@ enum {
     UNIFIED_KALLOC,
     UNIFIED_KFREE,
 
-    /* The next two functions deal with shared memory. One is for mapping
-     * userspace memory into the kernel and the other is for mapping kernel
-     * memory into userspace.
+    /* The next three functions deal with shared memory. KTOU ("kernel to
+     * user") and UTOK ("user to kernel") specify the "direction". "a to b",
+     * where <a> and <b> are both vm_map pointers, means pages from <a> will
+     * be mapped into <b> as shared memory. Pages from <a> must have been
+     * allocated via vm_allocate for these functions to succeed. KTOU and UTOK
+     * automatically select the <a> and <b> vm_map pointers for convenience.
+     * The RAW variant allows you to specify the <a> and <b> vm_map pointers.
+     * You would use mkshmem_raw when you are unsure of current_task()->map
+     * or the current CPU's TTBR0 inside your kernel code.
      *
-     * Change VM protections of returned kernel memory with kprotect.
-     * 
-     * TODO XXX XXX XXX CHANGE THIS WHEN DONE
+     * int mkshmem_ktou(uint64_t kaddr, uint64_t sz, vm_prot_t prot,
+     *         struct xnuspy_shmem *shmemp);
+     * int mkshmem_utok(uint64_t uaddr, uint64_t sz, vm_prot_t prot,
+     *         struct xnuspy_shmem *shmemp);
+     * int mkshmem_raw(uint64_t addr, uint64_t sz, vm_prot_t prot,
+     *         vm_map_t from, vm_map_t to, struct xnuspy_shmem *shmemp);
      *
-     * int mkshmem_ktou(uint64_t kaddr, uint64_t sz, uint64_t *shm_uaddrp,
-     *         void **shm_entryp)
+     * Parameters (for all three):
+     *  kaddr/uaddr/addr: virtual address somewhere inside <a>
+     *  sz:               page aligned mapping size
+     *  prot:             virtual protections to apply to the created
+     *                    shared mapping
+     *  shmemp:           returned shmem. The structure definition can
+     *                    be found at the end of this file.
      *
-     * Parameters:
-     *  kaddr:      kva of where to start mapping from
-     *  shm_uaddrp: pointer to uva of newly-created shared mapping
+     * Parameters specific to mkshmem_raw:
+     *  from: source map, aka <a>
+     *  to:   destination map, aka <b>
      *
-     * int mkshmem_utok(uint64_t uaddr, uint64_t sz, uint64_t *shm_kaddrp,
-     *         void **shm_entryp)
+     * Returns (for all three):
+     *  Zero on success (and populated shmemp structure), non-zero BSD errno
+     *  on failure.
      *
-     * Parameters:
-     *  uaddr:      uva of where to start mapping from
-     *  shm_kaddrp: pointer to kva of newly-created shared mapping
-     *
-     * For both functions:
-     *  sz:         desired length of shared mapping, page multiple
-     *  shm_entryp: pointer to the memory object (ipc_port_t) that
-     *     represents this shared mapping. 
-     *
-     * Returns:
-     *  Zero on success, non-zero errno on failure.
+     * Other notes:
+     *  These functions use kprotect to apply VM protections, so any
+     *  combination of those are allowed. VM protections are only applied
+     *  to the newly-created mapping, not the source pages that came
+     *  from <a>.
      */
     MKSHMEM_KTOU,
     MKSHMEM_UTOK,
+    MKSHMEM_RAW,
+
+    /* int shmem_destroy(struct xnuspy_shmem *shmemp);
+     *
+     * Destory shared memory returned by mkshmem_ktou, mkshmem_utok, or
+     * mkshmem_raw.
+     *
+     * Parameters:
+     *  shmemp: pointer to shmem structure
+     *
+     * Returns:
+     *  Zero on success, non-zero BSD errno on failure.
+     */
+    SHMEM_DESTROY,
 };
 
 #define iOS_13_x    (19)
@@ -328,6 +355,7 @@ typedef struct {
 #define KUSLCK_UNLOCKED (0)
 #define KUSLCK_LOCKED   (1)
 
+/* kuslck_t lck = KUSLCK_INITIALIZER; */
 #define KUSLCK_INITIALIZER { .word = KUSLCK_UNLOCKED }
 
 #define kuslck_lock(lck) \
@@ -341,19 +369,12 @@ typedef struct {
         __atomic_store_n(&(lck).word, KUSLCK_UNLOCKED, __ATOMIC_RELEASE); \
     } while (0) \
 
-/* The structure which the shmem functions interact with */
-
 struct xnuspy_shmem {
     /* Base of shared memory */
     void *shm_base;
     /* Size of shared memory, page multiple */
     uint64_t shm_sz;
-    /* Memory entry for the shared memory, ipc_port_t */
-    void *shm_entry;
-    /* The vm_map_t to which the source pages belong to */
-    void *shm_map_from;
-    /* The vm_map_t to which the source pages were mapped into */
-    void *shm_map_to;
+    void *opaque[3];
 };
 
 #endif
