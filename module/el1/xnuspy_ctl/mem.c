@@ -287,7 +287,7 @@ failed_dealloc_created_mapping:
 failed_dealloc_shm_entry:
     ipc_port_release_send_wrapper(shm_entry);
 failed_unwire_orig_pages:
-    vm_map_unwire(from, start, start + sz, to != *kernel_mapp);
+    vm_map_unwire(from, start, start + sz, from != *kernel_mapp);
 failed:
     return retval;
 }
