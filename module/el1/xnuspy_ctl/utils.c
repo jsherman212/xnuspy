@@ -24,10 +24,11 @@ void vm_map_reference(void *map){
 }
 
 bool is_14_5_and_above(void){
-    if(iOS_version == iOS_13_x)
+    if(iOS_version <= iOS_13_x)
         return false;
 
-    if(kern_version_minor < 4)
+    if (iOS_version == iOS_14_x &&
+        kern_version_minor < 4)
         return false;
 
     return true;
@@ -42,4 +43,16 @@ void ipc_port_release_send_wrapper(void *port){
     }
 
     ipc_port_release_send(port);
+}
+
+kern_return_t vm_map_unwire_wrapper(void *map, uint64_t start, uint64_t end,
+    int user)
+{
+    /*  iOS 15 -- vm_map_unwire_nested is used */
+    if (vm_map_unwire_nested != NULL)
+    {
+        return vm_map_unwire_nested(map, start, end, user, 0x0, 0x0);
+    }
+
+    return vm_map_unwire(map, start, end, user);
 }

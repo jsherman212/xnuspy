@@ -164,6 +164,7 @@ MARK_AS_KERNEL_OFFSET void (*kprintf)(const char *fmt, ...);
 MARK_AS_KERNEL_OFFSET void *(*lck_grp_alloc_init)(const char *grp_name,
         void *attr);
 MARK_AS_KERNEL_OFFSET void (*lck_grp_free)(void *grp);
+MARK_AS_KERNEL_OFFSET void (*lck_mtx_lock)(void *lock);
 MARK_AS_KERNEL_OFFSET void (*lck_mtx_unlock)(void *lock);
 MARK_AS_KERNEL_OFFSET lck_rw_t *(*lck_rw_alloc_init)(void *grp, void *attr);
 MARK_AS_KERNEL_OFFSET uint32_t (*lck_rw_done)(lck_rw_t *lock);
@@ -186,7 +187,7 @@ MARK_AS_KERNEL_OFFSET uint64_t offsetof_struct_thread_map;
 MARK_AS_KERNEL_OFFSET uint64_t offsetof_struct_vm_map_refcnt;
 MARK_AS_KERNEL_OFFSET __attribute__ ((noreturn)) void (*_panic)(const char *fmt, ...);
 MARK_AS_KERNEL_OFFSET uint64_t (*phystokv)(uint64_t pa);
-MARK_AS_KERNEL_OFFSET void (*proc_list_lock)(void);
+// MARK_AS_KERNEL_OFFSET void (*proc_list_lock)(void);
 MARK_AS_KERNEL_OFFSET void **proc_list_mlockp;
 /* XNU's declaration, not mine */
 MARK_AS_KERNEL_OFFSET void (*proc_name)(int pid, char *buf, int size);
@@ -206,10 +207,15 @@ MARK_AS_KERNEL_OFFSET kern_return_t (*_vm_deallocate)(void *map,
 MARK_AS_KERNEL_OFFSET void (*vm_map_deallocate)(void *map);
 MARK_AS_KERNEL_OFFSET kern_return_t (*vm_map_unwire)(void *map, uint64_t start,
         uint64_t end, int user);
+MARK_AS_KERNEL_OFFSET kern_return_t (*vm_map_unwire_nested)(void *map, 
+        uint64_t start, uint64_t end, int user, uint64_t map_pmap, 
+        uint64_t pmap_addr);
 MARK_AS_KERNEL_OFFSET kern_return_t (*vm_map_wire_external)(void *map,
         uint64_t start, uint64_t end, vm_prot_t prot, int user_wire);
 MARK_AS_KERNEL_OFFSET struct xnuspy_tramp *xnuspy_tramp_mem;
 MARK_AS_KERNEL_OFFSET struct xnuspy_tramp *xnuspy_tramp_mem_end;
+
+MARK_AS_KERNEL_OFFSET void (*IOLog)(const char *fmt, ...); /* XXX DEBUGGING */
 
 lck_rw_t *xnuspy_rw_lck = NULL;
 
@@ -826,6 +832,15 @@ out:
     return res;
 }
 
+static void proc_list_lock(void){
+    void *mtx = proc_list_mlockp;
+
+    if (is_14_5_and_above())
+        lck_mtx_lock(mtx);
+    else 
+        lck_mtx_lock(*(void **)mtx);
+}
+
 /* proc_list_unlock has been inlined so aggressively on all kernels that there
  * are no xrefs to the actual function so we need to do it like this */
 static void proc_list_unlock(void){
@@ -934,13 +949,13 @@ static void xnuspy_gc_thread(void *param, int wait_result){
             bool owner_dead = true;
 
             do {
-                proc_ref_locked(curproc);
+                // proc_ref_locked(curproc); XXX disabled for now since these funcs are inlined & no longer present on iOS 15 kernels
 
                 pid = proc_pid(curproc);
                 uint64_t uniqueid = proc_uniqueid(curproc);
                 void *nextproc = *(void **)curproc;
 
-                proc_rele_locked(curproc);
+                // proc_rele_locked(curproc); XXX see above 
 
                 if(mm->owner == uniqueid){
                     owner_dead = false;
@@ -1413,9 +1428,26 @@ struct xnuspy_ctl_args {
     uint64_t arg3;
 };
 
+static int  wtf()
+{
+    return 0x4142;
+}
+static int  wtf1()
+{
+    return 0x4142;
+}
+static int  wtf2()
+{
+    return 0x4142;
+}
+static int  wtf3()
+{
+    return 0x4142;
+}
+
 int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
     uint64_t flavor = uap->flavor;
-
+    
     if(flavor == XNUSPY_CHECK_IF_PATCHED){
         SPYDBG("%s: we exist!\n", __func__);
         *retval = 999;
@@ -1466,6 +1498,28 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
     if(res)
 out:
         *retval = -1;
+
+    for (int i = 0; i < 5; i++)
+    {
+        wtf();
+        wtf1();
+        wtf2();
+        wtf3();
+    }
+    for (int i = 0; i < 5; i++)
+    {
+        wtf();
+        wtf1();
+        wtf2();
+        wtf3();
+    }
+    for (int i = 0; i < 5; i++)
+    {
+        wtf();
+        wtf1();
+        wtf2();
+        wtf3();
+    }
 
     return res;
 }

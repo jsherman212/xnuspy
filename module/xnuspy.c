@@ -49,13 +49,16 @@ static bool getkernelv_callback(xnu_pf_patch_t *patch, void *cacheable_stream){
     g_kern_version_minor = atoi(minor_s);
     g_kern_version_revision = atoi(revision_s);
 
-    bool pwn_seprom = (g_kern_version_major == iOS_14_x) &&
+    /* iOS 14 or newer */
+    bool pwn_seprom = (g_kern_version_major >= iOS_14_x) &&
         (socnum == 0x8010 || socnum == 0x8011 || socnum == 0x8015);
 
     if(g_kern_version_major == iOS_13_x)
         printf("xnuspy: iOS 13.x detected\n");
     else if(g_kern_version_major == iOS_14_x)
         printf("xnuspy: iOS 14.x detected\n");
+    else if (g_kern_version_major == iOS_15_x)
+        printf("xnuspy: iOS 15.x detected\n");
     else{
         printf("xnuspy: error: unknown\n"
                 "  major %lld\n",
@@ -237,7 +240,7 @@ void module_entry(void){
 
     next_preboot_hook = preboot_hook;
     preboot_hook = xnuspy_preboot_hook;
-
+    
     command_register("xnuspy-getkernelv", "get kernel version", xnuspy_getkernelv);
     command_register("xnuspy-prep", "get all offsets", xnuspy_prep);
 }

@@ -199,6 +199,7 @@ oid_fmt: .asciz "L"
 sysctl_geometry_lock from *(xnuspy_cache+SYSCTL_GEOMETRY_LOCK_PTR),
 as opposed to a pointer to a pointer to sysctl_geometry_lock on
 13.0 - 14.4.2. This is the case for both old and new 14.5 kernels.
+This is apparently also the case for 15.x.
 
 One parameter, a pointer to the xnuspy cache. Returns a pointer to
 sysctl_geometry_lock */
@@ -211,6 +212,8 @@ _get_sysctl_geo_lck:
     ldr x20, [x0, IOS_VERSION]
     cmp x20, iOS_13_x
     b.eq Lout_not_14_5
+    cmp x20, iOS_15_x
+    b.eq Lout_14_5
     ldr x20, [x0, KERN_VERSION_MINOR]
     cmp x20, #0x4
     /* ge in case a new version of 14 is released that does the

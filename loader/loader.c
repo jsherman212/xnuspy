@@ -179,9 +179,13 @@ int main(int argc, char **argv, const char **envp){
 
     /* If you want to modify this string, don't remove rootdev=md0 and
      * use_contiguous_hint=0. Make sure to keep the newline. */
+    // err = pongo_send_command(pongo_device, "xargs rootdev=md0"
+    //         " use_contiguous_hint=0 msgbuf=0x3c000"
+    //         " atm_diagnostic_config=0x20000000"
+    //         " -v serial=3\n");
     err = pongo_send_command(pongo_device, "xargs rootdev=md0"
-            " use_contiguous_hint=0 msgbuf=0x3c000"
-            " atm_diagnostic_config=0x20000000\n");
+            " use_contiguous_hint=0"
+            " -v serial=3\n");
 
     if(err < 0){
         printf("pongo_send_command: %s\n", libusb_error_name(err));

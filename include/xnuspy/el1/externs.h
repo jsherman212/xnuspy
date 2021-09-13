@@ -12,6 +12,7 @@
 
 #define iOS_13_x        (19)
 #define iOS_14_x        (20)
+#define iOS_15_x        (21)
 
 #define MAP_MEM_VM_SHARE            0x400000 /* extract a VM range for remap */
 
@@ -53,6 +54,7 @@ extern void (*kprintf)(const char *fmt, ...);
 extern void *(*lck_grp_alloc_init)(const char *grp_name,
         void *attr);
 extern void (*lck_grp_free)(void *grp);
+extern void (*lck_mtx_lock)(void *lock);
 extern void (*lck_mtx_unlock)(void *lock);
 extern lck_rw_t *(*lck_rw_alloc_init)(void *grp, void *attr);
 extern uint32_t (*lck_rw_done)(lck_rw_t *lock);
@@ -75,7 +77,7 @@ extern uint64_t offsetof_struct_thread_map;
 extern uint64_t offsetof_struct_vm_map_refcnt;
 extern __attribute__ ((noreturn)) void (*_panic)(const char *fmt, ...);
 extern uint64_t (*phystokv)(uint64_t pa);
-extern void (*proc_list_lock)(void);
+// extern void (*proc_list_lock)(void);
 extern void **proc_list_mlockp;
 extern void (*proc_name)(int pid, char *buf, int size);
 extern pid_t (*proc_pid)(void *proc);
@@ -94,10 +96,14 @@ extern kern_return_t (*_vm_deallocate)(void *map,
 extern void (*vm_map_deallocate)(void *map);
 extern kern_return_t (*vm_map_unwire)(void *map, uint64_t start,
         uint64_t end, int user);
+extern kern_return_t (*vm_map_unwire_nested)(void *map, uint64_t start,
+        uint64_t end, int user, uint64_t map_pmap, uint64_t pmap_addr);
 extern kern_return_t (*vm_map_wire_external)(void *map,
         uint64_t start, uint64_t end, vm_prot_t prot, int user_wire);
 extern struct xnuspy_tramp *xnuspy_tramp_mem;
 extern struct xnuspy_tramp *xnuspy_tramp_mem_end;
+
+extern void (*IOLog)(const char *fmt, ...); /* XXX DEBUGGING */
 
 /* End kernel offsets */
 

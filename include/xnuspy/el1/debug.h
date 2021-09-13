@@ -4,7 +4,7 @@
 #include <xnuspy/xnuspy_structs.h>
 
 #if defined(XNUSPY_DEBUG)
-#define SPYDBG(fmt, args...) do { kprintf(fmt, ##args); } while(0)
+#define SPYDBG(fmt, args...) do { kprintf(fmt, ##args); IOLog(fmt, ##args); } while(0)
 #else
 #define SPYDBG(fmt, args...)
 #endif

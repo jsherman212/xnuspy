@@ -21,6 +21,7 @@ extern void (*next_preboot_hook)(void);
 
 #define iOS_13_x                    (19)
 #define iOS_14_x                    (20)
+#define iOS_15_x                    (21)
 
 #define VERSION_BIAS                iOS_13_x
 

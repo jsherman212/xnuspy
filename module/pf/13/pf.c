@@ -44,6 +44,7 @@ uint64_t g_current_proc_addr = 0;
 uint64_t g_proc_list_lock_addr = 0;
 uint64_t g_proc_ref_locked_addr = 0;
 uint64_t g_proc_list_mlock_addr = 0;
+uint64_t g_lck_mtx_lock_addr = 0;
 uint64_t g_lck_mtx_unlock_addr = 0;
 uint64_t g_proc_rele_locked_addr = 0;
 uint64_t g_proc_uniqueid_addr = 0;
@@ -692,8 +693,10 @@ bool mach_make_memory_entry_64_finder_13(xnu_pf_patch_t *patch,
 /* confirmed working on all kernels 13.0-14.6 */
 bool offsetof_struct_thread_map_finder_13(xnu_pf_patch_t *patch,
         void *cacheable_stream){
-    /* We landed in mmap, the first LDR we matched contains the offset
-     * of the map pointer inside struct thread */
+    /* For iOS 13 & 14 we landed in mmap, or in the case of iOS 15
+     * we landed in _mach_vm_read_overwrite. In both cases, the first 
+     * LDR we matched contains the offset of the map pointer inside 
+     * struct thread */
     xnu_pf_disable_patch(patch);
 
     uint32_t *opcode_stream = cacheable_stream;
@@ -730,7 +733,7 @@ bool proc_stuff0_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     uint32_t *proc_ref_locked = get_branch_dst_ptr(opcode_stream + 5);
 
     g_current_proc_addr = xnu_ptr_to_va(current_proc);
-    g_proc_list_lock_addr = xnu_ptr_to_va(proc_list_lock);
+    // g_proc_list_lock_addr = xnu_ptr_to_va(proc_list_lock);
     g_proc_ref_locked_addr = xnu_ptr_to_va(proc_ref_locked);
 
     /* Go down until we hit an ADRP or ADR, this will be proc_list_mlock, and
@@ -864,6 +867,7 @@ bool misc_lck_stuff_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
      *
      * The first three BLs we see are for lck_rw_lock_shared,
      * lck_rw_lock_shared_to_exclusive, and lck_rw_lock_exclusive */
+
     bool already_found = g_lck_rw_lock_shared_addr != 0;
 
     uint32_t *opcode_stream = cacheable_stream;

@@ -108,7 +108,7 @@ void kwrite_static(void *dst, void *buf, size_t sz){
 }
 
 static int protect_common(uint64_t vaddr, uint64_t size, vm_prot_t prot,
-        uint32_t el){
+        uint32_t el){  
     /* memory must be readable */
     if(!(prot & VM_PROT_READ))
         return 1;
@@ -287,7 +287,7 @@ failed_dealloc_created_mapping:
 failed_dealloc_shm_entry:
     ipc_port_release_send_wrapper(shm_entry);
 failed_unwire_orig_pages:
-    vm_map_unwire(from, start, start + sz, from != *kernel_mapp);
+    vm_map_unwire_wrapper(from, start, start + sz, from != *kernel_mapp);
 failed:
     return retval;
 }
@@ -321,7 +321,7 @@ int shmem_destroy(struct xnuspy_shmem *shmemp){
 
     ipc_port_release_send_wrapper(shmemp->shm_entry);
 
-    kern_return_t kret = vm_map_unwire(shmemp->shm_map_to,
+    kern_return_t kret = vm_map_unwire_wrapper(shmemp->shm_map_to,
             (uint64_t)shmemp->shm_base,
             (uint64_t)shmemp->shm_base + shmemp->shm_sz,
             shmemp->shm_map_to != *kernel_mapp);

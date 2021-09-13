@@ -31,17 +31,24 @@ bool kalloc_external_finder_14(xnu_pf_patch_t *patch, void *cacheable_stream){
 /* confirmed working 14.0-14.6 */
 bool kfree_ext_finder_14(xnu_pf_patch_t *patch, void *cacheable_stream){
     /* We've landed somewhere in mach_gss_accept_sec_context, kfree_ext
-     * is the branch three instructions down */
+     * is the branch three instructions down (four in the case of 15) */
     xnu_pf_disable_patch(patch);
 
     uint32_t *opcode_stream = cacheable_stream;
-    uint32_t *kfree_ext = get_branch_dst_ptr(opcode_stream + 3);
 
-    g_kfree_ext_addr = xnu_ptr_to_va(kfree_ext);
+    uint32_t limit = 8;
+    for (int i = 0; i < limit; i++){
+        if ((opcode_stream[i] & 0xfc000000) == 0x94000000){
+            uint32_t *kfree_ext = get_branch_dst_ptr(opcode_stream + i);
 
-    puts("xnuspy: found kfree_ext");
+            g_kfree_ext_addr = xnu_ptr_to_va(kfree_ext);
+            
+            puts("xnuspy: found kfree_ext");
+            return true;
+        }
+    }
 
-    return true;
+    return false;
 }
 
 /* confirmed working 14.0-14.6 */
@@ -114,7 +121,7 @@ bool sysctl__kern_children_and_register_oid_finder_14(xnu_pf_patch_t *patch,
     uint32_t *sysctl_register_oid = get_branch_dst_ptr(opcode_stream + 2);
 
     g_sysctl_register_oid_addr = xnu_ptr_to_va(sysctl_register_oid);
-
+    
     puts("xnuspy: found sysctl__kern_children");
     puts("xnuspy: found sysctl_register_oid");
 

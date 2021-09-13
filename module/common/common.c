@@ -6,10 +6,11 @@
 #include <pf/offsets.h>
 
 bool is_14_5_and_above__pongo(void){
-    if(g_kern_version_major == iOS_13_x)
+    if(g_kern_version_major <= iOS_13_x)
         return false;
 
-    if(g_kern_version_minor < 4)
+    if (g_kern_version_major == iOS_14_x &&
+        g_kern_version_minor < 4)
         return false;
 
     return true;

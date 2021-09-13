@@ -41,6 +41,7 @@ extern uint64_t g_copyout_addr;
 extern uint64_t g_IOSleep_addr;
 extern uint64_t g_kprintf_addr;
 extern uint64_t g_vm_map_unwire_addr;
+extern uint64_t g_vm_map_unwire_nested_addr;
 extern uint64_t g_vm_deallocate_addr;
 extern uint64_t g_kernel_map_addr;
 extern uint64_t g_kernel_thread_start_addr;
@@ -51,6 +52,7 @@ extern uint64_t g_current_proc_addr;
 extern uint64_t g_proc_list_lock_addr;
 extern uint64_t g_proc_ref_locked_addr;
 extern uint64_t g_proc_list_mlock_addr;
+extern uint64_t g_lck_mtx_lock_addr;
 extern uint64_t g_lck_mtx_unlock_addr;
 extern uint64_t g_proc_rele_locked_addr;
 extern uint64_t g_proc_uniqueid_addr;
@@ -86,5 +88,6 @@ extern uint64_t g_io_lock_addr;
 extern uint64_t g_vm_allocate_external_addr;
 extern uint64_t g_vm_map_deallocate_addr;
 extern uint64_t g_offsetof_struct_vm_map_refcnt;
+extern uint64_t g_iolog_addr;
 
 #endif
