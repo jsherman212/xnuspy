@@ -1,0 +1,19 @@
+.DS_Store
+
+*.ld
+*.o
+*.dSYM
+
+# Auto-generated header files containing byte arrays 
+*_instrs.h
+include/xnuspy/el3/kpp_patches.h
+
+# Binaries generated at build-time (probably not the best way of doing this)
+example/user_client_monitor
+loader/loader
+module/el1/hook_system_check_sysctlbyname_hook
+module/el1/xnuspy_ctl/xnuspy_ctl
+module/el1/xnuspy_ctl_tramp
+module/el3/kpp
+module/xnuspy
+opdump/opdump
