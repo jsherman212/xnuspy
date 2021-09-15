@@ -10,9 +10,15 @@
 
 #include "xnuspy_ctl.h"
 
+#define LOG(fmt, args...) \
+do { \
+    printf("%s:%d: " fmt "\n", __FUNCTION__, __LINE__, ##args); \
+} while (0)
+
 static void *(*current_proc)(void);
 static void (*kprintf)(const char *, ...);
 static pid_t (*proc_pid)(void *);
+static void (*IOSleep)(unsigned int);
 
 static uint64_t kernel_slide;
 
@@ -84,6 +90,7 @@ static kern_return_t is_io_service_open_extended(void *_service,
 
     /* IOService */
     void *provider = client->vt->getProvider(client);
+    kprintf("provider = %p\n", provider);
 
     if(!provider)
         kprintf(" unknown provider");
@@ -150,25 +157,32 @@ static long SYS_xnuspy_ctl = 0;
 static int gather_kernel_offsets(void){
     int ret;
 
+    LOG("entered gather_kernel_offsets");
+
     ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, CURRENT_PROC,
             &current_proc, 0);
+    LOG("current_proc: %llx", current_proc);
 
     if(ret){
         printf("Failed getting current_proc\n");
         return ret;
     }
 
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, KPRINTF, &kprintf, 0);
-
-    if(ret){
-        printf("Failed getting kprintf\n");
-        return ret;
-    }
+    // if(ret){
+    //     printf("Failed getting kprintf\n");
+    //     return ret;
+    // }
 
     ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, PROC_PID, &proc_pid, 0);
 
     if(ret){
         printf("Failed getting proc_pid\n");
+        return ret;
+    }
+
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, IOSLEEP, &IOSleep, 0);
+    if (ret){
+        printf("Failed getting IOSleep\n");
         return ret;
     }
 
@@ -179,10 +193,17 @@ static int gather_kernel_offsets(void){
         return ret;
     }
 
+    // XXX debug
+    // ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, KPRINTF, &kprintf, 0);
+    kprintf = (void *)(0xFFFFFFF008147510 + kernel_slide);
+    LOG("kprintf: %llx", kprintf);
+
     return 0;
 }
 
 int main(int argc, char **argv){
+    LOG("main reached!");
+
     size_t oldlen = sizeof(long);
     int ret = sysctlbyname("kern.xnuspy_ctl_callnum", &SYS_xnuspy_ctl,
             &oldlen, NULL, 0);
@@ -207,8 +228,8 @@ int main(int argc, char **argv){
         return 1;
     }
 
-    /* iPhone SE 14.5 */
-    getClassName = (const char *(*)(const void *))(0xfffffff007652c80 + kernel_slide);
+    /* iPhone 10,4 15.0b6 */
+    getClassName = (const char *(*)(const void *))(0xFFFFFFF0080ECB7C + kernel_slide);
 
     printf("kernel slide: %#llx\n", kernel_slide);
     printf("current_proc @ %#llx\n", (uint64_t)current_proc);
@@ -216,7 +237,7 @@ int main(int argc, char **argv){
     printf("kprintf @ %#llx\n", (uint64_t)kprintf);
     printf("proc_pid @ %#llx\n", (uint64_t)proc_pid);
 
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xfffffff007708dac,
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF0081C555C,
             is_io_service_open_extended, &is_io_service_open_extended_orig);
 
     if(ret){
@@ -225,8 +246,7 @@ int main(int argc, char **argv){
         return 1;
     }
 
-    /* I don't remember what device/version this offset corresponds to */
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF00770A22C,
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xfffffff0081c68ec,
             _is_io_connect_method, &is_io_connect_method);
 
     if(ret){

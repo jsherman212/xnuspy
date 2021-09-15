@@ -77,7 +77,6 @@ extern uint64_t offsetof_struct_thread_map;
 extern uint64_t offsetof_struct_vm_map_refcnt;
 extern __attribute__ ((noreturn)) void (*_panic)(const char *fmt, ...);
 extern uint64_t (*phystokv)(uint64_t pa);
-// extern void (*proc_list_lock)(void);
 extern void **proc_list_mlockp;
 extern void (*proc_name)(int pid, char *buf, int size);
 extern pid_t (*proc_pid)(void *proc);
@@ -100,10 +99,9 @@ extern kern_return_t (*vm_map_unwire_nested)(void *map, uint64_t start,
         uint64_t end, int user, uint64_t map_pmap, uint64_t pmap_addr);
 extern kern_return_t (*vm_map_wire_external)(void *map,
         uint64_t start, uint64_t end, vm_prot_t prot, int user_wire);
+extern void (*IOLog)(const char *fmt, ...);
 extern struct xnuspy_tramp *xnuspy_tramp_mem;
 extern struct xnuspy_tramp *xnuspy_tramp_mem_end;
-
-extern void (*IOLog)(const char *fmt, ...); /* XXX DEBUGGING */
 
 /* End kernel offsets */
 

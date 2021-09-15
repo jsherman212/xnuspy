@@ -187,7 +187,6 @@ MARK_AS_KERNEL_OFFSET uint64_t offsetof_struct_thread_map;
 MARK_AS_KERNEL_OFFSET uint64_t offsetof_struct_vm_map_refcnt;
 MARK_AS_KERNEL_OFFSET __attribute__ ((noreturn)) void (*_panic)(const char *fmt, ...);
 MARK_AS_KERNEL_OFFSET uint64_t (*phystokv)(uint64_t pa);
-// MARK_AS_KERNEL_OFFSET void (*proc_list_lock)(void);
 MARK_AS_KERNEL_OFFSET void **proc_list_mlockp;
 /* XNU's declaration, not mine */
 MARK_AS_KERNEL_OFFSET void (*proc_name)(int pid, char *buf, int size);
@@ -212,10 +211,9 @@ MARK_AS_KERNEL_OFFSET kern_return_t (*vm_map_unwire_nested)(void *map,
         uint64_t pmap_addr);
 MARK_AS_KERNEL_OFFSET kern_return_t (*vm_map_wire_external)(void *map,
         uint64_t start, uint64_t end, vm_prot_t prot, int user_wire);
+MARK_AS_KERNEL_OFFSET void (*IOLog)(const char *fmt, ...);
 MARK_AS_KERNEL_OFFSET struct xnuspy_tramp *xnuspy_tramp_mem;
 MARK_AS_KERNEL_OFFSET struct xnuspy_tramp *xnuspy_tramp_mem_end;
-
-MARK_AS_KERNEL_OFFSET void (*IOLog)(const char *fmt, ...); /* XXX DEBUGGING */
 
 lck_rw_t *xnuspy_rw_lck = NULL;
 
@@ -441,6 +439,8 @@ static uint64_t shared_mapping_kva(struct xnuspy_mapping *m,
     uint64_t dist = uaddr - m->mapping_addr_uva;
     uintptr_t shm_base = (uintptr_t)m->segment_shmem->shm_base;
 
+    IOLog("%s: dist %#llx uaddr %#llx umh %#llx kmh %#llx\n", __func__,
+            dist, uaddr, m->mapping_addr_uva, shm_base);
     SPYDBG("%s: dist %#llx uaddr %#llx umh %#llx kmh %#llx\n", __func__,
             dist, uaddr, m->mapping_addr_uva, shm_base);
 
@@ -1428,23 +1428,6 @@ struct xnuspy_ctl_args {
     uint64_t arg3;
 };
 
-static int  wtf()
-{
-    return 0x4142;
-}
-static int  wtf1()
-{
-    return 0x4142;
-}
-static int  wtf2()
-{
-    return 0x4142;
-}
-static int  wtf3()
-{
-    return 0x4142;
-}
-
 int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
     uint64_t flavor = uap->flavor;
     
@@ -1498,28 +1481,6 @@ int xnuspy_ctl(void *p, struct xnuspy_ctl_args *uap, int *retval){
     if(res)
 out:
         *retval = -1;
-
-    for (int i = 0; i < 5; i++)
-    {
-        wtf();
-        wtf1();
-        wtf2();
-        wtf3();
-    }
-    for (int i = 0; i < 5; i++)
-    {
-        wtf();
-        wtf1();
-        wtf2();
-        wtf3();
-    }
-    for (int i = 0; i < 5; i++)
-    {
-        wtf();
-        wtf1();
-        wtf2();
-        wtf3();
-    }
 
     return res;
 }

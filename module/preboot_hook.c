@@ -44,7 +44,6 @@ uint64_t *xnuspy_cache_base = NULL;
 
 #define XNUSPY_CACHE_WRITE(thing) \
     do { \
-        printf("writing " #thing " = %llx\n", (uint64_t)thing); \
         *xnuspy_cache_cursor++ = (thing); \
     } while (0) \
 
@@ -91,7 +90,6 @@ static struct xnuspy_ctl_kernel_symbol {
     { "_offsetof_struct_vm_map_refcnt", &g_offsetof_struct_vm_map_refcnt },
     { "__panic", &g_panic_addr },
     { "_phystokv", &g_phystokv_addr },
-    // { "_proc_list_lock", &g_proc_list_lock_addr },
     { "_proc_list_mlockp", &g_proc_list_mlock_addr },
     { "_proc_name", &g_proc_name_addr },
     { "_proc_pid", &g_proc_pid_addr },
@@ -109,9 +107,9 @@ static struct xnuspy_ctl_kernel_symbol {
     { "_vm_map_unwire", &g_vm_map_unwire_addr },
     { "_vm_map_unwire_nested", &g_vm_map_unwire_nested_addr },
     { "_vm_map_wire_external", &g_vm_map_wire_external_addr },
+    { "_IOLog", &g_iolog_addr },
     { "_xnuspy_tramp_mem", &g_xnuspy_tramp_mem_addr },
     { "_xnuspy_tramp_mem_end", &g_xnuspy_tramp_mem_end },
-    { "_IOLog", &g_iolog_addr },
 };
 
 static void anything_missing(void){
@@ -166,12 +164,9 @@ static void anything_missing(void){
     chk(!g_mach_make_memory_entry_64_addr, "mach_make_memory_entry_64 not found\n");
     chk(!g_offsetof_struct_thread_map, "offsetof(struct thread, map) not found\n");
     chk(!g_current_proc_addr, "current_proc not found\n");
-    // chk(!g_proc_list_lock_addr, "proc_list_lock not found\n");
-    // chk(!g_proc_ref_locked_addr, "proc_ref_locked not found\n");
     chk(!g_proc_list_mlock_addr, "address of proc_list_mlock not found\n");
     chk(!g_lck_mtx_lock_addr, "lck_mtx_lock not found\n");
     chk(!g_lck_mtx_unlock_addr, "lck_mtx_unlock not found\n");
-    // chk(!g_proc_rele_locked_addr, "proc_rele_locked not found\n");
     chk(!g_proc_uniqueid_addr, "proc_uniqueid not found\n");
     chk(!g_proc_pid_addr, "proc_pid not found\n");
     chk(!g_allproc_addr, "address of allproc not found\n");
@@ -493,21 +488,8 @@ void (*next_preboot_hook)(void);
 void xnuspy_preboot_hook(void){
     anything_missing();
     
-    puts("xnuspy_preboot_hook reached!");
-
-    printf("====== DUMPING SYMBOLS ======\n");
-
-    const size_t num_needed_symbols = sizeof(g_xnuspy_ctl_needed_symbols) /
-    sizeof(*g_xnuspy_ctl_needed_symbols);
-
-    for(size_t i=0; i<num_needed_symbols; i++){
-        struct xnuspy_ctl_kernel_symbol *item = &g_xnuspy_ctl_needed_symbols[i];
-        printf("%s = %llx\n", item->symbol, *item->valp);
-    }
-
     uint64_t xnuspy_tramp_mem_size = PAGE_SIZE * XNUSPY_TRAMP_PAGES;
     void *xnuspy_tramp_mem = alloc_static(xnuspy_tramp_mem_size);
-    printf("xnuspy_tramp_mem = %llx\n", xnu_ptr_to_va(xnuspy_tramp_mem));
 
     if(!xnuspy_tramp_mem){
         puts("xnuspy: alloc_static");
@@ -545,11 +527,9 @@ void xnuspy_preboot_hook(void){
 
         sec64++;
     }
-    printf("codestart = %llx\n", codestart);
 
     /* Old style kc */
     if(__PRELINK_TEXT && __PRELINK_TEXT->vmsize > 0){
-        printf("this is an old style kc\n");
         struct segment_command_64 *__PRELINK_INFO = macho_get_segment(mh_execute_header,
                 "__PRELINK_INFO");
 
@@ -626,8 +606,6 @@ next:
     }
 
     xnuspy_cache_base = alloc_static(PAGE_SIZE);
-    printf("xnuspy_cache_base = %llx\n", xnu_ptr_to_va(xnuspy_cache_base));
-    printf("loader_xref_recv_count: %x\n", loader_xfer_recv_count);
 
     if(!xnuspy_cache_base){
         puts("xnuspy: alloc_static");
@@ -639,7 +617,6 @@ next:
     }
 
     void *xnuspy_ctl_image = alloc_static(loader_xfer_recv_count);
-    printf("xnuspy_ctl_image = %llx\n", xnu_ptr_to_va(xnuspy_ctl_image));
 
     if(!xnuspy_ctl_image){
         puts("xnuspy: alloc_static");
@@ -651,8 +628,6 @@ next:
     }
 
     memcpy(xnuspy_ctl_image, loader_xfer_recv_data, loader_xfer_recv_count);
-
-    printf("g_exec_scratch_space_addr = %llx\n", g_exec_scratch_space_addr);
 
     uint64_t num_free_instrs = g_exec_scratch_space_size / sizeof(uint32_t);
     uint32_t *scratch_space = xnu_va_to_ptr(g_exec_scratch_space_addr);
