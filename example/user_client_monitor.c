@@ -84,7 +84,6 @@ static kern_return_t is_io_service_open_extended(void *_service,
 
     /* IOService */
     void *provider = client->vt->getProvider(client);
-    kprintf("provider = %p\n", provider);
 
     if(!provider)
         kprintf(" unknown provider");
