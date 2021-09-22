@@ -10,15 +10,9 @@
 
 #include "xnuspy_ctl.h"
 
-#define LOG(fmt, args...) \
-do { \
-    printf("%s:%d: " fmt "\n", __FUNCTION__, __LINE__, ##args); \
-} while (0)
-
 static void *(*current_proc)(void);
 static void (*kprintf)(const char *, ...);
 static pid_t (*proc_pid)(void *);
-static void (*IOSleep)(unsigned int);
 
 static uint64_t kernel_slide;
 
@@ -157,32 +151,24 @@ static long SYS_xnuspy_ctl = 0;
 static int gather_kernel_offsets(void){
     int ret;
 
-    LOG("entered gather_kernel_offsets");
-
     ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, CURRENT_PROC,
             &current_proc, 0);
-    LOG("current_proc: %llx", current_proc);
 
     if(ret){
         printf("Failed getting current_proc\n");
         return ret;
     }
 
-    // if(ret){
-    //     printf("Failed getting kprintf\n");
-    //     return ret;
-    // }
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, KPRINTF, &kprintf, 0);
+    if(ret){
+        printf("Failed getting kprintf\n");
+        return ret;
+    }
 
     ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, PROC_PID, &proc_pid, 0);
 
     if(ret){
         printf("Failed getting proc_pid\n");
-        return ret;
-    }
-
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, IOSLEEP, &IOSleep, 0);
-    if (ret){
-        printf("Failed getting IOSleep\n");
         return ret;
     }
 
@@ -193,17 +179,10 @@ static int gather_kernel_offsets(void){
         return ret;
     }
 
-    // XXX debug
-    // ret = syscall(SYS_xnuspy_ctl, XNUSPY_CACHE_READ, KPRINTF, &kprintf, 0);
-    kprintf = (void *)(0xFFFFFFF008147510 + kernel_slide);
-    LOG("kprintf: %llx", kprintf);
-
     return 0;
 }
 
 int main(int argc, char **argv){
-    LOG("main reached!");
-
     size_t oldlen = sizeof(long);
     int ret = sysctlbyname("kern.xnuspy_ctl_callnum", &SYS_xnuspy_ctl,
             &oldlen, NULL, 0);
