@@ -12,12 +12,12 @@ extern uint64_t *xnuspy_cache_base;
 extern uint64_t g_sysent_addr;
 
 /* iOS 13.x: kalloc_canblock
- * iOS 14.x: kalloc_external */
+ * iOS 14.x and iOS 15.x: kalloc_external */
 extern uint64_t g_kalloc_canblock_addr;
 extern uint64_t g_kalloc_external_addr;
 
 /* iOS 13.x: kfree_addr
- * iOS 14.x: kfree_ext */
+ * iOS 14.x and iOS 15.x: kfree_ext */
 extern uint64_t g_kfree_addr_addr;
 extern uint64_t g_kfree_ext_addr;
 

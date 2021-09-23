@@ -135,7 +135,7 @@ bool vm_deallocate_finder_15(xnu_pf_patch_t *patch, void *cacheable_stream){
 
     g_vm_deallocate_addr = xnu_ptr_to_va(vm_deallocate);
 
-    puts("xnuspy: foudn vm_deallocate");
+    puts("xnuspy: found vm_deallocate");
 
     return true;
 }
@@ -160,6 +160,7 @@ bool lck_mtx_lock_unlock_finder_15(xnu_pf_patch_t *patch, void *cacheable_stream
 }
 
 /* NOTE: lock_mtx_{un}lock are also nearby, so could be integrated into this patch if necessary */
+/* TODO ^ do this */
 bool proc_list_mlock_finder_15(xnu_pf_patch_t *patch, void *cacheable_stream){
     /* will land in _posix_spawn. we can only search
      * for 8 instructions at a time, so we check for 
@@ -210,6 +211,7 @@ bool lck_grp_free_finder_15(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
+/* TODO: confirm if this works on 13 and 14 */
 bool iolog_finder_15(xnu_pf_patch_t *patch, void *cacheable_stream){
     uint32_t *opcode_stream = cacheable_stream;
 

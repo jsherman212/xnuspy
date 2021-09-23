@@ -195,7 +195,7 @@ oid_fmt: .asciz "L"
     scratch_space being unaligned when we go to write other instructions */
 .align 2
 
-/* Cursed case: are we on 14.5? If we are, we get a pointer to
+/* Cursed case: are we on 14.5 or above? If we are, we get a pointer to
 sysctl_geometry_lock from *(xnuspy_cache+SYSCTL_GEOMETRY_LOCK_PTR),
 as opposed to a pointer to a pointer to sysctl_geometry_lock on
 13.0 - 14.4.2. This is the case for both old and new 14.5 kernels.
@@ -213,18 +213,18 @@ _get_sysctl_geo_lck:
     cmp x20, iOS_13_x
     b.eq Lout_not_14_5
     cmp x20, iOS_15_x
-    b.eq Lout_14_5
+    b.eq Lout_14_5_and_above_cursed_case
     ldr x20, [x0, KERN_VERSION_MINOR]
     cmp x20, #0x4
     /* ge in case a new version of 14 is released that does the
     same thing 14.5 does */
-    b.ge Lout_14_5
+    b.ge Lout_14_5_and_above_cursed_case
 
 Lout_not_14_5:
     ldr x0, [x19]
     b Lout
 
-Lout_14_5:
+Lout_14_5_and_above_cursed_case:
     mov x0, x19
 
 Lout:

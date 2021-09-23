@@ -10,17 +10,18 @@
 #define MAXPF                       (100)
 #define NUM_SUPPORTED_VERSIONS      (3)
 
-#define PFS_END(x) (x[0].pf_unused == 0x41 && x[1].pf_unused == 0x41)
+#define PFS_END(x) (x[0].pf_unused == 0x41 && x[1].pf_unused == 0x41 \
+        && x[2].pf_unused == 0x41)
 #define IS_PF_UNUSED(x) (x->pf_unused == 1)
 
 /* Format:
  *
- * { { iOS 13 patchfinder }, { iOS 14 patchfinder } }
+ * { { iOS 13 patchfinder }, { iOS 14 patchfinder }, { iOS 15 patchfinder } }
  *
  * Not all patchfinders are different across versions.
  *
  * This array will end with
- * { PF_END, PF_END }
+ * { PF_END, PF_END, PF_END }
  */
 struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
     {
@@ -2380,7 +2381,7 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
             }),
             8, iolog_finder_15, "__TEXT_EXEC"),
     },
-    { PF_END, PF_END },
+    { PF_END, PF_END, PF_END },
 };
 
 #endif

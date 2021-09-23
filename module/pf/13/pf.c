@@ -733,6 +733,7 @@ bool proc_stuff0_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     uint32_t *proc_ref_locked = get_branch_dst_ptr(opcode_stream + 5);
 
     g_current_proc_addr = xnu_ptr_to_va(current_proc);
+    /* XXX XXX XXX */
     // g_proc_list_lock_addr = xnu_ptr_to_va(proc_list_lock);
     g_proc_ref_locked_addr = xnu_ptr_to_va(proc_ref_locked);
 

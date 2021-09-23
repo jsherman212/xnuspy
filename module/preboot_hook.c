@@ -397,7 +397,7 @@ static void initialize_xnuspy_ctl_image_koff(char *ksym, uint64_t *va){
     }
 }
 
-/* fill in all our kernel offsets in __koff, initialize g_xnuspy_ctl_addr
+/* Fill in all our kernel offsets in __koff, initialize g_xnuspy_ctl_addr
  * and g_xnuspy_ctl_img_codesz */
 static void process_xnuspy_ctl_image(void *xnuspy_ctl_image){
     struct mach_header_64 *mh = xnuspy_ctl_image;

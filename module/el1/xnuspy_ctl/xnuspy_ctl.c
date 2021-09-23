@@ -251,13 +251,18 @@ static bool xnuspy_mapping_release(struct xnuspy_mapping *m){
     int64_t prev = m->refcnt--;
 
     if(prev < 1)
-        _panic("xnuspy_mapping(%p) over-release", m);
+        _panic("%s: xnuspy_mapping(%p) over-release", __func__, m);
+
+    if(prev >= MAX_MAPPING_REFERENCES){
+        _panic("%s: xnuspy_mapping(%p) possible memory corruption",
+                m, __func__);
+    }
 
     bool last = (prev == 1);
 
     if(last){
         if(m->death_callback){
-            SPYDBG("%s: invoking death callback\n", __func__);
+            SPYDBG("%s: invoking death cb for mapping %p\n", __func__, m);
             m->death_callback();
         }
 
@@ -289,10 +294,12 @@ static void xnuspy_mapping_reference(struct xnuspy_mapping *m){
     int64_t prev = m->refcnt++;
 
     if(prev < 0)
-        _panic("xnuspy_mapping(%p) resurrection", m);
+        _panic("%s: xnuspy_mapping(%p) resurrection", __func__, m);
 
-    if(prev >= MAX_MAPPING_REFERENCES)
-        _panic("xnuspy_mapping(%p) possible memory corruption", m);
+    if(prev >= MAX_MAPPING_REFERENCES){
+        _panic("%s: xnuspy_mapping(%p) possible memory corruption",
+                __func__, m);
+    }
 }
 
 /* This function is expected to be called with an xnuspy_tramp that has
@@ -439,8 +446,6 @@ static uint64_t shared_mapping_kva(struct xnuspy_mapping *m,
     uint64_t dist = uaddr - m->mapping_addr_uva;
     uintptr_t shm_base = (uintptr_t)m->segment_shmem->shm_base;
 
-    IOLog("%s: dist %#llx uaddr %#llx umh %#llx kmh %#llx\n", __func__,
-            dist, uaddr, m->mapping_addr_uva, shm_base);
     SPYDBG("%s: dist %#llx uaddr %#llx umh %#llx kmh %#llx\n", __func__,
             dist, uaddr, m->mapping_addr_uva, shm_base);
 
@@ -832,6 +837,7 @@ out:
     return res;
 }
 
+/* TODO: move to utils.c? */
 static void proc_list_lock(void){
     void *mtx = proc_list_mlockp;
 
@@ -843,6 +849,7 @@ static void proc_list_lock(void){
 
 /* proc_list_unlock has been inlined so aggressively on all kernels that there
  * are no xrefs to the actual function so we need to do it like this */
+/* TODO: move to utils.c? */
 static void proc_list_unlock(void){
     /* On 14.5+, the patchfinder for proc_list_mlock yields a pointer
      * to it, not a pointer to a pointer to it like on 13.0 - 14.4.2 */
@@ -950,11 +957,14 @@ static void xnuspy_gc_thread(void *param, int wait_result){
 
             do {
                 // proc_ref_locked(curproc); XXX disabled for now since these funcs are inlined & no longer present on iOS 15 kernels
+                /* TODO: create wrappers for proc_ref_locked (13/14) and
+                 * proc_ref (15) */
 
                 pid = proc_pid(curproc);
                 uint64_t uniqueid = proc_uniqueid(curproc);
                 void *nextproc = *(void **)curproc;
 
+                /* TODO: same for above - need to keep thread-safe guarentee */
                 // proc_rele_locked(curproc); XXX see above 
 
                 if(mm->owner == uniqueid){
@@ -1141,7 +1151,7 @@ static int xnuspy_cache_read(enum xnuspy_cache_id which,
             what = kprintf;
             break;
         case KALLOC_CANBLOCK:
-            if(iOS_version == iOS_14_x)
+            if(iOS_version == iOS_14_x || iOS_version == iOS_15_x)
                 return EINVAL;
 
             what = kalloc_canblock;
@@ -1153,7 +1163,7 @@ static int xnuspy_cache_read(enum xnuspy_cache_id which,
             what = kalloc_external;
             break;
         case KFREE_ADDR:
-            if(iOS_version == iOS_14_x)
+            if(iOS_version == iOS_14_x || iOS_version == iOS_15_x)
                 return EINVAL;
 
             what = kfree_addr;

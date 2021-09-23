@@ -3,6 +3,7 @@
 
 #include <xnuspy/xnuspy_structs.h>
 
+/* XXX separate cmd line option for IOLog spew */
 #if defined(XNUSPY_DEBUG)
 #define SPYDBG(fmt, args...) do { kprintf(fmt, ##args); IOLog(fmt, ##args); } while(0)
 #else

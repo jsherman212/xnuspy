@@ -109,8 +109,8 @@ void kwrite_static(void *dst, void *buf, size_t sz){
 
 static int protect_common(uint64_t vaddr, uint64_t size, vm_prot_t prot,
         uint32_t el){  
-    /* memory must be readable */
-    if(!(prot & VM_PROT_READ))
+    /* Memory must be readable for EL1 */
+    if(!(prot & VM_PROT_READ) && el == 1)
         return 1;
 
     /* Round size up to the nearest page if not already a multiple of PAGE_SIZE */

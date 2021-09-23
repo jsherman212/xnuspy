@@ -4,9 +4,9 @@
 
 <sup>Output from the kernel log after compiling and running `example/open1_hook.c`</sup>
 
-xnuspy is a pongoOS module which installs a new system call, `xnuspy_ctl`,
-allowing you to hook kernel functions from userspace. It supports iOS 13.x and
-14.x on checkra1n 0.12.2 and up. 4K devices are not supported.
+xnuspy is a pongoOS module that installs a new system call, `xnuspy_ctl`,
+which allows you to hook kernel functions from userspace. It supports iOS 13.x,
+iOS 14.x, and iOS 15.x on checkra1n 0.12.2 and up. 4K devices are not supported.
 
 Requires `libusb`: `brew install libusb`
 
@@ -180,9 +180,9 @@ If this flavor returns an error, `hookme` was not called.
 - `EINVAL` if:
   - The constant denoted by `arg1` does not represent anything in the cache.
   - `arg1` was `KALLOC_EXTERNAL`, but the kernel is iOS 13.x.
-  - `arg1` was `KALLOC_CANBLOCK`, but the kernel is iOS 14.x.
+  - `arg1` was `KALLOC_CANBLOCK`, but the kernel is iOS 14.x or iOS 15.x.
   - `arg1` was `KFREE_EXT`, but the kernel is iOS 13.x.
-  - `arg1` was `KFREE_ADDR`, but the kernel is iOS 14.x.
+  - `arg1` was `KFREE_ADDR`, but the kernel is iOS 14.x or iOS 15.x.
 
 `errno` also depends on the return value of `copyout` and if applicable, the
 return value of the one-time initialization function.
@@ -285,7 +285,7 @@ isn't a live feed, so I wrote `klog`, a tool which shows `kprintf` logs
 in real time. Find it in `klog/`. I strongly recommend using that instead
 of spamming `dmesg` for your `kprintf` messages.
 
-If you get `﻿﻿open: Resource busy` after running `klog`, run this command
+If you get `open: Resource busy` after running `klog`, run this command
 `launchctl unload /System/Library/LaunchDaemons/com.apple.syslogd.plist`
 and try again.
 
@@ -369,9 +369,10 @@ and falls back to unused code already in the kernelcache for the hook structures
 to reside on instead if it finds that this could happen.
 
 # Device Security
-This module completely neuters KTRR/AMCC lockdown and KPP. I don't
-recommend using this on a daily driver.
+This module completely neuters KTRR/AMCC lockdown/KPP and makes it
+possible to create RWX memory inside the kernel. Do not use this on your
+daily driver.
 
 # Other Notes
-I do my best to make sure the patchfinders work, so if something isn't working
+I do my best to make sure the patchfinders work, so if something isn't working,
 please open an issue.

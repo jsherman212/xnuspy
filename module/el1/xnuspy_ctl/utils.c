@@ -34,6 +34,7 @@ bool is_14_5_and_above(void){
     return true;
 }
 
+/* TODO move these to their own file called wrappers.c */
 void ipc_port_release_send_wrapper(void *port){
     if(is_14_5_and_above()){
         if(io_lock == NULL)
