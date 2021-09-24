@@ -369,9 +369,8 @@ and falls back to unused code already in the kernelcache for the hook structures
 to reside on instead if it finds that this could happen.
 
 # Device Security
-This module completely neuters KTRR/AMCC lockdown/KPP and makes it
-possible to create RWX memory inside the kernel. Do not use this on your
-daily driver.
+This module completely neuters KTRR/KPP and makes it possible to create
+RWX memory inside EL1. Do not use this on your daily driver.
 
 # Other Notes
 I do my best to make sure the patchfinders work, so if something isn't working,

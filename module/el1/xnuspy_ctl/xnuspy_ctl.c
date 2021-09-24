@@ -23,6 +23,7 @@
 
 #define iOS_13_x                    (19)
 #define iOS_14_x                    (20)
+#define iOS_15_x                    (21)
 
 /* THIS NEEDS TO STAY IN SYNC WITH example/xnuspy_ctl.h */
 enum {

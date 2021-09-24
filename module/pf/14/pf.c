@@ -12,7 +12,7 @@
 uint64_t g_kalloc_external_addr = 0;
 uint64_t g_kfree_ext_addr = 0;
 
-/* confirmed working 14.0-14.6 */
+/* Confirmed working 14.0 - 15.0 */
 bool kalloc_external_finder_14(xnu_pf_patch_t *patch, void *cacheable_stream){
     /* We've landed somewhere inside AMFI, kalloc_external is the
      * branch six instructions down */
@@ -23,15 +23,19 @@ bool kalloc_external_finder_14(xnu_pf_patch_t *patch, void *cacheable_stream){
 
     g_kalloc_external_addr = xnu_ptr_to_va(kalloc_external);
 
+    printf("%s: kalloc_external @ %#llx\n", __func__,g_kalloc_external_addr-kernel_slide);
     puts("xnuspy: found kalloc_external");
 
     return true;
 }
 
-/* confirmed working 14.0-14.6 */
+/* Confirmed working 14.0 - 15.0 */
 bool kfree_ext_finder_14(xnu_pf_patch_t *patch, void *cacheable_stream){
-    /* We've landed somewhere in mach_gss_accept_sec_context, kfree_ext
-     * is the branch three instructions down (four in the case of 15) */
+    /* For 14.x, we've landed somewhere in mach_gss_accept_sec_context,
+     * kfree_ext is the branch three instructions down.
+     *
+     * For 15.x, the matches/masks get two hits, but in both cases, the
+     * branch to kfree_ext is four instructions down. */
     xnu_pf_disable_patch(patch);
 
     uint32_t *opcode_stream = cacheable_stream;
@@ -42,7 +46,8 @@ bool kfree_ext_finder_14(xnu_pf_patch_t *patch, void *cacheable_stream){
             uint32_t *kfree_ext = get_branch_dst_ptr(opcode_stream + i);
 
             g_kfree_ext_addr = xnu_ptr_to_va(kfree_ext);
-            
+            printf("%s: kfree_ext @ %#llx\n", __func__,g_kfree_ext_addr-kernel_slide);
+
             puts("xnuspy: found kfree_ext");
             return true;
         }

@@ -141,16 +141,16 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
             5, kfree_ext_finder_14, "__TEXT_EXEC"),
         PF_DECL32("kfree_ext finder iOS 15",
             LISTIZE({
-                0x90000000,     /* adrp x0, n */
-                0x91000000,     /* add x0, x0, */
+                0x10000000,     /* adrp x0, n or adr x0, n */
+                0x0,            /* ignore this instruction */
                 0xaa1303e1,     /* mov x1, x19 */
                 0x0,            /* ignore this instruction */
                 0x94000000,     /* bl n */
                 0xaa1803e0,     /* mov x0, x24 */
             }),
             LISTIZE({
-                0x9f00001f,     /* ignore immediate */
-                0xff8003ff,     /* ignore immediate */
+                0x1f00001f,     /* ignore immediate */
+                0x0,            /* ignore this instruction */
                 0xffffffff,     /* match exactly */
                 0x0,            /* ignore this instruction */
                 0xfc000000,     /* ignore immediate */
