@@ -12,24 +12,40 @@
 uint64_t g_vm_map_unwire_nested_addr = 0;
 uint64_t g_iolog_addr = 0;
 
+/* Confirmed working 15.0 */
 bool ipc_port_release_send_finder_15(xnu_pf_patch_t *patch, 
         void *cacheable_stream){
     /* will land in _exception_deliver in iOS 15. There is a sequence
      * where they lock/release 4 IPC ports if they are non-null. This
      * patchfinder will take us here, then it's just a matter of
-     * resolving the branches */
-    xnu_pf_disable_patch(patch);
-
+     * resolving the branches. We get about 26 hits for these matches
+     * and masks, so let's make sure we're actually in _exception_deliver.
+     * If we are, then the two instructions behind where we landed will be
+     * mov x27, #0 and mov x26, x0 */
     uint32_t *opcode_stream = cacheable_stream;
+
+    if(opcode_stream[-1] != 0xd280001b && opcode_stream[-2] != 0xaa0003fa)
+        return false;
+
+    xnu_pf_disable_patch(patch);
 
     uint32_t *ipc_port_release_send_and_unlock = get_branch_dst_ptr(opcode_stream + 6);
     uint32_t *ipc_object_lock = get_branch_dst_ptr(opcode_stream + 4);
 
     g_ipc_port_release_send_addr = xnu_ptr_to_va(ipc_port_release_send_and_unlock);
+
+    /* TODO: will be more clear inside kernel code if I call io_lock
+     * for 14.x/ipc_object_lock for 15.x and export them as two different
+     * things inside the cache */
     g_io_lock_addr = xnu_ptr_to_va(ipc_object_lock);
 
     puts("xnuspy: found ipc_port_release_send_and_unlock");
     puts("xnuspy: found ipc_object_lock");
+
+    /* printf("%s: ipc_port_release_send_and_unlock: %#llx\n",__func__, */
+    /*         g_ipc_port_release_send_addr-kernel_slide); */
+    /* printf("%s: ipc_object_lock: %#llx\n", __func__, */
+    /*         g_io_lock_addr-kernel_slide); */
 
     return true;
 }

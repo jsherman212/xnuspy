@@ -678,7 +678,7 @@ bool kernel_thread_start_thread_deallocate_finder_13(xnu_pf_patch_t *patch,
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.6 */
+/* Confirmed working on all kernels 13.0 - 15.0 */
 bool mach_make_memory_entry_64_finder_13(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     xnu_pf_disable_patch(patch);
@@ -690,7 +690,7 @@ bool mach_make_memory_entry_64_finder_13(xnu_pf_patch_t *patch,
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.6 */
+/* Confirmed working on all kernels 13.0 - 15.0 */
 bool offsetof_struct_thread_map_finder_13(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     /* For iOS 13 & 14 we landed in mmap, or in the case of iOS 15
@@ -839,7 +839,7 @@ bool proc_stuff1_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.6 */
+/* Confirmed working on all kernels 13.0 - 15.0 */
 bool allproc_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     /* The ADRP three instructions past this point is for allproc */
     xnu_pf_disable_patch(patch);
@@ -853,7 +853,7 @@ bool allproc_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
-/* confirmed working on all kernels 13.0-14.6 */
+/* Confirmed working on all kernels 13.0 - 15.0 */
 bool misc_lck_stuff_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     /* We've landed in sflt_initsock. This finds:
      *      - lck_rw_lock_shared
@@ -897,6 +897,9 @@ bool misc_lck_stuff_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
 
     puts("xnuspy: found lck_rw_lock_shared_to_exclusive");
     puts("xnuspy: found lck_rw_lock_exclusive");
+
+    /* XXX: safe to put earlier? */
+    xnu_pf_disable_patch(patch);
 
     return true;
 }

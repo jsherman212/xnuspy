@@ -257,8 +257,8 @@ static void initialize_xnuspy_cache(void){
 }
 
 static uint32_t *install_h_s_c_sbn_hook(uint32_t *scratch_space,
-        uint64_t *num_free_instrsp){
-    uint64_t num_free_instrs = *num_free_instrsp;
+        int64_t *num_free_instrsp){
+    int64_t num_free_instrs = *num_free_instrsp;
 
     uint64_t h_s_c_sbn_hook_len =
         g_hook_system_check_sysctlbyname_hook_len / sizeof(uint32_t);
@@ -288,8 +288,8 @@ static uint32_t *install_h_s_c_sbn_hook(uint32_t *scratch_space,
 }
 
 static uint32_t *write_xnuspy_ctl_tramp_instrs(uint32_t *scratch_space,
-        uint64_t *num_free_instrsp){
-    uint64_t num_free_instrs = *num_free_instrsp;
+        int64_t *num_free_instrsp){
+    int64_t num_free_instrs = *num_free_instrsp;
 
     uint64_t xnuspy_ctl_tramp_len = g_xnuspy_ctl_tramp_len / sizeof(uint32_t);
     uint32_t *xnuspy_ctl_tramp_cursor = (uint32_t *)g_xnuspy_ctl_tramp;
@@ -311,7 +311,7 @@ static uint32_t *write_xnuspy_ctl_tramp_instrs(uint32_t *scratch_space,
  * xnuspy_ctl_tramp. For the reason we need a trampoline, see
  * module/el1/xnuspy_ctl_tramp.s */
 static uint32_t *install_xnuspy_ctl_tramp(uint32_t *scratch_space,
-        uint64_t *num_free_instrsp){
+        int64_t *num_free_instrsp){
     struct sysent *sysent_stream = (struct sysent *)g_sysent_addr;
 
     bool tagged_ptr = false;
@@ -486,7 +486,8 @@ static void process_xnuspy_ctl_image(void *xnuspy_ctl_image){
 void (*next_preboot_hook)(void);
 
 void xnuspy_preboot_hook(void){
-    anything_missing();
+    /* anything_missing(); */
+    printf("%s: *****SKIPPING anything_missing()\n",  __func__);
     
     uint64_t xnuspy_tramp_mem_size = PAGE_SIZE * XNUSPY_TRAMP_PAGES;
     void *xnuspy_tramp_mem = alloc_static(xnuspy_tramp_mem_size);
@@ -629,11 +630,13 @@ next:
 
     memcpy(xnuspy_ctl_image, loader_xfer_recv_data, loader_xfer_recv_count);
 
-    uint64_t num_free_instrs = g_exec_scratch_space_size / sizeof(uint32_t);
+    int64_t num_free_instrs = g_exec_scratch_space_size / sizeof(uint32_t);
     uint32_t *scratch_space = xnu_va_to_ptr(g_exec_scratch_space_addr);
 
     scratch_space = install_h_s_c_sbn_hook(scratch_space, &num_free_instrs);
     scratch_space = install_xnuspy_ctl_tramp(scratch_space, &num_free_instrs);
+
+    printf("%s: %lld free instrs left\n", __func__, num_free_instrs);
 
     if(fallback){
         /* Use the rest of the scratch space for the xnuspy_tramp structs.
@@ -653,6 +656,9 @@ next:
 
     initialize_xnuspy_callnum_sysctl_offsets();
     initialize_xnuspy_cache();
+
+    printf("%s: ******NOT BOOTING XNU\n", __func__);
+    for(;;);
 
     if(next_preboot_hook)
         next_preboot_hook();

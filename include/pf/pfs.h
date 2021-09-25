@@ -590,7 +590,7 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
         PF_DECL32("lck_rw_alloc_init finder iOS 15",
             LISTIZE({
                 0x94000000,     /* bl n (lck_rw_alloc_init) */
-                0xf9000000,     /* str x0, [x21] */
+                0xf9000000,     /* str x0, [x21, n] */
                 0xb4000000,     /* cbz x0, n */
                 0x52800000,     /* mov w0, #0 */
                 0x94000000,     /* bl n */
@@ -1474,7 +1474,7 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
                 0xb9400129,     /* ldr w9, [x9] */
                 0x7100793f,     /* cmp w9, #0x1e */
                 0x7a421924,     /* ccmp w9, #2, #4, ne */
-                0x0,
+                0x0,            /* ignore this instruction */
                 0xaa0003f3,     /* mov x19, x0 */
                 0xf9400d14,     /* ldr x20, [x8, #0x18] */
             }),
@@ -1484,7 +1484,7 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
                 0xffffffff,     /* match exactly */
                 0xffffffff,     /* match exactly */
                 0xffffffff,     /* match exactly */
-                0x0,
+                0x0,            /* ignore this instruction */
                 0xffffffff,     /* match exactly */
                 0xffffffff,     /* match exactly */
             }),
@@ -1830,7 +1830,7 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
         PF_DECL32("doprnt_hide_pointers patcher iOS 15",
             LISTIZE({
                 0x93407c00,     /* sxtw Xn, Wn */
-                0x7100001f,     /* cmp w14, 0 */
+                0x7100001f,     /* cmp Wn, 0 */
                 0x9a800000,     /* csel Xn, Xn, Xn, eq */
             }),
             LISTIZE({

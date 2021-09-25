@@ -46,7 +46,7 @@ bool kfree_ext_finder_14(xnu_pf_patch_t *patch, void *cacheable_stream){
             uint32_t *kfree_ext = get_branch_dst_ptr(opcode_stream + i);
 
             g_kfree_ext_addr = xnu_ptr_to_va(kfree_ext);
-            printf("%s: kfree_ext @ %#llx\n", __func__,g_kfree_ext_addr-kernel_slide);
+            /* printf("%s: kfree_ext @ %#llx\n", __func__,g_kfree_ext_addr-kernel_slide); */
 
             puts("xnuspy: found kfree_ext");
             return true;
@@ -96,7 +96,7 @@ bool ExceptionVectorsBase_finder_14(xnu_pf_patch_t *patch,
     return true;
 }
 
-/* confirmed working 14.0-14.6 */
+/* Confirmed working 14.0 - 15.0 */
 bool sysctl__kern_children_and_register_oid_finder_14(xnu_pf_patch_t *patch,
         void *cacheable_stream){
     xnu_pf_disable_patch(patch);
