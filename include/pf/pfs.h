@@ -1371,30 +1371,28 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
     {
         PF_UNUSED,
         PF_UNUSED,
-        PF_DECL32("proc_list_mlock finder iOS 15",
+        PF_DECL32("proc_list_mlock,lck_mtx_lock,lck_mtx_unlock finder iOS 15",
             LISTIZE({
-                0x90000000,     /* adrp Xd, n */
-                0x91000000,     /* add Xd, Xn, n */
+                0x10000000,     /* adrp Xd, n or adr Xd, n */
+                0x0,            /* ignore this instruction */
                 0xaa0003e0,     /* mov x0, Xn */
                 0x94000000,     /* bl _lck_mtx_lock */
-                0xb9400328,     /* ldr w8, [x25, n] */
+                0xb9400008,     /* ldr w8, [Xn, n] */
                 0x32150108,     /* orr w8, w8, #0x800 */
-                0xb9000328,     /* str w8, [x25, n] */
+                0xb9000008,     /* str w8, [Xn, n] */
                 0xaa0003e0,     /* mov x0, Xn */
-                /* bl n */
             }),
             LISTIZE({
-                0x9f000000,     /* ignore immediate, ignore Rd */
-                0xff800000,     /* ignore immediate, ignore Rd */
+                0x1f000000,     /* ignore immediate, ignore Rd */
+                0x0,            /* ignore this instruction */
                 0xffe0ffff,     /* ignore Rn */
                 0xfc000000,     /* ignore immediate */
-                0xffc003ff,     /* ignore immediate */
+                0xffc0001f,     /* ignore Rn & immediate */
                 0xffffffff,     /* match exactly */
-                0xffc003ff,     /* ignore immediate */
+                0xffc0001f,     /* ignore Rn & immediate */
                 0xffe0ffff,     /* ignore Rn */
-                /* ignore immediate */
             }),
-            8, proc_list_mlock_finder_15, "__TEXT_EXEC"),
+            8, proc_list_mlock_lck_mtx_lock_unlock_finder_15, "__TEXT_EXEC"),
     },
     {
         PF_DECL32("allproc finder iOS 13",
@@ -1481,34 +1479,6 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
                 0xffffffff,     /* match exactly */
             }),
             8, misc_lck_stuff_finder_13, "__TEXT_EXEC"),
-    },
-    {
-        PF_UNUSED,
-        PF_UNUSED,
-        PF_DECL32("lck_mtx_lock/unlock finder iOS 15",
-            LISTIZE({
-                0x94000000,     /* bl n */
-                0xf9400000,     /* ldr x0, [Xn, n] */ 
-                0x94000000,     /* bl n */
-                0xaa0003e0,     /* mov Xn, x0 */
-                0xaa0003e0,     /* mov x0, Xn */
-                0x94000000,     /* bl n */
-                0xf9000275,     /* str x21, [x19, n] */
-                0xf900027f,     /* str xzr, [x19, n] */
-                // 0xf900027f,     /* str xzr, [x9, n] */
-            }),
-            LISTIZE({
-                0xfc000000,     /* ignore immediate */
-                0xffc0001f,     /* ignore Rn & immediate */
-                0xfc000000,     /* ignore immediate */
-                0xffffffe0,     /* ignore Rd */
-                0xffe0ffff,     /* ignore Rn */
-                0xfc000000,     /* ignore immediate */
-                0xffc003ff,     /* ignore immediate */
-                0xffc003ff,     /* ignore immediate */
-                // 0xffc003ff,     /* ignore immediate */
-            }),
-            8, lck_mtx_lock_unlock_finder_15, "__TEXT_EXEC"),
     },
     {
         PF_DECL32("vm_map_wire_external finder iOS 13",

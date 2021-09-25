@@ -170,45 +170,37 @@ bool vm_deallocate_finder_15(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
-/* NOTE: if this patch breaks see note in `proc_list_mlock_finder_15` */
-bool lck_mtx_lock_unlock_finder_15(xnu_pf_patch_t *patch,
+/* Confirmed working 15.0 */
+bool proc_list_mlock_lck_mtx_lock_unlock_finder_15(xnu_pf_patch_t *patch,
         void *cacheable_stream){
-    /* will land at the end of ipc_task_init */
+    /* This gets three hits, but they are identical for
+     * all kernels. we can only search for 8 instructions
+     * at a time, so we check for the 9th instruction
+     * (bl _lck_mtx_unlock). We are sitting on an adrp or
+     * adr to proc_list_mlock, and then the third instruction
+     * from this point is a BL to lck_mtx_lock */
     xnu_pf_disable_patch(patch);
-
+    
     uint32_t *opcode_stream = cacheable_stream;
+    
+    uint64_t *proc_list_mlock = (uint64_t *)get_pc_rel_target(opcode_stream);
+    uint32_t *lck_mtx_lock = get_branch_dst_ptr(opcode_stream + 3);
+    uint32_t *lck_mtx_unlock = get_branch_dst_ptr(opcode_stream + 8);
 
-    uint32_t *lck_mtx_lock = get_branch_dst_ptr(opcode_stream);
-    uint32_t *lck_mtx_unlock = get_branch_dst_ptr(opcode_stream + 5);
-
+    g_proc_list_mlock_addr = xnu_ptr_to_va(proc_list_mlock);
     g_lck_mtx_lock_addr = xnu_ptr_to_va(lck_mtx_lock);
     g_lck_mtx_unlock_addr = xnu_ptr_to_va(lck_mtx_unlock);
 
+    puts("xnuspy: found proc_list_mlock");
     puts("xnuspy: found lck_mtx_lock");
     puts("xnuspy: found lck_mtx_unlock");
 
-    return true;
-}
-
-/* NOTE: lock_mtx_{un}lock are also nearby, so could be integrated into this patch if necessary */
-/* TODO ^ do this */
-bool proc_list_mlock_finder_15(xnu_pf_patch_t *patch, void *cacheable_stream){
-    /* will land in _posix_spawn. we can only search
-     * for 8 instructions at a time, so we check for 
-     * the 9th instruction (bl _lck_mtx_unlock) */
-    xnu_pf_disable_patch(patch);
-    
-    uint32_t *opcode_stream = cacheable_stream;
-    
-    if ((opcode_stream[8] & 0xfc000000) != 0x94000000){
-        return false;
-    }
-
-    uint32_t *proc_list_mlock = (uint32_t *)get_pc_rel_target(opcode_stream);
-
-    g_proc_list_mlock_addr = xnu_ptr_to_va(proc_list_mlock);
-
-    puts("xnuspy: found proc_list_mlock");
+    printf("%s: proc_list_mlock @ %#llx\n"
+           "lck_mtx_lock @ %#llx\n"
+           "lck_mtx_unlock @ %#llx\n",
+           __func__, g_proc_list_mlock_addr-kernel_slide,
+           g_lck_mtx_lock_addr-kernel_slide,
+           g_lck_mtx_unlock_addr-kernel_slide);
 
     return true;
 }
