@@ -131,17 +131,30 @@ bool vm_map_unwire_nested_finder_15(xnu_pf_patch_t *patch,
     return true;
 }
 
+/* Confirmed working 15.0 */
 bool kernel_map_finder_15(xnu_pf_patch_t *patch, void *cacheable_stream){
-    /* will land in _panic_kernel, on adrp/ldr for _kernel_map */
+    /* Will land in panic_kernel, the first PC relative addressing pair
+     * we see from this point on is for kernel_map */
+    uint32_t *opcode_stream = cacheable_stream;
+    uint32_t limit = 50;
+
+    /* adrp or adr */
+    while((*opcode_stream & 0x1f000000) != 0x10000000){
+        if(limit-- == 0)
+            return false;
+
+        opcode_stream++;
+    }
+
     xnu_pf_disable_patch(patch);
 
-    uint32_t *opcode_stream = cacheable_stream;
+    uint64_t *kernel_mapp = (uint64_t *)get_pc_rel_target(opcode_stream);
 
-    uint32_t *kernel_map = (uint32_t *)get_pc_rel_target(opcode_stream);
-
-    g_kernel_map_addr = xnu_ptr_to_va(kernel_map);
+    g_kernel_map_addr = xnu_ptr_to_va(kernel_mapp);
     
     puts("xnuspy: found kernel_map");
+    /* printf("%s: kernel_map pointer @ %#llx\n", __func__, */
+    /*         g_kernel_map_addr-kernel_slide); */
     
     return true;
 }
@@ -168,7 +181,8 @@ bool vm_deallocate_finder_15(xnu_pf_patch_t *patch, void *cacheable_stream){
 }
 
 /* NOTE: if this patch breaks see note in `proc_list_mlock_finder_15` */
-bool lck_mtx_lock_unlock_finder_15(xnu_pf_patch_t *patch, void *cacheable_stream){
+bool lck_mtx_lock_unlock_finder_15(xnu_pf_patch_t *patch,
+        void *cacheable_stream){
     /* will land at the end of ipc_task_init */
     xnu_pf_disable_patch(patch);
 

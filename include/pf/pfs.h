@@ -1070,22 +1070,18 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
         PF_UNUSED,
         PF_DECL32("kernel_map finder iOS 15",
             LISTIZE({
-                0x90000009,     /* adrp x9, _kernel_map */
-                0xf9400120,     /* ldr x0, [x9, n] */
-                0x92000002,     /* and x2, Xn, n */
-                0xaa0003e1,     /* mov x1, Xn */
-                0x52800023,     /* mov w3, #1 */
                 0x94000000,     /* bl n */
+                0xaa0003f4,     /* mov x20, x0 */
+                0x0,            /* ignore this instruction */
+                0x9ba87c00,     /* umull Xn, w0, w8 */
             }),
             LISTIZE({
-                0x9f00001f,     /* ignore immediate */
-                0xffc003ff,     /* ignore immediate */
-                0xff80001f,     /* ignore Rn & immediate */
-                0xffe0ffff,     /* ignore Rn */
-                0xffffffff,     /* match exactly */
                 0xfc000000,     /* ignore immediate */
+                0xffffffff,     /* match exactly */
+                0x0,            /* ignore this instruction */
+                0xffffffe0,     /* ignore Rd */
             }),
-            6, kernel_map_finder_15, "__TEXT_EXEC"),
+            4, kernel_map_finder_15, "__TEXT_EXEC"),
     },
     {
         PF_UNUSED,
