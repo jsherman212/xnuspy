@@ -50,9 +50,12 @@ bool ipc_port_release_send_finder_15(xnu_pf_patch_t *patch,
     return true;
 }
 
+/* Confirmed working 15.0 */
 bool proc_name_snprintf_strlen_finder_15(xnu_pf_patch_t *patch,
         void *cacheable_stream){
-    /* will land in AppleEmbeddedUSBDevice::setAuthenticationProperites */
+    /* will land either in AppleEmbeddedUSBDevice::setAuthenticationProperites
+     * or AppleEmbeddedUSBDevice::setProperties, both look the same, so
+     * just use the one we land in first */
     xnu_pf_disable_patch(patch);
 
     uint32_t *opcode_stream = cacheable_stream;
