@@ -1311,22 +1311,18 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
         PF_UNUSED,
         PF_DECL32("current_proc finder iOS 15",
             LISTIZE({
-                0xd538d088,     /* mrs x8, tpidr_el1 */
-                0xf9400113,     /* ldr x19, [x8, n] */
-                0xf9400262,     /* ldr x2, [x19, n] */
-                0xf100005f,     /* cmp x2, #0 */
-                0x90000000,     /* adrp Xn, n */
-                0x91000000,     /* add Xn, Xn, n */
+                0x39402a88,     /* ldrb w8, [x20, #0xa] */
+                0x35000008,     /* cbnz w8, n */
+                0x94000000,     /* bl current_proc */
+                0xf9000e80,     /* str x0, [x20, #0x18] */
             }),
             LISTIZE({
                 0xffffffff,     /* match exactly */
-                0xffc003ff,     /* ignore immediate */
-                0xffc003ff,     /* ignore immediate */
+                0xffc0001f,     /* ignore signed offset */
+                0xfc000000,     /* ignore immediate */
                 0xffffffff,     /* match exactly */
-                0x9f000000,     /* ignore Rd & immediate */
-                0xff800000,     /* ignore Rd & Rn & immediate */
             }),
-            6, current_proc_finder_15, "__TEXT_EXEC"),
+            4, current_proc_finder_15, "__TEXT_EXEC"),
     },
     {
         PF_DECL_FULL("proc stuff finder 1 iOS 13",
@@ -1631,10 +1627,10 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
                 0xffffffff,     /* match exactly */
             }),
             5, ipc_port_release_send_finder_13, "__TEXT_EXEC"),
-        PF_DECL32("ipc_port_release_send finder iOS 14",
+        PF_DECL32("io_lock/ipc_port_release_send_and_unlock finder iOS 14",
             LISTIZE({
                 0xaa1303e0,     /* mov x0, x19 */
-                0x94000000,     /* bl _ipc_port_release_send */
+                0x94000000,     /* bl _ipc_port_release_send_and_unlock */
                 0x14000000,     /* b n */
                 0x94000000,     /* bl ___stack_chk_fail */
                 0xf90003f8,     /* str x24, [sp] */
@@ -1647,7 +1643,7 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
                 0xffffffff,     /* match exactly */
             }),
             5, ipc_port_release_send_finder_13, "__TEXT_EXEC"),
-        PF_DECL32("ipc_port_release_send finder iOS 15",
+        PF_DECL32("ipc_object_lock/ipc_port_release_send_and_unlock finder iOS 15",
             LISTIZE({
                 0x910006e8,     /* add x8, x23, #1 */
                 0xf100091f,     /* cmp x8, 2 */
@@ -1655,7 +1651,7 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
                 0xaa1703e0,     /* mov x0, x23 */
                 0x94000000,     /* bl _ipc_object_lock */
                 0xaa1703e0,     /* mov x0, x23 */
-                0x94000000      /* bl _ipc_port_release_and_unlock */
+                0x94000000      /* bl _ipc_port_release_send_and_unlock */
             }),
             LISTIZE({
                 0xffffffff,     /* match exactly */

@@ -75,34 +75,21 @@ bool proc_name_snprintf_strlen_finder_15(xnu_pf_patch_t *patch,
     return true;
 }
 
+/* Confirmed working 15.0 */
 bool current_proc_finder_15(xnu_pf_patch_t *patch, void *cacheable_stream){
-    /* will land directly at the start of _current_proc, or an 
-     * inlined copy of it */
+    /* This matches four places inside _eval, all of which have a branch
+     * to current_proc two instructions down */
+    xnu_pf_disable_patch(patch);
 
     uint32_t *opcode_stream = cacheable_stream;
 
-    uint32_t *current_proc = opcode_stream - 3;
-
-    uint32_t func_size = 0;
-    while (*opcode_stream != 0xd65f03c0 /* ret */){
-        func_size++;
-
-        opcode_stream++;
-    }
-
-    /* definitely not the best patchfind, but _current_proc itself is
-     * a very specific size (it's also the smallest match but this is
-     * harder to check for). we get many matches on this patch as 
-     * it's inlined in many places */
-    if (func_size != 0x12){
-        return false;
-    }
-
-    xnu_pf_disable_patch(patch);
+    uint32_t *current_proc = get_branch_dst_ptr(opcode_stream + 2);
 
     g_current_proc_addr = xnu_ptr_to_va(current_proc);
 
     puts("xnuspy: found current_proc");
+    printf("%s: current_proc @ %#llx\n", __func__,
+            g_current_proc_addr-kernel_slide);
 
     return true;
 }
