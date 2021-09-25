@@ -183,7 +183,9 @@ bool proc_list_mlock_lck_mtx_lock_unlock_finder_15(xnu_pf_patch_t *patch,
     
     uint32_t *opcode_stream = cacheable_stream;
     
+    /* XXX NOT a double pointer */
     uint64_t *proc_list_mlock = (uint64_t *)get_pc_rel_target(opcode_stream);
+
     uint32_t *lck_mtx_lock = get_branch_dst_ptr(opcode_stream + 3);
     uint32_t *lck_mtx_unlock = get_branch_dst_ptr(opcode_stream + 8);
 
