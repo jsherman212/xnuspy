@@ -107,18 +107,26 @@ bool current_proc_finder_15(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
+/* Confirmed working 15.0 */
 bool vm_map_unwire_nested_finder_15(xnu_pf_patch_t *patch, 
         void *cacheable_stream){
-    /* will land in mach_port_space_info, on the _vm_map_unwire_nested call */
-    xnu_pf_disable_patch(patch);
-
+    /* This matches five places. In three of them, we'll be sitting on a
+     * BL to vm_map_unwire_nested if the instruction right behind us is
+     * mov x5, #0 */
     uint32_t *opcode_stream = cacheable_stream;
+
+    if(opcode_stream[-1] != 0xd2800005)
+        return false;
+
+    xnu_pf_disable_patch(patch);
 
     uint32_t *vm_map_unwire_nested = get_branch_dst_ptr(opcode_stream);
 
     g_vm_map_unwire_nested_addr = xnu_ptr_to_va(vm_map_unwire_nested);
     
     puts("xnuspy: found vm_map_unwire_nested");
+    /* printf("%s: vm_map_unwire_nested = %#llx\n", __func__, */
+    /*         g_vm_map_unwire_nested_addr-kernel_slide); */
 
     return true;
 }
