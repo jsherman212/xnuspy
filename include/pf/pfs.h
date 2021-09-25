@@ -1741,28 +1741,29 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
                 0xffffffff,     /* match exactly */
             }),
             7, lck_grp_free_finder_13, "__TEXT_EXEC"),
-        PF_DECL32("lck_grp_free finder iOS 15",
+        PF_DECL_FULL("lck_grp_free finder iOS 15",
             LISTIZE({
-                0xa9007c1f,     /* stp xzr, xzr, [Xn, m] */
-                0xf900001f,     /* str xzr, [Xn, n] */
                 0xf9400000,     /* ldr x0, [Xn, n] */
                 0x94000000,     /* bl n */
                 0xf9400000,     /* ldr x0, [Xn, n] */
                 0x94000000,     /* bl n */
                 0xf9400000,     /* ldr x0, [Xn, n] */
-                0x94000000      /* bl n */
+                0x94000000,     /* bl n */
+                0xd2800000,     /* mov x0, #0 */
+                0x94000000,     /* bl n */
             }),
             LISTIZE({
-                0xffc07c1f,     /* ignore Rn & immediate */
-                0xffc0001f,     /* ignore Rn & immediate */
                 0xffc0001f,     /* ignore Rn & immediate */
                 0xfc000000,     /* ignore immediate */
                 0xffc0001f,     /* ignore Rn & immediate */
                 0xfc000000,     /* ignore immediate */
                 0xffc0001f,     /* ignore Rn & immediate */
                 0xfc000000,     /* ignore immediate */
+                0xffffffff,     /* match exactly */
+                0xfc000000,     /* ignore this instruction */
             }),
-            8, lck_grp_free_finder_15, "__TEXT_EXEC"),
+            8, XNU_PF_ACCESS_32BIT, lck_grp_free_finder_15,
+            "com.apple.filesystems.lifs", "__TEXT_EXEC", NULL),
     },
     {
         PF_DECL32("doprnt_hide_pointers patcher iOS 13",

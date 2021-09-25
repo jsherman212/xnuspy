@@ -183,7 +183,7 @@ bool proc_list_mlock_lck_mtx_lock_unlock_finder_15(xnu_pf_patch_t *patch,
     
     uint32_t *opcode_stream = cacheable_stream;
     
-    /* XXX NOT a double pointer */
+    /* NOT a double pointer */
     uint64_t *proc_list_mlock = (uint64_t *)get_pc_rel_target(opcode_stream);
 
     uint32_t *lck_mtx_lock = get_branch_dst_ptr(opcode_stream + 3);
@@ -197,41 +197,31 @@ bool proc_list_mlock_lck_mtx_lock_unlock_finder_15(xnu_pf_patch_t *patch,
     puts("xnuspy: found lck_mtx_lock");
     puts("xnuspy: found lck_mtx_unlock");
 
-    printf("%s: proc_list_mlock @ %#llx\n"
-           "lck_mtx_lock @ %#llx\n"
-           "lck_mtx_unlock @ %#llx\n",
-           __func__, g_proc_list_mlock_addr-kernel_slide,
-           g_lck_mtx_lock_addr-kernel_slide,
-           g_lck_mtx_unlock_addr-kernel_slide);
+    /* printf("%s: proc_list_mlock @ %#llx\n" */
+    /*        "lck_mtx_lock @ %#llx\n" */
+    /*        "lck_mtx_unlock @ %#llx\n", */
+    /*        __func__, g_proc_list_mlock_addr-kernel_slide, */
+    /*        g_lck_mtx_lock_addr-kernel_slide, */
+    /*        g_lck_mtx_unlock_addr-kernel_slide); */
 
     return true;
 }
 
 bool lck_grp_free_finder_15(xnu_pf_patch_t *patch, void *cacheable_stream){
-    /* will land in _mcache_destroy. we match a pattern 
-     * of 3x calls to _lck_grp_free, so we can check
-     * these BL's all point to the same place to ensure
-     * we're looking at the right code */
+    /* We landed in lifs_kext_stop. There's three sequences of
+     * ldr x0, ... BL _lck_grp_free in front of us */
+    xnu_pf_disable_patch(patch);
 
     uint32_t *opcode_stream = cacheable_stream;
 
-    uint32_t *branches[3] = { 
-        get_branch_dst_ptr(opcode_stream + 3),
-        get_branch_dst_ptr(opcode_stream + 5),
-        get_branch_dst_ptr(opcode_stream + 7),
-    };
-
-    if (branches[0] != branches[1] ||
-        branches[0] != branches[2])
-        return false;
-
-    xnu_pf_disable_patch(patch);
-
-    uint32_t *lck_grp_free = get_branch_dst_ptr(opcode_stream + 3);
+    uint32_t *lck_grp_free = get_branch_dst_ptr(opcode_stream + 1);
     
     g_lck_grp_free_addr = xnu_ptr_to_va(lck_grp_free);
-    
+
     puts("xnuspy: found lck_grp_free");
+    /* printf("%s: lck_grp_free @ %#llx [unslid=%#llx]\n", __func__, */
+    /*         g_lck_grp_free_addr, */
+    /*         g_lck_grp_free_addr-kernel_slide); */
     
     return true;
 }
