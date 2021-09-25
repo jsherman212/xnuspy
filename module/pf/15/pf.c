@@ -159,6 +159,7 @@ bool kernel_map_finder_15(xnu_pf_patch_t *patch, void *cacheable_stream){
     return true;
 }
 
+/* Confirmed working 15.0 */
 bool vm_deallocate_finder_15(xnu_pf_patch_t *patch, void *cacheable_stream){
     /* will land in ipc_kmsg_clean_partial. we can only 
      * search for 8 intructions at a time, so we check
@@ -176,6 +177,8 @@ bool vm_deallocate_finder_15(xnu_pf_patch_t *patch, void *cacheable_stream){
     g_vm_deallocate_addr = xnu_ptr_to_va(vm_deallocate);
 
     puts("xnuspy: found vm_deallocate");
+    /* printf("%s: vm_deallocate @ %#llx\n", __func__, */
+    /*         g_vm_deallocate_addr-kernel_slide); */
 
     return true;
 }
