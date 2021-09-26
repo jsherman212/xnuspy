@@ -51,5 +51,6 @@ bool mach_to_bsd_errno_finder_13(xnu_pf_patch_t *, void *);
 bool vm_allocate_external_finder_13(xnu_pf_patch_t *, void *);
 bool vm_map_deallocate_offsetof_vm_map_refcnt_finder_13(xnu_pf_patch_t *, void *);
 bool IOLog_finder_13(xnu_pf_patch_t *, void *);
+bool lck_mtx_lock_finder_13(xnu_pf_patch_t *, void *);
 
 #endif

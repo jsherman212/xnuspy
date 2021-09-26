@@ -717,9 +717,6 @@ bool offsetof_struct_thread_map_finder_13(xnu_pf_patch_t *patch,
 bool proc_stuff0_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     /* We've landed in proc_self. This finds:
      *      - current_proc
-     *      - XXX : proc_list_lock
-     *      - TODO: GET lck_mtx_lock INSTEAD OF proc_list_lock SO IT IS
-     *              CONSISTENT WITH 15.0
      *      - proc_ref_locked
      *      - proc_list_mlock
      *      - lck_mtx_unlock
@@ -736,8 +733,6 @@ bool proc_stuff0_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     uint32_t *proc_ref_locked = get_branch_dst_ptr(opcode_stream + 5);
 
     g_current_proc_addr = xnu_ptr_to_va(current_proc);
-    /* XXX XXX XXX */
-    // g_proc_list_lock_addr = xnu_ptr_to_va(proc_list_lock);
     g_proc_ref_locked_addr = xnu_ptr_to_va(proc_ref_locked);
 
     /* Go down until we hit an ADRP or ADR, this will be proc_list_mlock, and
@@ -790,7 +785,6 @@ bool proc_stuff0_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     g_proc_rele_locked_addr = xnu_ptr_to_va(opcode_stream);
 
     puts("xnuspy: found current_proc");
-    puts("xnuspy: found proc_list_lock");
     puts("xnuspy: found proc_ref_locked");
     puts("xnuspy: found proc_list_mlock");
     puts("xnuspy: found lck_mtx_unlock");
@@ -1350,6 +1344,25 @@ bool IOLog_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     g_IOLog_addr = xnu_ptr_to_va(IOLog);
 
     puts("xnuspy: found IOLog");
+
+    return true;
+}
+
+/* Confirmed working on all kernels 13.0 - 14.8 */
+bool lck_mtx_lock_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
+    /* We landed in _spaceman_ip_block_alloc, the call to lck_mtx_lock
+     * is right behind us */
+    xnu_pf_disable_patch(patch);
+
+    uint32_t *opcode_stream = cacheable_stream;
+
+    uint32_t *lck_mtx_lock = get_branch_dst_ptr(opcode_stream - 1);
+
+    g_lck_mtx_lock_addr = xnu_ptr_to_va(lck_mtx_lock);
+
+    puts("xnuspy: found lck_mtx_lock");
+    printf("%s: lck_mtx_lock @ %#llx\n", __func__,
+            g_lck_mtx_lock_addr-kernel_slide);
 
     return true;
 }

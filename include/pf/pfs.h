@@ -2372,6 +2372,31 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
             }),
             3, proc_ref_rele_finder_15, "__TEXT_EXEC"),
     },
+    {
+        PF_DECL_FULL("lck_mtx_lock finder iOS 13",
+            LISTIZE({
+                0xf90003f4,     /* str x20, [sp, n] */
+                0x93407e9b,     /* sxtw x27, x20 */
+            }),
+            LISTIZE({
+                0xffc003ff,     /* ignore immediate */
+                0xffffffff,     /* match exactly */
+            }),
+            2, XNU_PF_ACCESS_32BIT, lck_mtx_lock_finder_13,
+            "com.apple.filesystems.apfs", "__TEXT_EXEC", NULL),
+        PF_DECL_FULL("lck_mtx_lock finder iOS 14",
+            LISTIZE({
+                0xf90003f4,     /* str x20, [sp, n] */
+                0x93407e9b,     /* sxtw x27, x20 */
+            }),
+            LISTIZE({
+                0xffc003ff,     /* ignore immediate */
+                0xffffffff,     /* match exactly */
+            }),
+            2, XNU_PF_ACCESS_32BIT, lck_mtx_lock_finder_13,
+            "com.apple.filesystems.apfs", "__TEXT_EXEC", NULL),
+        PF_UNUSED,
+    },
     { PF_END, PF_END, PF_END },
 };
 
