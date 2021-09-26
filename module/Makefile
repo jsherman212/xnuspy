@@ -38,5 +38,6 @@ xnuspy : $(OBJECT_FILES) xnuspy.c preboot_hook.o \
 	$(RP)/include/common/common.h \
 	$(RP)/include/pf/offsets.h \
 	$(RP)/include/pf/pfs.h \
+	$(RP)/include/xnuspy/xnuspy_ctl.h \
 	$(RP)/include/xnuspy/xnuspy_structs.h
 	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJECT_FILES) preboot_hook.o xnuspy.c -o xnuspy

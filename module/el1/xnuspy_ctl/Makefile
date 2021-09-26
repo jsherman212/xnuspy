@@ -2,6 +2,7 @@ OBJECT_FILES = debug.o libc.o mem.o pte.o tramp.o utils.o wrappers.o
 
 ASM_DEP = ../../common/asm.o
 EXTERNAL_DEPS = $(RP)/include/xnuspy/el1/externs.h \
+				$(RP)/include/xnuspy/xnuspy_ctl.h \
 				$(RP)/include/xnuspy/xnuspy_structs.h
 
 CFLAGS += -mkernel -Wswitch-enum

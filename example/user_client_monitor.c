@@ -206,8 +206,8 @@ int main(int argc, char **argv){
         return 1;
     }
 
-    /* iPhone 10,4 15.0b6 */
-    getClassName = (const char *(*)(const void *))(0xFFFFFFF0080ECB7C + kernel_slide);
+    /* iPhone 8, 14.6 */
+    getClassName = (const char *(*)(const void *))(0xFFFFFFF007FBD108 + kernel_slide);
 
     printf("kernel slide: %#llx\n", kernel_slide);
     printf("current_proc @ %#llx\n", (uint64_t)current_proc);
@@ -215,7 +215,7 @@ int main(int argc, char **argv){
     printf("kprintf @ %#llx\n", (uint64_t)kprintf);
     printf("proc_pid @ %#llx\n", (uint64_t)proc_pid);
 
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xFFFFFFF0081C555C,
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xfffffff008085dd0,
             is_io_service_open_extended, &is_io_service_open_extended_orig);
 
     if(ret){
@@ -224,14 +224,15 @@ int main(int argc, char **argv){
         return 1;
     }
 
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xfffffff0081c68ec,
-            _is_io_connect_method, &is_io_connect_method);
+    /* XXX Optional */
+    /* ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xfffffff0081c68ec, */
+    /*         _is_io_connect_method, &is_io_connect_method); */
 
-    if(ret){
-        printf("Could not hook is_io_connect_method: %s\n",
-                strerror(errno));
-        return 1;
-    }
+    /* if(ret){ */
+    /*     printf("Could not hook is_io_connect_method: %s\n", */
+    /*             strerror(errno)); */
+    /*     return 1; */
+    /* } */
 
     printf("Hit enter to quit\n");
     getchar();

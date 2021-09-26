@@ -33,6 +33,10 @@ iPhone 8 13.6.1:
     getClassName: 0xfffffff0080ec9a8
     is_io_service_open_extended: 0xfffffff0081994dc
 
+iPhone 8 14.6:
+    getClassName: 0xfffffff007fbd108
+    is_io_service_open_extended: 0xfffffff008085dd0
+
 iPhone 7 14.1:
     getClassName: 0xfffffff00765be54
     is_io_service_open_extended: 0xfffffff00770d114

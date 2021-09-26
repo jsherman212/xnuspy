@@ -13,11 +13,11 @@ Requires `libusb`: `brew install libusb`
 # Building
 Run `make` in the top level directory. It'll build the loader and the module.
 
-## Build Options
+### Build Options
 Add these before `make`.
 
 - `XNUSPY_DEBUG=1`
-	- Send debug output from xnuspy to the kernel log.
+	- Send debug output from xnuspy to the kernel log (`kprintf`).
 - `XNUSPY_SERIAL=1`
 	- Send debug output from xnuspy to `IOLog`.
 - `XNUSPY_LEAKED_PAGE_LIMIT=n`
@@ -27,6 +27,8 @@ be found under the section called "Debugging Kernel Panics".
 - `XNUSPY_TRAMP_PAGES=n`
 	- Set the number of pages xnuspy will reserve for its trampoline structures.
 Default is `1`. More info can be found under the section called "Limits".
+
+`XNUSPY_DEBUG` and `XNUSPY_SERIAL` do not depend on each other.
 
 # Usage
 After you've built everything, have checkra1n boot your device to a pongo

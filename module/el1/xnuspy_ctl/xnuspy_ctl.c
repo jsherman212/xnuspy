@@ -192,7 +192,8 @@ static bool xnuspy_mapping_release(struct xnuspy_mapping *m){
 
     if(last){
         if(m->death_callback){
-            SPYDBG("%s: invoking death cb for mapping %p\n", __func__, m);
+            SPYDBG("%s: invoking death cb at %#llx for mapping %p\n",
+                    __func__, (uint64_t)m->death_callback, m);
             m->death_callback();
         }
 

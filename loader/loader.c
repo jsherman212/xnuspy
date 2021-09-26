@@ -181,6 +181,9 @@ int main(int argc, char **argv, const char **envp){
      * use_contiguous_hint=0. Make sure to keep the newline. */
     err = pongo_send_command(pongo_device, "xargs rootdev=md0"
             " use_contiguous_hint=0 msgbuf=0x3c000"
+#if defined(XNUSPY_SERIAL)
+            " -v serial=3"
+#endif
             " atm_diagnostic_config=0x20000000\n");
 
     if(err < 0){

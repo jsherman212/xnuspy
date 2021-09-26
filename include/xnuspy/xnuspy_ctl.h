@@ -103,14 +103,22 @@ enum {
     PHYSTOKV,
 
     /* Selects the correct way to take proc_list_mlock based
-     * on the kernel version. */
+     * on the kernel version.
+     *
+     *      void proc_list_lock(void);
+     *
+     */
     PROC_LIST_LOCK,
 
     /* lck_mtx_t *proc_list_mlock @ bsd/sys/proc_internal.h */
     PROC_LIST_MLOCK,
 
     /* Selects the correct way to release proc_list_mlock based
-     * on the kernel version. */
+     * on the kernel version.
+     *
+     *      void proc_list_unlock(void);
+     *
+     */
     PROC_LIST_UNLOCK,
 
     PROC_NAME,
@@ -202,9 +210,12 @@ enum {
 
     VM_MAP_WIRE_EXTERNAL,
 
-    /* Everything above (with the exception of the small wrapper functions)
+    /*  --------------------------------------------
+     * Everything above (with the exception of the small wrapper functions)
      * is from XNU, everything below are things from xnuspy you may
-     * find useful */
+     * find useful
+     *  ---------------------------------------------
+     */
 
     /* uint64_t *el0_ptep(void *uaddr)
      *
@@ -248,7 +259,9 @@ enum {
      * on iOS 15.x, this is 21. */
     IOS_VERSION,
 
-    /* KASLR slide */
+    /* uint64_t kernel_slide
+     *
+     * KASLR slide */
     KERNEL_SLIDE,
 
     /* uint64_t kern_version_minor
@@ -260,6 +273,7 @@ enum {
     /* int kprotect(void *kaddr, uint64_t size, vm_prot_t prot)
      *
      * Change protections of kernel memory at the page table level.
+     * You are allowed to make writable, executable memory.
      *
      * Parameters:
      *  kaddr: kernel virtual address of target.
@@ -415,6 +429,7 @@ enum {
     /* int uprotect(void *uaddr, uint64_t size, vm_prot_t prot)
      *
      * Change protections of user memory at the page table level.
+     * You are allowed to make writable, executable memory.
      *
      * Parameters:
      *  uaddr: user virtual address of target.
