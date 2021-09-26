@@ -5,6 +5,10 @@
 #include <common/common.h>
 #include <pf/offsets.h>
 
+bool is_15_and_above__pongo(void){
+    return g_kern_version_major == iOS_15_x;
+}
+
 bool is_14_5_and_above__pongo(void){
     if(g_kern_version_major <= iOS_13_x)
         return false;

@@ -164,7 +164,7 @@ static void anything_missing(void){
     chk(!g_mach_make_memory_entry_64_addr, "mach_make_memory_entry_64 not found\n");
     chk(!g_offsetof_struct_thread_map, "offsetof(struct thread, map) not found\n");
     chk(!g_current_proc_addr, "current_proc not found\n");
-    chk(!g_proc_list_mlock_addr, "address of proc_list_mlock not found\n");
+    chk(!g_proc_list_mlock_addr, "proc_list_mlock not found\n");
     chk(!g_lck_mtx_lock_addr, "lck_mtx_lock not found\n");
     chk(!g_lck_mtx_unlock_addr, "lck_mtx_unlock not found\n");
     chk(!g_proc_uniqueid_addr, "proc_uniqueid not found\n");
@@ -202,6 +202,15 @@ static void anything_missing(void){
 
     if(is_14_5_and_above__pongo())
         chk(!g_io_lock_addr, "io_lock not found\n");
+
+    if(is_15_and_above__pongo()){
+        chk(!g_proc_ref_addr, "proc_ref not found\n");
+        chk(!g_proc_rele_addr, "proc_rele not found\n");
+    }
+    else{
+        chk(!g_proc_ref_locked_addr, "proc_ref_locked not found\n");
+        chk(!g_proc_rele_locked_addr, "proc_rele_locked not found\n");
+    }
 
     chk(!g_vm_allocate_external_addr, "vm_allocate_external not found\n");
     chk(!g_vm_map_deallocate_addr, "vm_map_deallocate not found\n");

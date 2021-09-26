@@ -90,4 +90,8 @@ extern uint64_t g_vm_map_deallocate_addr;
 extern uint64_t g_offsetof_struct_vm_map_refcnt;
 extern uint64_t g_IOLog_addr;
 
+/* Following two are only valid on iOS 15+ */
+extern uint64_t g_proc_ref_addr;
+extern uint64_t g_proc_rele_addr;
+
 #endif

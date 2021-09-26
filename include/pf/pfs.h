@@ -2356,6 +2356,22 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
             }),
             3, IOLog_finder_13, "__TEXT_EXEC"),
     },
+    {
+        PF_UNUSED,
+        PF_UNUSED,
+        PF_DECL32("proc_ref,proc_rele finder iOS 15",
+            LISTIZE({
+                0xaa1903f8,     /* mov x24, x25 */
+                0xaa1803e0,     /* mov x0, x24 */
+                0x52800021,     /* mov w1, #1 */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+            }),
+            3, proc_ref_rele_finder_15, "__TEXT_EXEC"),
+    },
     { PF_END, PF_END, PF_END },
 };
 

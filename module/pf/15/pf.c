@@ -10,6 +10,8 @@
 #include <pf/pf_common.h>
 
 uint64_t g_vm_map_unwire_nested_addr = 0;
+uint64_t g_proc_ref_addr = 0;
+uint64_t g_proc_rele_addr = 0;
 
 /* Confirmed working 15.0 */
 bool ipc_port_release_send_finder_15(xnu_pf_patch_t *patch, 
@@ -223,5 +225,30 @@ bool lck_grp_free_finder_15(xnu_pf_patch_t *patch, void *cacheable_stream){
     /*         g_lck_grp_free_addr, */
     /*         g_lck_grp_free_addr-kernel_slide); */
     
+    return true;
+}
+
+/* Confirmed working 15.0 */
+bool proc_ref_rele_finder_15(xnu_pf_patch_t *patch, void *cacheable_stream){
+    /* We landed inside proc_rebootscan. A call to proc_ref is three
+     * instructions down and a call to proc_rele is 14 instructions down */
+    xnu_pf_disable_patch(patch);
+
+    uint32_t *opcode_stream = cacheable_stream;
+
+    uint32_t *proc_ref = get_branch_dst_ptr(opcode_stream + 3);
+    uint32_t *proc_rele = get_branch_dst_ptr(opcode_stream + 14);
+
+    g_proc_ref_addr = xnu_ptr_to_va(proc_ref);
+    g_proc_rele_addr = xnu_ptr_to_va(proc_rele);
+
+    puts("xnuspy: found proc_ref");
+    puts("xnuspy: found proc_rele");
+
+    printf("%s: proc_ref @ %#llx\n", __func__,
+            g_proc_ref_addr-kernel_slide);
+    printf("%s: proc_rele @ %#llx\n", __func__,
+            g_proc_rele_addr-kernel_slide);
+
     return true;
 }

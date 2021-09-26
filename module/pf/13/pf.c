@@ -1338,6 +1338,7 @@ bool vm_map_deallocate_offsetof_vm_map_refcnt_finder_13(xnu_pf_patch_t *patch,
     return true;
 }
 
+/* Confirmed working on all kernels 13.0 - 15.0 */
 bool IOLog_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     /* We landed inside IOService::finalize, call to IOLog is three
      * instructions down */
@@ -1349,7 +1350,6 @@ bool IOLog_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     g_IOLog_addr = xnu_ptr_to_va(IOLog);
 
     puts("xnuspy: found IOLog");
-    printf("%s: IOLog @ %#llx\n", __func__, g_IOLog_addr-kernel_slide);
 
     return true;
 }

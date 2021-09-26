@@ -13,5 +13,6 @@ bool kernel_map_finder_15(xnu_pf_patch_t *, void *);
 bool vm_deallocate_finder_15(xnu_pf_patch_t *, void *);
 bool proc_list_mlock_lck_mtx_lock_unlock_finder_15(xnu_pf_patch_t *, void *);
 bool lck_grp_free_finder_15(xnu_pf_patch_t *, void *);
+bool proc_ref_rele_finder_15(xnu_pf_patch_t *, void *);
 
 #endif
