@@ -13,18 +13,18 @@ struct slist_entry {
     SLIST_ENTRY(slist_entry) link;
 };
 
-struct xnuspy_shmem {
-    /* Base of shared memory */
-    void *shm_base;
-    /* Size of shared memory, page multiple */
-    uint64_t shm_sz;
-    /* Memory entry for the shared memory, ipc_port_t */
-    void *shm_entry;
-    /* The vm_map_t which the source pages belong to */
-    void *shm_map_from;
-    /* The vm_map_t which the source pages were mapped into */
-    void *shm_map_to;
-};
+/* struct xnuspy_shmem { */
+/*     /1* Base of shared memory *1/ */
+/*     void *shm_base; */
+/*     /1* Size of shared memory, page multiple *1/ */
+/*     uint64_t shm_sz; */
+/*     /1* Memory entry for the shared memory, ipc_port_t *1/ */
+/*     void *shm_entry; */
+/*     /1* The vm_map_t which the source pages belong to *1/ */
+/*     void *shm_map_from; */
+/*     /1* The vm_map_t which the source pages were mapped into *1/ */
+/*     void *shm_map_to; */
+/* }; */
 
 #define MAX_MAPPING_REFERENCES (0x1000000)
 

@@ -1,4 +1,4 @@
-OBJECT_FILES = debug.o libc.o mem.o pte.o tramp.o utils.o
+OBJECT_FILES = debug.o libc.o mem.o pte.o tramp.o utils.o wrappers.o
 
 ASM_DEP = ../../common/asm.o
 EXTERNAL_DEPS = $(RP)/include/xnuspy/el1/externs.h \
@@ -8,6 +8,10 @@ CFLAGS += -mkernel -Wswitch-enum
 
 ifeq ($(XNUSPY_DEBUG), 1)
 	CFLAGS += -DXNUSPY_DEBUG
+endif
+
+ifeq ($(XNUSPY_SERIAL), 1)
+	CFLAGS += -DXNUSPY_SERIAL
 endif
 
 ifneq ($(XNUSPY_LEAKED_PAGE_LIMIT), )
@@ -37,6 +41,9 @@ tramp.o : tramp.c $(RP)/include/xnuspy/el1/tramp.h $(ASM_DEP) $(EXTERNAL_DEPS)
 
 utils.o : utils.c $(RP)/include/xnuspy/el1/utils.h $(EXTERNAL_DEPS)
 	$(CC) $(CFLAGS) utils.c -c
+
+wrappers.o : wrappers.c $(RP)/include/xnuspy/el1/wrappers.h $(EXTERNAL_DEPS)
+	$(CC) $(CFLAGS) wrappers.c -c
 
 xnuspy_ctl : $(OBJECT_FILES) $(ASM_DEP) $(EXTERNAL_DEPS) xnuspy_ctl.c
 	$(CC) $(CFLAGS) $(LDFLAGS) $(OBJECT_FILES) $(ASM_DEP) xnuspy_ctl.c \

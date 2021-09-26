@@ -2,7 +2,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include <xnuspy/xnuspy_structs.h>
+#include <xnuspy/xnuspy_ctl.h>
 
 #include <xnuspy/el1/debug.h>
 #include <xnuspy/el1/externs.h>

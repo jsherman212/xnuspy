@@ -660,13 +660,13 @@ next:
 
     memcpy(xnuspy_ctl_image, loader_xfer_recv_data, loader_xfer_recv_count);
 
+    printf("xnuspy_ctl image base @ %#llx\n", xnu_ptr_to_va(xnuspy_ctl_image));
+
     int64_t num_free_instrs = g_exec_scratch_space_size / sizeof(uint32_t);
     uint32_t *scratch_space = xnu_va_to_ptr(g_exec_scratch_space_addr);
 
     scratch_space = install_h_s_c_sbn_hook(scratch_space, &num_free_instrs);
     scratch_space = install_xnuspy_ctl_tramp(scratch_space, &num_free_instrs);
-
-    printf("%s: %lld free instrs left\n", __func__, num_free_instrs);
 
     if(fallback){
         /* Use the rest of the scratch space for the xnuspy_tramp structs.
@@ -686,9 +686,6 @@ next:
 
     initialize_xnuspy_callnum_sysctl_offsets();
     initialize_xnuspy_cache();
-
-    printf("%s: ******NOT BOOTING XNU\n", __func__);
-    for(;;);
 
     if(next_preboot_hook)
         next_preboot_hook();

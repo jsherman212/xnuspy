@@ -4,12 +4,13 @@
 #include <stdint.h>
 #include <unistd.h>
 
-#include <xnuspy/xnuspy_structs.h>
+#include <xnuspy/xnuspy_ctl.h>
 
 #include <xnuspy/el1/debug.h>
 #include <xnuspy/el1/externs.h>
 #include <xnuspy/el1/pte.h>
 #include <xnuspy/el1/utils.h>
+#include <xnuspy/el1/wrappers.h>
 
 __attribute__ ((naked)) uint64_t kvtophys(uint64_t kaddr){
     asm volatile(""

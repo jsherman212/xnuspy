@@ -6,6 +6,7 @@
 #include <unistd.h>
 
 #include <asm/asm.h>
+#include <xnuspy/xnuspy_ctl.h>
 #include <xnuspy/xnuspy_structs.h>
 
 #include <xnuspy/el1/debug.h>
@@ -14,121 +15,16 @@
 #include <xnuspy/el1/pte.h>
 #include <xnuspy/el1/tramp.h>
 #include <xnuspy/el1/utils.h>
+#include <xnuspy/el1/wrappers.h>
 
 #undef current_map
 #undef current_thread
 #undef PAGE_SIZE
 
 #define PAGE_SIZE                   (0x4000)
-
-#define iOS_13_x                    (19)
-#define iOS_14_x                    (20)
-#define iOS_15_x                    (21)
-
-/* THIS NEEDS TO STAY IN SYNC WITH example/xnuspy_ctl.h */
-enum {
-    XNUSPY_CHECK_IF_PATCHED = 0,
-    XNUSPY_INSTALL_HOOK,
-    XNUSPY_REGISTER_DEATH_CALLBACK,
-    XNUSPY_CALL_HOOKME,
-    XNUSPY_CACHE_READ,
-    XNUSPY_KREAD,
-    XNUSPY_KWRITE,
-    XNUSPY_GET_CURRENT_THREAD,
-    XNUSPY_MAX_FLAVOR = XNUSPY_GET_CURRENT_THREAD,
-};
-
-/* Values for XNUSPY_CACHE_READ */
-enum xnuspy_cache_id {
-    KERNEL_SLIDE = 0,
-    KPRINTF,
-    KALLOC_CANBLOCK,
-    KALLOC_EXTERNAL,
-    KFREE_ADDR,
-    KFREE_EXT,
-    BCOPY_PHYS,
-    PHYSTOKV,
-    COPYIN,
-    COPYINSTR,
-    COPYOUT,
-    CURRENT_PROC,
-    PROC_PID,
-    KERNEL_THREAD_START,
-    THREAD_DEALLOCATE,
-    THREAD_TERMINATE,
-    ALLPROC,
-    BZERO,
-    IPC_PORT_RELEASE_SEND,
-    KERNEL_MAP,
-    LCK_GRP_ALLOC_INIT,
-    LCK_GRP_FREE,
-    LCK_MTX_UNLOCK,
-    LCK_RW_ALLOC_INIT,
-    LCK_RW_DONE,
-    LCK_RW_FREE,
-    LCK_RW_LOCK_EXCLUSIVE,
-    LCK_RW_LOCK_SHARED,
-    LCK_RW_LOCK_SHARED_TO_EXCLUSIVE,
-    MACH_MAKE_MEMORY_ENTRY_64,
-    MACH_VM_MAP_EXTERNAL,
-    MEMCHR,
-    MEMCMP,
-    MEMMEM,
-    MEMMOVE,
-    MEMRCHR,
-    MEMSET,
-    OFFSETOF_STRUCT_THREAD_MAP,
-    OFFSETOF_STRUCT_VM_MAP_REFCNT,
-    PROC_LIST_LOCK,
-    PROC_LIST_UNLOCK,
-    PROC_LIST_MLOCK,
-    PROC_NAME,
-    PROC_REF_LOCKED,
-    PROC_RELE_LOCKED,
-    PROC_UNIQUEID,
-    SNPRINTF,
-    STRCHR,
-    STRRCHR,
-    STRCMP,
-    STRLEN,
-    STRNCMP,
-    STRSTR,
-    STRNSTR,
-    VM_ALLOCATE_EXTERNAL,
-    VM_DEALLOCATE,
-    VM_MAP_DEALLOCATE,
-    VM_MAP_REFERENCE,
-    VM_MAP_UNWIRE,
-    VM_MAP_WIRE_EXTERNAL,
-    IOSLEEP,
-
-    /* Everything below is from xnuspy, everything above is from XNU */
-
-    HOOKME,
-    CURRENT_MAP,
-    IOS_VERSION,
-    KVTOPHYS,
-    UVTOPHYS,
-    KPROTECT,
-    UPROTECT,
-    KWRITE_STATIC,
-    KWRITE_INSTR,
-    EL0_PTEP,
-    EL1_PTEP,
-    TLB_FLUSH,
-    UNIFIED_KALLOC,
-    UNIFIED_KFREE,
-    MKSHMEM_KTOU,
-    MKSHMEM_UTOK,
-    MKSHMEM_RAW,
-    SHMEM_DESTROY,
-    MAX_CACHE = SHMEM_DESTROY,
-};
-
 #define MAP_MEM_VM_SHARE            0x400000 /* extract a VM range for remap */
 
 typedef unsigned int lck_rw_type_t;
-
 typedef	void (*thread_continue_t)(void *param, int wait_result);
 
 #define MARK_AS_KERNEL_OFFSET __attribute__ ((section("__DATA,__koff")))
@@ -145,6 +41,7 @@ MARK_AS_KERNEL_OFFSET int (*copyout)(const void *kaddr, uint64_t uaddr,
 MARK_AS_KERNEL_OFFSET void *(*current_proc)(void);
 /* Keep these all aligned 8 bytes */
 MARK_AS_KERNEL_OFFSET uint64_t hookme_in_range;
+
 MARK_AS_KERNEL_OFFSET uint64_t iOS_version;
 
 /* Only for >= 14.5 && < 15.0 */
@@ -168,6 +65,7 @@ MARK_AS_KERNEL_OFFSET void *(*kalloc_canblock)(vm_size_t *sizep,
 
 /* Only for >= 14.x */
 MARK_AS_KERNEL_OFFSET void *(*kalloc_external)(vm_size_t sz);
+
 MARK_AS_KERNEL_OFFSET uint64_t kern_version_minor;
 MARK_AS_KERNEL_OFFSET void **kernel_mapp;
 MARK_AS_KERNEL_OFFSET uint64_t kernel_slide;
@@ -208,17 +106,18 @@ MARK_AS_KERNEL_OFFSET void **proc_list_mlockp;
 MARK_AS_KERNEL_OFFSET void (*proc_name)(int pid, char *buf, int size);
 MARK_AS_KERNEL_OFFSET pid_t (*proc_pid)(void *proc);
 
+/* Only for 15.x */
+MARK_AS_KERNEL_OFFSET void *(*proc_ref)(void *proc,
+        bool holding_proc_list_mlock);
+
 /* Only for 13.x and 14.x */
-MARK_AS_KERNEL_OFFSET void (*proc_ref_locked)(void *proc);
+MARK_AS_KERNEL_OFFSET void *(*proc_ref_locked)(void *proc);
 
 /* Only for 15.x */
-MARK_AS_KERNEL_OFFSET void (*proc_ref)(void *proc, bool w1);
+MARK_AS_KERNEL_OFFSET int (*proc_rele)(void *proc);
 
 /* Only for 13.x and 14.x */
 MARK_AS_KERNEL_OFFSET void (*proc_rele_locked)(void *proc);
-
-/* Only for 15.x */
-MARK_AS_KERNEL_OFFSET void (*proc_rele)(void *proc);
 
 MARK_AS_KERNEL_OFFSET uint64_t (*proc_uniqueid)(void *proc);
 MARK_AS_KERNEL_OFFSET int (*_snprintf)(char *str, size_t size, const char *fmt, ...);
@@ -868,30 +767,6 @@ out:
     return res;
 }
 
-/* TODO: move to utils.c? */
-static void proc_list_lock(void){
-    void *mtx = proc_list_mlockp;
-
-    if (is_14_5_and_above())
-        lck_mtx_lock(mtx);
-    else 
-        lck_mtx_lock(*(void **)mtx);
-}
-
-/* proc_list_unlock has been inlined so aggressively on all kernels that there
- * are no xrefs to the actual function so we need to do it like this */
-/* TODO: move to utils.c? */
-static void proc_list_unlock(void){
-    /* On 14.5+, the patchfinder for proc_list_mlock yields a pointer
-     * to it, not a pointer to a pointer to it like on 13.0 - 14.4.2 */
-    void *mtx = proc_list_mlockp;
-
-    if(is_14_5_and_above())
-        lck_mtx_unlock(mtx);
-    else
-        lck_mtx_unlock(*(void **)mtx);
-}
-
 /* By default, allow around 1 mb of kernel memory to be leaked by us */
 #ifndef XNUSPY_LEAKED_PAGE_LIMIT
 #define XNUSPY_LEAKED_PAGE_LIMIT 64
@@ -987,16 +862,13 @@ static void xnuspy_gc_thread(void *param, int wait_result){
             bool owner_dead = true;
 
             do {
-                // proc_ref_locked(curproc); XXX disabled for now since these funcs are inlined & no longer present on iOS 15 kernels
-                /* TODO: create wrappers for proc_ref_locked (13/14) and
-                 * proc_ref (15) */
+                proc_ref_wrapper(curproc, true);
 
                 pid = proc_pid(curproc);
                 uint64_t uniqueid = proc_uniqueid(curproc);
                 void *nextproc = *(void **)curproc;
 
-                /* TODO: same for above - need to keep thread-safe guarentee */
-                // proc_rele_locked(curproc); XXX see above 
+                proc_rele_wrapper(curproc, true);
 
                 if(mm->owner == uniqueid){
                     owner_dead = false;
@@ -1175,41 +1047,14 @@ static int xnuspy_cache_read(enum xnuspy_cache_id which,
     void *what;
 
     switch(which){
-        case KERNEL_SLIDE:
-            what = (void *)kernel_slide;
-            break;
-        case KPRINTF:
-            what = kprintf;
-            break;
-        case KALLOC_CANBLOCK:
-            if(iOS_version == iOS_14_x || iOS_version == iOS_15_x)
-                return EINVAL;
-
-            what = kalloc_canblock;
-            break;
-        case KALLOC_EXTERNAL:
-            if(iOS_version == iOS_13_x)
-                return EINVAL;
-
-            what = kalloc_external;
-            break;
-        case KFREE_ADDR:
-            if(iOS_version == iOS_14_x || iOS_version == iOS_15_x)
-                return EINVAL;
-
-            what = kfree_addr;
-            break;
-        case KFREE_EXT:
-            if(iOS_version == iOS_13_x)
-                return EINVAL;
-
-            what = kfree_ext;
+        case ALLPROC:
+            what = *allprocp;
             break;
         case BCOPY_PHYS:
             what = bcopy_phys;
             break;
-        case PHYSTOKV:
-            what = phystokv;
+        case BZERO:
+            what = bzero;
             break;
         case COPYIN:
             what = copyin;
@@ -1220,38 +1065,87 @@ static int xnuspy_cache_read(enum xnuspy_cache_id which,
         case COPYOUT:
             what = copyout;
             break;
+        case CURRENT_MAP:
+            what = current_map;
+            break;
         case CURRENT_PROC:
             what = current_proc;
             break;
-        case PROC_PID:
-            what = proc_pid;
+        case IO_LOCK:
+            if(is_14_5_and_above() && !is_15_x())
+                what = io_lock;
+            else
+                return EINVAL;
+
+            break;
+        case IPC_OBJECT_LOCK:
+            if(!is_15_x())
+                return EINVAL;
+
+            what = ipc_object_lock;
+            break;
+        case IOLOG:
+            what = IOLog;
+            break;
+        case IOSLEEP:
+            what = IOSleep;
+            break;
+        case IPC_PORT_RELEASE_SEND:
+            if(is_14_5_and_above())
+                return EINVAL;
+
+            what = ipc_port_release_send;
+            break;
+        case IPC_PORT_RELEASE_SEND_AND_UNLOCK:
+            if(!is_14_5_and_above())
+                return EINVAL;
+
+            what = ipc_port_release_send_and_unlock;
+            break;
+        case IPC_PORT_RELEASE_SEND_WRAPPER:
+            what = ipc_port_release_send_wrapper;
+            break;
+        case KALLOC_CANBLOCK:
+            if(!is_13_x())
+                return EINVAL;
+
+            what = kalloc_canblock;
+            break;
+        case KALLOC_EXTERNAL:
+            if(!is_14_x_and_above())
+                return EINVAL;
+
+            what = kalloc_external;
+            break;
+        case KERNEL_MAP:
+            what = *kernel_mapp;
             break;
         case KERNEL_THREAD_START:
             what = kernel_thread_start;
             break;
-        case THREAD_DEALLOCATE:
-            what = thread_deallocate;
+        case KFREE_ADDR:
+            if(!is_13_x())
+                return EINVAL;
+
+            what = kfree_addr;
             break;
-        case THREAD_TERMINATE:
-            what = _thread_terminate;
+        case KFREE_EXT:
+            if(!is_14_x_and_above())
+                return EINVAL;
+
+            what = kfree_ext;
             break;
-        case ALLPROC:
-            what = *allprocp;
-            break;
-        case BZERO:
-            what = bzero;
-            break;
-        case IPC_PORT_RELEASE_SEND:
-            what = ipc_port_release_send_wrapper;
-            break;
-        case KERNEL_MAP:
-            what = *kernel_mapp;
+        case KPRINTF:
+            what = kprintf;
             break;
         case LCK_GRP_ALLOC_INIT:
             what = lck_grp_alloc_init;
             break;
         case LCK_GRP_FREE:
             what = lck_grp_free;
+            break;
+        case LCK_MTX_LOCK:
+            what = lck_mtx_lock;
             break;
         case LCK_MTX_UNLOCK:
             what = lck_mtx_unlock;
@@ -1277,6 +1171,9 @@ static int xnuspy_cache_read(enum xnuspy_cache_id which,
         case MACH_MAKE_MEMORY_ENTRY_64:
             what = _mach_make_memory_entry_64;
             break;
+        case MACH_TO_BSD_ERRNO:
+            what = mach_to_bsd_errno;
+            break;
         case MACH_VM_MAP_EXTERNAL:
             what = mach_vm_map_external;
             break;
@@ -1298,29 +1195,56 @@ static int xnuspy_cache_read(enum xnuspy_cache_id which,
         case MEMSET:
             what = _memset;
             break;
-        case OFFSETOF_STRUCT_THREAD_MAP:
-            what = (void *)offsetof_struct_thread_map;
+        case PANIC:
+            what = _panic;
             break;
-        case OFFSETOF_STRUCT_VM_MAP_REFCNT:
-            what = (void *)offsetof_struct_vm_map_refcnt;
-            break;
-        case PROC_NAME:
-            what = proc_name;
+        case PHYSTOKV:
+            what = phystokv;
             break;
         case PROC_LIST_LOCK:
             what = proc_list_lock;
             break;
+        case PROC_LIST_MLOCK:
+            what = get_proc_list_mlock();
+            break;
         case PROC_LIST_UNLOCK:
             what = proc_list_unlock;
             break;
-        case PROC_LIST_MLOCK:
-            what = *proc_list_mlockp;
+        case PROC_NAME:
+            what = proc_name;
+            break;
+        case PROC_PID:
+            what = proc_pid;
+            break;
+        case PROC_REF:
+            if(!is_15_x())
+                return EINVAL;
+
+            what = proc_ref;
             break;
         case PROC_REF_LOCKED:
+            if(is_15_x())
+                return EINVAL;
+
             what = proc_ref_locked;
             break;
+        case PROC_REF_WRAPPER:
+            what = proc_ref_wrapper;
+            break;
+        case PROC_RELE:
+            if(!is_15_x())
+                return EINVAL;
+
+            what = proc_rele;
+            break;
         case PROC_RELE_LOCKED:
+            if(is_15_x())
+                return EINVAL;
+
             what = proc_rele_locked;
+            break;
+        case PROC_RELE_WRAPPER:
+            what = proc_rele_wrapper;
             break;
         case PROC_UNIQUEID:
             what = proc_uniqueid;
@@ -1349,6 +1273,12 @@ static int xnuspy_cache_read(enum xnuspy_cache_id which,
         case STRNSTR:
             what = strnstr;
             break;
+        case THREAD_DEALLOCATE:
+            what = thread_deallocate;
+            break;
+        case THREAD_TERMINATE:
+            what = _thread_terminate;
+            break;
         case VM_ALLOCATE_EXTERNAL:
             what = vm_allocate_external;
             break;
@@ -1362,40 +1292,22 @@ static int xnuspy_cache_read(enum xnuspy_cache_id which,
             what = vm_map_reference;
             break;
         case VM_MAP_UNWIRE:
+            if(is_15_x())
+                return EINVAL;
+
             what = vm_map_unwire;
+            break;
+        case VM_MAP_UNWIRE_NESTED:
+            if(!is_15_x())
+                return EINVAL;
+
+            what = vm_map_unwire_nested;
+            break;
+        case VM_MAP_UNWIRE_WRAPPER:
+            what = vm_map_unwire_wrapper;
             break;
         case VM_MAP_WIRE_EXTERNAL:
             what = vm_map_wire_external;
-            break;
-        case IOSLEEP:
-            what = IOSleep;
-            break;
-        case HOOKME:
-            what = _hookme;
-            break;
-        case CURRENT_MAP:
-            what = current_map;
-            break;
-        case IOS_VERSION:
-            what = (void *)iOS_version;
-            break;
-        case KVTOPHYS:
-            what = kvtophys;
-            break;
-        case UVTOPHYS:
-            what = uvtophys;
-            break;
-        case KPROTECT:
-            what = kprotect;
-            break;
-        case UPROTECT:
-            what = uprotect;
-            break;
-        case KWRITE_STATIC:
-            what = kwrite_static;
-            break;
-        case KWRITE_INSTR:
-            what = kwrite_instr;
             break;
         case EL0_PTEP:
             what = el0_ptep;
@@ -1403,14 +1315,29 @@ static int xnuspy_cache_read(enum xnuspy_cache_id which,
         case EL1_PTEP:
             what = el1_ptep;
             break;
-        case TLB_FLUSH:
-            what = tlb_flush;
+        case HOOKME:
+            what = _hookme;
             break;
-        case UNIFIED_KALLOC:
-            what = unified_kalloc;
+        case IOS_VERSION:
+            what = (void *)iOS_version;
             break;
-        case UNIFIED_KFREE:
-            what = unified_kfree;
+        case KERNEL_SLIDE:
+            what = (void *)kernel_slide;
+            break;
+        case KERN_VERSION_MINOR:
+            what = (void *)kern_version_minor;
+            break;
+        case KPROTECT:
+            what = kprotect;
+            break;
+        case KVTOPHYS:
+            what = kvtophys;
+            break;
+        case KWRITE_INSTR:
+            what = kwrite_instr;
+            break;
+        case KWRITE_STATIC:
+            what = kwrite_static;
             break;
         case MKSHMEM_KTOU:
             what = mkshmem_ktou;
@@ -1421,8 +1348,29 @@ static int xnuspy_cache_read(enum xnuspy_cache_id which,
         case MKSHMEM_RAW:
             what = mkshmem_raw;
             break;
+        case OFFSETOF_STRUCT_THREAD_MAP:
+            what = (void *)offsetof_struct_thread_map;
+            break;
+        case OFFSETOF_STRUCT_VM_MAP_REFCNT:
+            what = (void *)offsetof_struct_vm_map_refcnt;
+            break;
         case SHMEM_DESTROY:
             what = shmem_destroy;
+            break;
+        case TLB_FLUSH:
+            what = tlb_flush;
+            break;
+        case UNIFIED_KALLOC:
+            what = unified_kalloc;
+            break;
+        case UNIFIED_KFREE:
+            what = unified_kfree;
+            break;
+        case UPROTECT:
+            what = uprotect;
+            break;
+        case UVTOPHYS:
+            what = uvtophys;
             break;
         default:
             return EINVAL;

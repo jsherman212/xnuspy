@@ -3,12 +3,23 @@
 
 #include <xnuspy/xnuspy_structs.h>
 
-/* XXX separate cmd line option for IOLog spew */
 #if defined(XNUSPY_DEBUG)
-#define SPYDBG(fmt, args...) do { kprintf(fmt, ##args); IOLog(fmt, ##args); } while(0)
+#define DEBUG_SPEW(fmt, args...) kprintf(fmt, ##args)
 #else
-#define SPYDBG(fmt, args...)
+#define DEBUG_SPEW(fmt, args...)
 #endif
+
+#if defined(XNUSPY_SERIAL)
+#define SERIAL_SPEW(fmt, args...) IOLog(fmt, ##args)
+#else
+#define SERIAL_SPEW(fmt, args...)
+#endif
+
+#define SPYDBG(fmt, args...) \
+    do { \
+        DEBUG_SPEW(fmt, ##args); \
+        SERIAL_SPEW(fmt, ##args); \
+    } while (0) \
 
 void desc_freelist(void);
 void desc_xnuspy_shmem(struct xnuspy_shmem *);

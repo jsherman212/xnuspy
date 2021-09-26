@@ -12,7 +12,21 @@ Requires `libusb`: `brew install libusb`
 
 # Building
 Run `make` in the top level directory. It'll build the loader and the module.
-If you want debug output from xnuspy to the kernel log, run `XNUSPY_DEBUG=1 make`.
+
+## Build Options
+Add these before `make`.
+
+- `XNUSPY_DEBUG=1`
+	- Send debug output from xnuspy to the kernel log.
+- `XNUSPY_SERIAL=1`
+	- Send debug output from xnuspy to `IOLog`.
+- `XNUSPY_LEAKED_PAGE_LIMIT=n`
+	- Set the number of pages xnuspy is allowed to leak before its garbage
+collection thread starts deallocating them. Default is `64`. More info can
+be found under the section called "Debugging Kernel Panics".
+- `XNUSPY_TRAMP_PAGES=n`
+	- Set the number of pages xnuspy will reserve for its trampoline structures.
+Default is `1`. More info can be found under the section called "Limits".
 
 # Usage
 After you've built everything, have checkra1n boot your device to a pongo
@@ -37,8 +51,10 @@ xnuspy will patch an `enosys` system call to point to `xnuspy_ctl_tramp`.
 This is a small trampoline which marks the compiled `xnuspy_ctl` code as
 executable and branches to it. You can find `xnuspy_ctl`'s implementation at
 `module/el1/xnuspy_ctl/xnuspy_ctl.c` and examples in the `example` directory.
-That directory also contains `xnuspy_ctl.h`, a header which defines constants for
-`xnuspy_ctl`. It is meant to be included in all programs which call it.
+
+Inside `include/xnuspy/` is `xnuspy_ctl.h`, a header which defines constants
+for `xnuspy_ctl`. It is meant to be included in all programs which hook
+kernel functions.
 
 You can use `sysctlbyname` to figure out which system call was patched:
 
@@ -179,10 +195,20 @@ If this flavor returns an error, `hookme` was not called.
 `errno` is set to...
 - `EINVAL` if:
   - The constant denoted by `arg1` does not represent anything in the cache.
+  - `arg1` was `IO_LOCK`, but the kernel is iOS 14.4.2 or below or iOS 15.x.
+  - `arg1` was `IPC_OBJECT_LOCK`, but the kernel is iOS 15.x.
+  - `arg1` was `IPC_PORT_RELEASE_SEND`, but the kernel is iOS 14.5 or above.
+  - `arg1` was `IPC_PORT_RELEASE_SEND_AND_UNLOCK`, but the kernel is iOS 14.4.2 or below.
+  - `arg1` was `KALLOC_CANBLOCK`, but the kernel is iOS 14.x or above.
   - `arg1` was `KALLOC_EXTERNAL`, but the kernel is iOS 13.x.
-  - `arg1` was `KALLOC_CANBLOCK`, but the kernel is iOS 14.x or iOS 15.x.
+  - `arg1` was `KFREE_ADDR`, but the kernel is iOS 14.x or above.
   - `arg1` was `KFREE_EXT`, but the kernel is iOS 13.x.
-  - `arg1` was `KFREE_ADDR`, but the kernel is iOS 14.x or iOS 15.x.
+  - `arg1` was `PROC_REF`, but the kernel is iOS 14.8 or below.
+  - `arg1` was `PROC_REF_LOCKED`, but the kernel is iOS 15.x.
+  - `arg1` was `PROC_RELE`, but the kernel is iOS 14.8 or below.
+  - `arg1` was `PROC_RELE_LOCKED`, but the kernel is iOS 15.x.
+  - `arg1` was `VM_MAP_UNWIRE`, but the kernel is iOS 15.x.
+  - `arg1` was `VM_MAP_UNWIRE_NESTED`, but the kernel is iOS 14.8 or below.
 
 `errno` also depends on the return value of `copyout` and if applicable, the
 return value of the one-time initialization function.

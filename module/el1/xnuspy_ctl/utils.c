@@ -23,6 +23,10 @@ void vm_map_reference(void *map){
     atomic_fetch_add_explicit(refcnt, 1, memory_order_relaxed);
 }
 
+bool is_15_x(void){
+    return iOS_version == iOS_15_x;
+}
+
 bool is_14_5_and_above(void){
     if(iOS_version <= iOS_13_x)
         return false;
@@ -34,26 +38,39 @@ bool is_14_5_and_above(void){
     return true;
 }
 
-/* TODO move these to their own file called wrappers.c */
-void ipc_port_release_send_wrapper(void *port){
-    if(is_14_5_and_above()){
-        if(io_lock == NULL)
-            _panic("%s: io_lock is still 0 on >=14.5??", __func__);
-
-        io_lock(port);
-    }
-
-    ipc_port_release_send(port);
+bool is_14_x_and_above(void){
+    return iOS_version >= iOS_14_x;
 }
 
-kern_return_t vm_map_unwire_wrapper(void *map, uint64_t start, uint64_t end,
-    int user)
-{
-    /*  iOS 15 -- vm_map_unwire_nested is used */
-    if (vm_map_unwire_nested != NULL)
-    {
-        return vm_map_unwire_nested(map, start, end, user, 0x0, 0x0);
-    }
+bool is_14_x_and_below(void){
+    return iOS_version <= iOS_14_x;
+}
 
-    return vm_map_unwire(map, start, end, user);
+bool is_14_x(void){
+    return iOS_version == iOS_14_x;
+}
+
+bool is_13_x(void){
+    return iOS_version == iOS_13_x;
+}
+
+/* On 14.5+, the patchfinder for proc_list_mlock yields a pointer
+ * to it, not a pointer to a pointer to it like on 13.0 - 14.4.2 */
+void *get_proc_list_mlock(void){
+    void *mtx = proc_list_mlockp;
+
+    if(is_14_5_and_above())
+        return mtx;
+
+    return *(void **)mtx;
+}
+
+void proc_list_lock(void){
+    lck_mtx_lock(get_proc_list_mlock());
+}
+
+/* proc_list_unlock has been inlined so aggressively on all kernels that there
+ * are no xrefs to the actual function so we need to do it like this */
+void proc_list_unlock(void){
+    lck_mtx_unlock(get_proc_list_mlock());
 }
