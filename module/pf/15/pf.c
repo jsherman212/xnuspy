@@ -10,7 +10,6 @@
 #include <pf/pf_common.h>
 
 uint64_t g_vm_map_unwire_nested_addr = 0;
-uint64_t g_iolog_addr = 0;
 
 /* Confirmed working 15.0 */
 bool ipc_port_release_send_finder_15(xnu_pf_patch_t *patch, 
@@ -207,6 +206,7 @@ bool proc_list_mlock_lck_mtx_lock_unlock_finder_15(xnu_pf_patch_t *patch,
     return true;
 }
 
+/* Confirmed working 15.0 */
 bool lck_grp_free_finder_15(xnu_pf_patch_t *patch, void *cacheable_stream){
     /* We landed in lifs_kext_stop. There's three sequences of
      * ldr x0, ... BL _lck_grp_free in front of us */
@@ -223,38 +223,5 @@ bool lck_grp_free_finder_15(xnu_pf_patch_t *patch, void *cacheable_stream){
     /*         g_lck_grp_free_addr, */
     /*         g_lck_grp_free_addr-kernel_slide); */
     
-    return true;
-}
-
-/* TODO: confirm if this works on 13 and 14 */
-bool iolog_finder_15(xnu_pf_patch_t *patch, void *cacheable_stream){
-    uint32_t *opcode_stream = cacheable_stream;
-
-    /* check for BL */
-    if ((opcode_stream[8] & 0xfc000000) != 0x94000000){
-        return false;
-    }
-
-    /* somewhat unorthodox, but check the string matches 
-     * a specific log message we're looking for. this 
-     * stops us matching against other logging macro's, 
-     * like kprintf, which may use a similar call site */
-
-    const char *match_string = "%s: not registry member at registerService()";
-
-    const char *str_ptr = (const char *)get_pc_rel_target(opcode_stream + 6);
-
-    if (strncmp(str_ptr, match_string, strlen(match_string)) != 0){
-        return false;
-    }
-
-    xnu_pf_disable_patch(patch);
-
-    uint32_t *iolog_addr = get_branch_dst_ptr(opcode_stream + 8);
-
-    g_iolog_addr = xnu_ptr_to_va(iolog_addr);
-    
-    puts("xnuspy: found iolog");
-
     return true;
 }

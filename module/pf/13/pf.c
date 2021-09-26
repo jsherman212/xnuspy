@@ -78,6 +78,7 @@ uint64_t g_io_lock_addr = 0;
 uint64_t g_vm_allocate_external_addr = 0;
 uint64_t g_vm_map_deallocate_addr = 0;
 uint64_t g_offsetof_struct_vm_map_refcnt = 0;
+uint64_t g_IOLog_addr = 0;
 
 /* Confirmed working on all kernels 13.0 - 15.0 */
 bool sysent_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
@@ -1333,6 +1334,22 @@ bool vm_map_deallocate_offsetof_vm_map_refcnt_finder_13(xnu_pf_patch_t *patch,
 
     puts("xnuspy: found vm_map_deallocate");
     puts("xnuspy: found offsetof(vm_map_t, refcnt)");
+
+    return true;
+}
+
+bool IOLog_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
+    /* We landed inside IOService::finalize, call to IOLog is three
+     * instructions down */
+    xnu_pf_disable_patch(patch);
+
+    uint32_t *opcode_stream = cacheable_stream;
+    uint32_t *IOLog = get_branch_dst_ptr(opcode_stream + 3);
+
+    g_IOLog_addr = xnu_ptr_to_va(IOLog);
+
+    puts("xnuspy: found IOLog");
+    printf("%s: IOLog @ %#llx\n", __func__, g_IOLog_addr-kernel_slide);
 
     return true;
 }

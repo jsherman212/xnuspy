@@ -107,7 +107,7 @@ static struct xnuspy_ctl_kernel_symbol {
     { "_vm_map_unwire", &g_vm_map_unwire_addr },
     { "_vm_map_unwire_nested", &g_vm_map_unwire_nested_addr },
     { "_vm_map_wire_external", &g_vm_map_wire_external_addr },
-    { "_IOLog", &g_iolog_addr },
+    { "_IOLog", &g_IOLog_addr },
     { "_xnuspy_tramp_mem", &g_xnuspy_tramp_mem_addr },
     { "_xnuspy_tramp_mem_end", &g_xnuspy_tramp_mem_end },
 };
@@ -182,7 +182,7 @@ static void anything_missing(void){
     chk(!g_patched_doprnt_hide_pointers, "doprnt_hide_pointers wasn't patched\n");
     chk(!g_copyinstr_addr, "copyinstr not found\n");
     chk(!g_thread_terminate_addr, "thread_terminate not found\n");
-    chk(!g_iolog_addr, "iolog not found\n");
+    chk(!g_IOLog_addr, "IOLog not found\n");
 
     /* Specific to A10+. On A9(x), we don't need to keep TCR_EL1.HPD0 and
      * TCR_EL1.HPD1 set */

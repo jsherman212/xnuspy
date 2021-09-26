@@ -2319,30 +2319,42 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
             "__TEXT_EXEC"),
     },
     {
-        PF_UNUSED, /* not tested for 13 */
-        PF_UNUSED, /* not tested for 14 */
+        PF_DECL32("IOLog finder iOS 13",
+            LISTIZE({
+                0xa9016fe0,     /* stp x0, x27, [sp, #0x10] */
+                0xa90067f8,     /* stp x24, x25, [sp] */
+                0xaa1603e0,     /* mov x0, x22 */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+            }),
+            3, IOLog_finder_13, "__TEXT_EXEC"),
+        PF_DECL32("IOLog finder iOS 14",
+            LISTIZE({
+                0xa9016fe0,     /* stp x0, x27, [sp, #0x10] */
+                0xa90067f8,     /* stp x24, x25, [sp] */
+                0xaa1603e0,     /* mov x0, x22 */
+            }),
+            LISTIZE({
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+            }),
+            3, IOLog_finder_13, "__TEXT_EXEC"),
         PF_DECL32("IOLog finder iOS 15",
             LISTIZE({
-                0xf9400008,
-                0xf9400108,
-                0xaa0003e0,
-                0xd2800001,
-                0xd63f0100,
-                0xf90003e0,
-                0x90000000,
-                0x91000000,
+                0xa90173e0,     /* stp x0, x28, [sp, #0x10] */
+                0xa90067f8,     /* stp x24, x25, [sp] */
+                0xaa1603e0,     /* mov x0, x22 */
             }),
             LISTIZE({
-                0xfffffc1f,
-                0xffc003ff,
-                0xffe0ffff,
-                0xffffffff,
-                0xffffffff,
-                0xffc003ff,
-                0xff00001f,
-                0xffc003ff,
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
             }),
-            8, iolog_finder_15, "__TEXT_EXEC"),
+            3, IOLog_finder_13, "__TEXT_EXEC"),
     },
     { PF_END, PF_END, PF_END },
 };
