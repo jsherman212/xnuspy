@@ -55,7 +55,13 @@ uint64_t g_lck_rw_lock_shared_to_exclusive_addr = 0;
 uint64_t g_lck_rw_lock_exclusive_addr = 0;
 uint64_t g_vm_map_wire_external_addr = 0;
 uint64_t g_mach_vm_map_external_addr = 0;
+
+/* Only for <14.5 */
 uint64_t g_ipc_port_release_send_addr = 0;
+
+/* Only for >=14.5 */
+uint64_t g_ipc_port_release_send_and_unlock_addr = 0;
+
 uint64_t g_lck_rw_free_addr = 0;
 uint64_t g_lck_grp_free_addr = 0;
 int g_patched_doprnt_hide_pointers = 0;
@@ -74,7 +80,10 @@ uint64_t g_mach_to_bsd_errno_addr;
 uint64_t g_xnuspy_sysctl_mib_ptr = 0;
 uint64_t g_xnuspy_sysctl_mib_count_ptr = 0;
 uint64_t g_xnuspy_ctl_callnum = 0;
+
+/* Only for >=14.5 && <15.0 */
 uint64_t g_io_lock_addr = 0;
+
 uint64_t g_vm_allocate_external_addr = 0;
 uint64_t g_vm_map_deallocate_addr = 0;
 uint64_t g_offsetof_struct_vm_map_refcnt = 0;
@@ -974,18 +983,22 @@ bool ipc_port_release_send_finder_13(xnu_pf_patch_t *patch,
     uint32_t *opcode_stream = cacheable_stream;
     uint32_t *ipc_port_release_send = get_branch_dst_ptr(opcode_stream + 1);
 
-    g_ipc_port_release_send_addr = xnu_ptr_to_va(ipc_port_release_send);
-
-    puts("xnuspy: found ipc_port_release_send");
-
-    if(!is_14_5_and_above__pongo())
+    /* Just for clarity */
+    if(is_14_5_and_above__pongo()){
+        g_ipc_port_release_send_and_unlock_addr = xnu_ptr_to_va(ipc_port_release_send);
+        puts("xnuspy: found ipc_port_release_send_and_unlock");
+    }
+    else{
+        g_ipc_port_release_send_addr = xnu_ptr_to_va(ipc_port_release_send);
+        puts("xnuspy: found ipc_port_release_send");
         return true;
+    }
 
     uint32_t *io_lock = get_branch_dst_ptr(opcode_stream - 1);
 
     g_io_lock_addr = xnu_ptr_to_va(io_lock);
 
-    puts("xnuspy(>=14.5): found io_lock");
+    puts("xnuspy: found io_lock");
 
     return true;
 }
@@ -1102,8 +1115,7 @@ bool pinst_set_tcr_patcher_13(xnu_pf_patch_t *patch, void *cacheable_stream){
      *  msr tcr_el1, x0
      *  ret
      *
-     * A9(x) does not contain a pinst segment.
-     */
+     * A9(x) does not contain a pinst segment. */
     xnu_pf_disable_patch(patch);
 
     uint32_t *opcode_stream = cacheable_stream;
@@ -1339,6 +1351,7 @@ bool IOLog_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     xnu_pf_disable_patch(patch);
 
     uint32_t *opcode_stream = cacheable_stream;
+
     uint32_t *IOLog = get_branch_dst_ptr(opcode_stream + 3);
 
     g_IOLog_addr = xnu_ptr_to_va(IOLog);
@@ -1361,8 +1374,6 @@ bool lck_mtx_lock_finder_13(xnu_pf_patch_t *patch, void *cacheable_stream){
     g_lck_mtx_lock_addr = xnu_ptr_to_va(lck_mtx_lock);
 
     puts("xnuspy: found lck_mtx_lock");
-    printf("%s: lck_mtx_lock @ %#llx\n", __func__,
-            g_lck_mtx_lock_addr-kernel_slide);
 
     return true;
 }

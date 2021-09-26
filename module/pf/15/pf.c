@@ -12,6 +12,7 @@
 uint64_t g_vm_map_unwire_nested_addr = 0;
 uint64_t g_proc_ref_addr = 0;
 uint64_t g_proc_rele_addr = 0;
+uint64_t g_ipc_object_lock_addr = 0;
 
 /* Confirmed working 15.0 */
 bool ipc_port_release_send_finder_15(xnu_pf_patch_t *patch, 
@@ -33,20 +34,11 @@ bool ipc_port_release_send_finder_15(xnu_pf_patch_t *patch,
     uint32_t *ipc_port_release_send_and_unlock = get_branch_dst_ptr(opcode_stream + 6);
     uint32_t *ipc_object_lock = get_branch_dst_ptr(opcode_stream + 4);
 
-    g_ipc_port_release_send_addr = xnu_ptr_to_va(ipc_port_release_send_and_unlock);
-
-    /* TODO: will be more clear inside kernel code if I call io_lock
-     * for 14.x/ipc_object_lock for 15.x and export them as two different
-     * things inside the cache */
-    g_io_lock_addr = xnu_ptr_to_va(ipc_object_lock);
+    g_ipc_port_release_send_and_unlock_addr = xnu_ptr_to_va(ipc_port_release_send_and_unlock);
+    g_ipc_object_lock_addr = xnu_ptr_to_va(ipc_object_lock);
 
     puts("xnuspy: found ipc_port_release_send_and_unlock");
     puts("xnuspy: found ipc_object_lock");
-
-    /* printf("%s: ipc_port_release_send_and_unlock: %#llx\n",__func__, */
-    /*         g_ipc_port_release_send_addr-kernel_slide); */
-    /* printf("%s: ipc_object_lock: %#llx\n", __func__, */
-    /*         g_io_lock_addr-kernel_slide); */
 
     return true;
 }
@@ -89,8 +81,6 @@ bool current_proc_finder_15(xnu_pf_patch_t *patch, void *cacheable_stream){
     g_current_proc_addr = xnu_ptr_to_va(current_proc);
 
     puts("xnuspy: found current_proc");
-    printf("%s: current_proc @ %#llx\n", __func__,
-            g_current_proc_addr-kernel_slide);
 
     return true;
 }
@@ -113,8 +103,6 @@ bool vm_map_unwire_nested_finder_15(xnu_pf_patch_t *patch,
     g_vm_map_unwire_nested_addr = xnu_ptr_to_va(vm_map_unwire_nested);
     
     puts("xnuspy: found vm_map_unwire_nested");
-    /* printf("%s: vm_map_unwire_nested = %#llx\n", __func__, */
-    /*         g_vm_map_unwire_nested_addr-kernel_slide); */
 
     return true;
 }
@@ -141,8 +129,6 @@ bool kernel_map_finder_15(xnu_pf_patch_t *patch, void *cacheable_stream){
     g_kernel_map_addr = xnu_ptr_to_va(kernel_mapp);
     
     puts("xnuspy: found kernel_map");
-    /* printf("%s: kernel_map pointer @ %#llx\n", __func__, */
-    /*         g_kernel_map_addr-kernel_slide); */
     
     return true;
 }
@@ -165,8 +151,6 @@ bool vm_deallocate_finder_15(xnu_pf_patch_t *patch, void *cacheable_stream){
     g_vm_deallocate_addr = xnu_ptr_to_va(vm_deallocate);
 
     puts("xnuspy: found vm_deallocate");
-    /* printf("%s: vm_deallocate @ %#llx\n", __func__, */
-    /*         g_vm_deallocate_addr-kernel_slide); */
 
     return true;
 }
@@ -198,13 +182,6 @@ bool proc_list_mlock_lck_mtx_lock_unlock_finder_15(xnu_pf_patch_t *patch,
     puts("xnuspy: found lck_mtx_lock");
     puts("xnuspy: found lck_mtx_unlock");
 
-    /* printf("%s: proc_list_mlock @ %#llx\n" */
-    /*        "lck_mtx_lock @ %#llx\n" */
-    /*        "lck_mtx_unlock @ %#llx\n", */
-    /*        __func__, g_proc_list_mlock_addr-kernel_slide, */
-    /*        g_lck_mtx_lock_addr-kernel_slide, */
-    /*        g_lck_mtx_unlock_addr-kernel_slide); */
-
     return true;
 }
 
@@ -221,10 +198,7 @@ bool lck_grp_free_finder_15(xnu_pf_patch_t *patch, void *cacheable_stream){
     g_lck_grp_free_addr = xnu_ptr_to_va(lck_grp_free);
 
     puts("xnuspy: found lck_grp_free");
-    /* printf("%s: lck_grp_free @ %#llx [unslid=%#llx]\n", __func__, */
-    /*         g_lck_grp_free_addr, */
-    /*         g_lck_grp_free_addr-kernel_slide); */
-    
+
     return true;
 }
 
@@ -245,10 +219,33 @@ bool proc_ref_rele_finder_15(xnu_pf_patch_t *patch, void *cacheable_stream){
     puts("xnuspy: found proc_ref");
     puts("xnuspy: found proc_rele");
 
-    printf("%s: proc_ref @ %#llx\n", __func__,
-            g_proc_ref_addr-kernel_slide);
-    printf("%s: proc_rele @ %#llx\n", __func__,
-            g_proc_rele_addr-kernel_slide);
+    return true;
+}
+
+/* Confirmed working 15.0 */
+bool lck_rw_alloc_init_finder_15(xnu_pf_patch_t *patch,
+        void *cacheable_stream){
+    /* We landed inside lifs_req_hashtbl_init. The branch to
+     * lck_rw_alloc_init is three instructions down if we see a
+     * lsl w8, w0, #1 less than 20 instructions before where we are */
+    uint32_t *opcode_stream = cacheable_stream;
+    uint32_t *saved_stream = opcode_stream;
+    uint32_t limit = 20;
+
+    while(*opcode_stream != 0x531f7808){
+        if(limit-- == 0)
+            return false;
+
+        opcode_stream--;
+    }
+
+    xnu_pf_disable_patch(patch);
+
+    uint32_t *lck_rw_alloc_init = get_branch_dst_ptr(saved_stream + 3);
+
+    g_lck_rw_alloc_init_addr = xnu_ptr_to_va(lck_rw_alloc_init);
+
+    puts("xnuspy: found lck_rw_alloc_init");
 
     return true;
 }

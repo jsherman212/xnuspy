@@ -4,8 +4,12 @@
 #include <mach-o/loader.h>
 #include <stdbool.h>
 
-bool is_15_and_above__pongo(void);
+bool is_15_x__pongo(void);
 bool is_14_5_and_above__pongo(void);
+bool is_14_x_and_above__pongo(void);
+bool is_14_x_and_below__pongo(void);
+bool is_14_x__pongo(void);
+bool is_13_x__pongo(void);
 
 int atoi(const char *);
 int isdigit(int);

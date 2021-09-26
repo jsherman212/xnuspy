@@ -146,12 +146,27 @@ MARK_AS_KERNEL_OFFSET void *(*current_proc)(void);
 /* Keep these all aligned 8 bytes */
 MARK_AS_KERNEL_OFFSET uint64_t hookme_in_range;
 MARK_AS_KERNEL_OFFSET uint64_t iOS_version;
-/* This will only be io_lock on 14.5 and above */
+
+/* Only for >= 14.5 && < 15.0 */
 MARK_AS_KERNEL_OFFSET void (*io_lock)(void *io);
+
+/* Only for >= 15.0 */
+MARK_AS_KERNEL_OFFSET void (*ipc_object_lock)(void *obj);
+
+MARK_AS_KERNEL_OFFSET void (*IOLog)(const char *fmt, ...);
 MARK_AS_KERNEL_OFFSET void (*IOSleep)(unsigned int millis);
+
+/* Only for < 14.5 */
 MARK_AS_KERNEL_OFFSET void (*ipc_port_release_send)(void *port);
-MARK_AS_KERNEL_OFFSET void *(*kalloc_canblock)(vm_size_t *sizep, bool canblock,
-        void *site);
+
+/* Only for >= 14.5 */
+MARK_AS_KERNEL_OFFSET void (*ipc_port_release_send_and_unlock)(void *port);
+
+/* Only for 13.x */
+MARK_AS_KERNEL_OFFSET void *(*kalloc_canblock)(vm_size_t *sizep,
+        bool canblock, void *site);
+
+/* Only for >= 14.x */
 MARK_AS_KERNEL_OFFSET void *(*kalloc_external)(vm_size_t sz);
 MARK_AS_KERNEL_OFFSET uint64_t kern_version_minor;
 MARK_AS_KERNEL_OFFSET void **kernel_mapp;
@@ -192,8 +207,19 @@ MARK_AS_KERNEL_OFFSET void **proc_list_mlockp;
 /* XNU's declaration, not mine */
 MARK_AS_KERNEL_OFFSET void (*proc_name)(int pid, char *buf, int size);
 MARK_AS_KERNEL_OFFSET pid_t (*proc_pid)(void *proc);
+
+/* Only for 13.x and 14.x */
 MARK_AS_KERNEL_OFFSET void (*proc_ref_locked)(void *proc);
+
+/* Only for 15.x */
+MARK_AS_KERNEL_OFFSET void (*proc_ref)(void *proc, bool w1);
+
+/* Only for 13.x and 14.x */
 MARK_AS_KERNEL_OFFSET void (*proc_rele_locked)(void *proc);
+
+/* Only for 15.x */
+MARK_AS_KERNEL_OFFSET void (*proc_rele)(void *proc);
+
 MARK_AS_KERNEL_OFFSET uint64_t (*proc_uniqueid)(void *proc);
 MARK_AS_KERNEL_OFFSET int (*_snprintf)(char *str, size_t size, const char *fmt, ...);
 MARK_AS_KERNEL_OFFSET size_t (*_strlen)(const char *s);
@@ -205,14 +231,18 @@ MARK_AS_KERNEL_OFFSET kern_return_t (*vm_allocate_external)(void *map,
 MARK_AS_KERNEL_OFFSET kern_return_t (*_vm_deallocate)(void *map,
         uint64_t start, uint64_t size);
 MARK_AS_KERNEL_OFFSET void (*vm_map_deallocate)(void *map);
+
+/* Only for 13.x and 14.x */
 MARK_AS_KERNEL_OFFSET kern_return_t (*vm_map_unwire)(void *map, uint64_t start,
         uint64_t end, int user);
+
+/* Only for 15.x */
 MARK_AS_KERNEL_OFFSET kern_return_t (*vm_map_unwire_nested)(void *map, 
         uint64_t start, uint64_t end, int user, uint64_t map_pmap, 
         uint64_t pmap_addr);
+
 MARK_AS_KERNEL_OFFSET kern_return_t (*vm_map_wire_external)(void *map,
         uint64_t start, uint64_t end, vm_prot_t prot, int user_wire);
-MARK_AS_KERNEL_OFFSET void (*IOLog)(const char *fmt, ...);
 MARK_AS_KERNEL_OFFSET struct xnuspy_tramp *xnuspy_tramp_mem;
 MARK_AS_KERNEL_OFFSET struct xnuspy_tramp *xnuspy_tramp_mem_end;
 

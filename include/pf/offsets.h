@@ -63,7 +63,13 @@ extern uint64_t g_lck_rw_lock_shared_to_exclusive_addr;
 extern uint64_t g_lck_rw_lock_exclusive_addr;
 extern uint64_t g_vm_map_wire_external_addr;
 extern uint64_t g_mach_vm_map_external_addr;
+
+/* Only for <14.5 */
 extern uint64_t g_ipc_port_release_send_addr;
+
+/* Only for >=14.5 */
+extern uint64_t g_ipc_port_release_send_and_unlock_addr;
+
 extern uint64_t g_lck_rw_free_addr;
 extern uint64_t g_lck_grp_free_addr;
 extern int g_patched_doprnt_hide_pointers;
@@ -84,7 +90,13 @@ extern uint64_t g_xnuspy_sysctl_mib_count_ptr;
 extern uint64_t g_xnuspy_ctl_callnum;
 extern uint64_t g_kern_version_major;
 extern uint64_t g_kern_version_minor;
+
+/* Only for >=14.5 && <15.0 */
 extern uint64_t g_io_lock_addr;
+
+/* Only for >=15.0 */
+extern uint64_t g_ipc_object_lock_addr;
+
 extern uint64_t g_vm_allocate_external_addr;
 extern uint64_t g_vm_map_deallocate_addr;
 extern uint64_t g_offsetof_struct_vm_map_refcnt;

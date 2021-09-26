@@ -587,28 +587,19 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
                 0xffffffff,     /* match exactly */
             }),
             7, lck_rw_alloc_init_finder_14, "__TEXT_EXEC"),
-        PF_DECL32("lck_rw_alloc_init finder iOS 15",
+        PF_DECL_FULL("lck_rw_alloc_init finder iOS 15",
             LISTIZE({
-                0x94000000,     /* bl n (lck_rw_alloc_init) */
-                0xf9000000,     /* str x0, [x21, n] */
-                0xb4000000,     /* cbz x0, n */
-                0x52800000,     /* mov w0, #0 */
-                0x94000000,     /* bl n */
-                0xaa0003e0,     /* mov Xn, x0 */
-                0x35000000,     /* cbnz w0, n */
-                0x52800000,     /* mov wn, n */
+                0xd2800016,     /* mov x22, #0 */
+                0xf9400260,     /* ldr x0, [x19] */
+                0xd2800001,     /* mov x1, #0 */
             }),
             LISTIZE({
-                0xfc000000,     /* ignore immediate */
-                0xffc0001f,     /* ignore signed offset */
-                0xff00001f,     /* ignore immediate */
                 0xffffffff,     /* match exactly */
-                0xfc000000,     /* ignore immediate */
-                0xffffffe0,     /* ignore Rd */
-                0xff00001f,     /* ignore immediate */
-                0xff800000,     /* ignore Rd & immediate */
+                0xffffffff,     /* match exactly */
+                0xffffffff,     /* match exactly */
             }),
-            8, lck_rw_alloc_init_finder_14, "__TEXT_EXEC"),
+            3, XNU_PF_ACCESS_32BIT, lck_rw_alloc_init_finder_15,
+            "com.apple.filesystems.lifs", "__TEXT_EXEC", NULL),
     },
     {
         PF_DECL32("bcopy_phys finder iOS 13",
@@ -2002,7 +1993,7 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
                 0x1f00001f,     /* ignore immediate */
             }),
             6, proc_name_snprintf_strlen_finder_13, "__TEXT_EXEC"),
-        PF_DECL32("proc_name,snprintf,strlen finder iOS 15",
+        PF_DECL_FULL("proc_name,snprintf,strlen finder iOS 15",
             LISTIZE({
                 0x910003e0,     /* add x0, sp, n */
                 0x52800001,     /* mov w1, n */
@@ -2023,7 +2014,8 @@ struct pf g_all_pfs[MAXPF][NUM_SUPPORTED_VERSIONS] = {
                 0xffe0fc1f,     /* ignore Rn & Rd */
                 0xffe0ffff,     /* ignore Rn */
             }),
-            8, proc_name_snprintf_strlen_finder_15, "__TEXT_EXEC"),
+            8, XNU_PF_ACCESS_32BIT, proc_name_snprintf_strlen_finder_15,
+            "com.apple.driver.AppleEmbeddedUSBHost", "__TEXT_EXEC", NULL),
     },
     {
         PF_DECL32("strcmp finder iOS 13",

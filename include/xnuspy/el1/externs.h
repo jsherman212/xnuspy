@@ -37,8 +37,11 @@ extern void *(*current_proc)(void);
 extern uint64_t hookme_in_range;
 extern uint64_t iOS_version;
 extern void (*io_lock)(void *io);
+extern void (*ipc_object_lock)(void *obj);
+extern void (*IOLog)(const char *fmt, ...);
 extern void (*IOSleep)(unsigned int millis);
 extern void (*ipc_port_release_send)(void *port);
+extern void (*ipc_port_release_send_and_unlock)(void *port);
 extern void *(*kalloc_canblock)(vm_size_t *sizep, bool canblock,
         void *site);
 extern void *(*kalloc_external)(vm_size_t sz);
@@ -80,7 +83,9 @@ extern uint64_t (*phystokv)(uint64_t pa);
 extern void **proc_list_mlockp;
 extern void (*proc_name)(int pid, char *buf, int size);
 extern pid_t (*proc_pid)(void *proc);
+extern void (*proc_ref)(void *proc, bool w1);
 extern void (*proc_ref_locked)(void *proc);
+extern void (*proc_rele)(void *proc);
 extern void (*proc_rele_locked)(void *proc);
 extern uint64_t (*proc_uniqueid)(void *proc);
 extern int (*_snprintf)(char *str, size_t size, const char *fmt, ...);
@@ -99,7 +104,6 @@ extern kern_return_t (*vm_map_unwire_nested)(void *map, uint64_t start,
         uint64_t end, int user, uint64_t map_pmap, uint64_t pmap_addr);
 extern kern_return_t (*vm_map_wire_external)(void *map,
         uint64_t start, uint64_t end, vm_prot_t prot, int user_wire);
-extern void (*IOLog)(const char *fmt, ...);
 extern struct xnuspy_tramp *xnuspy_tramp_mem;
 extern struct xnuspy_tramp *xnuspy_tramp_mem_end;
 

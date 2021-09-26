@@ -23,7 +23,6 @@ bool kalloc_external_finder_14(xnu_pf_patch_t *patch, void *cacheable_stream){
 
     g_kalloc_external_addr = xnu_ptr_to_va(kalloc_external);
 
-    printf("%s: kalloc_external @ %#llx\n", __func__,g_kalloc_external_addr-kernel_slide);
     puts("xnuspy: found kalloc_external");
 
     return true;
@@ -46,7 +45,6 @@ bool kfree_ext_finder_14(xnu_pf_patch_t *patch, void *cacheable_stream){
             uint32_t *kfree_ext = get_branch_dst_ptr(opcode_stream + i);
 
             g_kfree_ext_addr = xnu_ptr_to_va(kfree_ext);
-            /* printf("%s: kfree_ext @ %#llx\n", __func__,g_kfree_ext_addr-kernel_slide); */
 
             puts("xnuspy: found kfree_ext");
             return true;
@@ -149,9 +147,11 @@ bool lck_grp_alloc_init_finder_14(xnu_pf_patch_t *patch,
     return true;
 }
 
-/* Confirmed working 14.0 - 15.0 */
+/* Confirmed working 14.0 - 14.8 */
 bool lck_rw_alloc_init_finder_14(xnu_pf_patch_t *patch,
         void *cacheable_stream){
+    /* On 14.x, we land inside tcp_init, and are sitting on a branch
+     * to lck_rw_alloc_init */
     xnu_pf_disable_patch(patch);
 
     uint32_t *opcode_stream = cacheable_stream;

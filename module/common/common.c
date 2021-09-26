@@ -5,7 +5,7 @@
 #include <common/common.h>
 #include <pf/offsets.h>
 
-bool is_15_and_above__pongo(void){
+bool is_15_x__pongo(void){
     return g_kern_version_major == iOS_15_x;
 }
 
@@ -18,6 +18,22 @@ bool is_14_5_and_above__pongo(void){
         return false;
 
     return true;
+}
+
+bool is_14_x_and_above__pongo(void){
+    return g_kern_version_major >= iOS_14_x;
+}
+
+bool is_14_x_and_below__pongo(void){
+    return g_kern_version_major <= iOS_14_x;
+}
+
+bool is_14_x__pongo(void){
+    return g_kern_version_major == iOS_14_x;
+}
+
+bool is_13_x__pongo(void){
+    return g_kern_version_major == iOS_13_x;
 }
 
 /* no sign support */

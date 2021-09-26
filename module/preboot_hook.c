@@ -59,9 +59,12 @@ static struct xnuspy_ctl_kernel_symbol {
     { "_current_proc", &g_current_proc_addr },
     { "_hookme_in_range", &g_hookme_in_range },
     { "_io_lock", &g_io_lock_addr },
+    { "_ipc_object_lock", &g_ipc_object_lock_addr },
+    { "_IOLog", &g_IOLog_addr },
     { "_iOS_version", &g_kern_version_major },
     { "_IOSleep", &g_IOSleep_addr },
     { "_ipc_port_release_send", &g_ipc_port_release_send_addr },
+    { "_ipc_port_release_send_and_unlock", &g_ipc_port_release_send_and_unlock_addr },
     { "_kalloc_canblock", &g_kalloc_canblock_addr },
     { "_kalloc_external", &g_kalloc_external_addr },
     { "_kern_version_minor", &g_kern_version_minor },
@@ -93,7 +96,9 @@ static struct xnuspy_ctl_kernel_symbol {
     { "_proc_list_mlockp", &g_proc_list_mlock_addr },
     { "_proc_name", &g_proc_name_addr },
     { "_proc_pid", &g_proc_pid_addr },
+    { "_proc_ref", &g_proc_ref_addr },
     { "_proc_ref_locked", &g_proc_ref_locked_addr },
+    { "_proc_rele", &g_proc_rele_addr },
     { "_proc_rele_locked", &g_proc_rele_locked_addr },
     { "_proc_uniqueid", &g_proc_uniqueid_addr },
     { "__snprintf", &g_snprintf_addr },
@@ -107,7 +112,6 @@ static struct xnuspy_ctl_kernel_symbol {
     { "_vm_map_unwire", &g_vm_map_unwire_addr },
     { "_vm_map_unwire_nested", &g_vm_map_unwire_nested_addr },
     { "_vm_map_wire_external", &g_vm_map_wire_external_addr },
-    { "_IOLog", &g_IOLog_addr },
     { "_xnuspy_tramp_mem", &g_xnuspy_tramp_mem_addr },
     { "_xnuspy_tramp_mem_end", &g_xnuspy_tramp_mem_end },
 };
@@ -128,18 +132,7 @@ static void anything_missing(void){
     } while (0) \
 
     chk(!g_sysent_addr, "sysent not found\n");
-
-    if(g_kern_version_major == iOS_13_x){
-        chk(!g_kalloc_canblock_addr, "kalloc_canblock not found\n");
-        chk(!g_kfree_addr_addr, "kfree_addr not found\n");
-    }
-    else{
-        chk(!g_kalloc_external_addr, "kalloc_external not found\n");
-        chk(!g_kfree_ext_addr, "kfree_ext not found\n");
-    }
-
-    chk(!g_sysctl__kern_children_addr, "sysctl__kern_children\n"
-            "  not found\n");
+    chk(!g_sysctl__kern_children_addr, "sysctl__kern_children not found\n");
     chk(!g_sysctl_register_oid_addr, "sysctl_register_oid not found\n");
     chk(!g_sysctl_handle_long_addr, "sysctl_handle_long not found\n");
     chk(!g_name2oid_addr, "name2oid not found\n");
@@ -156,7 +149,6 @@ static void anything_missing(void){
     chk(!g_copyout_addr, "copyout not found\n");
     chk(!g_IOSleep_addr, "IOSleep not found\n");
     chk(!g_kprintf_addr, "kprintf not found\n");
-    chk(!g_vm_map_unwire_addr && !g_vm_map_unwire_nested_addr, "vm_map_unwire{_nested} not found\n");
     chk(!g_vm_deallocate_addr, "vm_deallocate not found\n");
     chk(!g_kernel_map_addr, "kernel_map not found\n");
     chk(!g_kernel_thread_start_addr, "kernel_thread_start not found\n");
@@ -176,21 +168,12 @@ static void anything_missing(void){
     chk(!g_lck_rw_lock_exclusive_addr, "lck_rw_lock_exclusive not found\n");
     chk(!g_vm_map_wire_external_addr, "vm_map_wire_external not found\n");
     chk(!g_mach_vm_map_external_addr, "mach_vm_map_external not found\n");
-    chk(!g_ipc_port_release_send_addr, "ipc_port_release_send not found\n");
     chk(!g_lck_rw_free_addr, "lck_rw_free not found\n");
     chk(!g_lck_grp_free_addr, "lck_grp_free not found\n");
     chk(!g_patched_doprnt_hide_pointers, "doprnt_hide_pointers wasn't patched\n");
     chk(!g_copyinstr_addr, "copyinstr not found\n");
     chk(!g_thread_terminate_addr, "thread_terminate not found\n");
     chk(!g_IOLog_addr, "IOLog not found\n");
-
-    /* Specific to A10+. On A9(x), we don't need to keep TCR_EL1.HPD0 and
-     * TCR_EL1.HPD1 set */
-    if(socnum >= 0x8010){
-        chk(!g_patched_pinst_set_tcr, "pinst_set_tcr wasn't patched\n");
-        chk(!g_patched_all_msr_tcr_el1_x18, "did not patch all msr tcr_el1, x18\n");
-    }
-
     chk(!g_proc_name_addr, "proc_name not found\n");
     chk(!g_snprintf_addr, "snprintf not found\n");
     chk(!g_strlen_addr, "strlen not found\n");
@@ -199,22 +182,61 @@ static void anything_missing(void){
     chk(!g_memmove_addr, "memmove not found\n");
     chk(!g_panic_addr, "panic not found\n");
     chk(!g_mach_to_bsd_errno_addr, "mach_to_bsd_errno not found\n");
-
-    if(is_14_5_and_above__pongo())
-        chk(!g_io_lock_addr, "io_lock not found\n");
-
-    if(is_15_and_above__pongo()){
-        chk(!g_proc_ref_addr, "proc_ref not found\n");
-        chk(!g_proc_rele_addr, "proc_rele not found\n");
-    }
-    else{
-        chk(!g_proc_ref_locked_addr, "proc_ref_locked not found\n");
-        chk(!g_proc_rele_locked_addr, "proc_rele_locked not found\n");
-    }
-
     chk(!g_vm_allocate_external_addr, "vm_allocate_external not found\n");
     chk(!g_vm_map_deallocate_addr, "vm_map_deallocate not found\n");
     chk(!g_offsetof_struct_vm_map_refcnt, "offsetof(vm_map_t, refcnt) not found\n");
+
+    /* Specific to A10+. On A9(x), we don't need to keep TCR_EL1.HPD0 and
+     * TCR_EL1.HPD1 set */
+    if(socnum >= 0x8010){
+        chk(!g_patched_pinst_set_tcr, "pinst_set_tcr wasn't patched\n");
+        chk(!g_patched_all_msr_tcr_el1_x18, "did not patch all msr tcr_el1, x18\n");
+    }
+
+    /* Now check for version-specific patchfinds */
+
+    if(is_14_x_and_below__pongo()){
+        /* <= iOS 14.x */
+        chk(!g_proc_ref_locked_addr, "proc_ref_locked not found\n");
+        chk(!g_proc_rele_locked_addr, "proc_rele_locked not found\n");
+        chk(!g_vm_map_unwire_addr, "vm_map_unwire not found\n");
+    }
+
+    if(is_13_x__pongo()){
+        /* iOS 13.x */
+        chk(!g_kalloc_canblock_addr, "kalloc_canblock not found\n");
+        chk(!g_kfree_addr_addr, "kfree_addr not found\n");
+    }
+    else{
+        /* >= iOS 14.x */
+        chk(!g_kalloc_external_addr, "kalloc_external not found\n");
+        chk(!g_kfree_ext_addr, "kfree_ext not found\n");
+
+        if(is_14_5_and_above__pongo()){
+            /* >= iOS 14.5 */
+
+            if(is_15_x__pongo())
+                chk(!g_ipc_object_lock_addr, "ipc_object_lock not found\n");
+            else
+                chk(!g_io_lock_addr, "io_lock not found\n");
+
+            chk(!g_ipc_port_release_send_and_unlock_addr,
+                    "ipc_port_release_send_and_unlock not found\n");
+        }
+        else{
+            /* < iOS 14.5 */
+            chk(!g_ipc_port_release_send_addr,
+                    "ipc_port_release_send not found\n");
+        }
+
+        if(is_15_x__pongo()){
+            /* iOS 15.x */
+
+            chk(!g_proc_ref_addr, "proc_ref not found\n");
+            chk(!g_proc_rele_addr, "proc_rele not found\n");
+            chk(!g_vm_map_unwire_nested_addr, "vm_map_unwire_nested not found\n");
+        }
+    }
 
     /* If we printed the error header, something is missing */
     if(printed_err_hdr)
@@ -495,8 +517,7 @@ static void process_xnuspy_ctl_image(void *xnuspy_ctl_image){
 void (*next_preboot_hook)(void);
 
 void xnuspy_preboot_hook(void){
-    /* anything_missing(); */
-    printf("%s: *****SKIPPING anything_missing()\n",  __func__);
+    anything_missing();
     
     uint64_t xnuspy_tramp_mem_size = PAGE_SIZE * XNUSPY_TRAMP_PAGES;
     void *xnuspy_tramp_mem = alloc_static(xnuspy_tramp_mem_size);
