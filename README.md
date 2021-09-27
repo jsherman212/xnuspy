@@ -11,7 +11,9 @@ iOS 14.x, and iOS 15.x on checkra1n 0.12.2 and up. 4K devices are not supported.
 Requires `libusb`: `brew install libusb`
 
 # Building
-Run `make` in the top level directory. It'll build the loader and the module.
+Run `make` in the top level directory. It'll build the loader, the module,
+`klog`, and the examples. You can upload `klog` and the examples to your
+device by doing `make upload` in those directories.
 
 ### Build Options
 Add these before `make`.
@@ -22,11 +24,11 @@ Add these before `make`.
 	- Send debug output from xnuspy to `IOLog`.
 - `XNUSPY_LEAKED_PAGE_LIMIT=n`
 	- Set the number of pages xnuspy is allowed to leak before its garbage
-collection thread starts deallocating them. Default is `64`. More info can
+collection thread starts deallocating them. Default is 64. More info can
 be found under the section called "Debugging Kernel Panics".
 - `XNUSPY_TRAMP_PAGES=n`
 	- Set the number of pages xnuspy will reserve for its trampoline structures.
-Default is `1`. More info can be found under the section called "Limits".
+Default is 1. More info can be found under the section called "Limits".
 
 `XNUSPY_DEBUG` and `XNUSPY_SERIAL` do not depend on each other.
 

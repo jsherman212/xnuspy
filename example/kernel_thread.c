@@ -8,7 +8,7 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 
-#include "xnuspy_ctl.h"
+#include <xnuspy/xnuspy_ctl.h>
 
 __attribute__ ((naked)) static void *current_thread(void){
     asm(""

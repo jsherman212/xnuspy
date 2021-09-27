@@ -8,7 +8,7 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 
-#include "xnuspy_ctl.h"
+#include <xnuspy/xnuspy_ctl.h>
 
 static void (*_bzero)(void *p, size_t n);
 static int (*copyinstr)(const void *uaddr, void *kaddr, size_t len, size_t *done);
@@ -163,8 +163,8 @@ int main(int argc, char **argv){
         return 1;
     }
 
-    /* iPhone SE 14.5 */
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xfffffff0072fd3dc,
+    /* iPhone X 15.0 */
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xfffffff007d574f4,
             open1, &open1_orig);
 
     if(ret){

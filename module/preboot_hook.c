@@ -660,7 +660,7 @@ next:
 
     memcpy(xnuspy_ctl_image, loader_xfer_recv_data, loader_xfer_recv_count);
 
-    printf("xnuspy_ctl image base at %#llx\n", xnu_ptr_to_va(xnuspy_ctl_image));
+    printf("xnuspy_ctl image base is at %#llx\n", xnu_ptr_to_va(xnuspy_ctl_image));
 
     int64_t num_free_instrs = g_exec_scratch_space_size / sizeof(uint32_t);
     uint32_t *scratch_space = xnu_va_to_ptr(g_exec_scratch_space_addr);

@@ -9,7 +9,7 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 
-#include "xnuspy_ctl.h"
+#include <xnuspy/xnuspy_ctl.h>
 
 static kuslck_t g_kuslck = KUSLCK_INITIALIZER;
 

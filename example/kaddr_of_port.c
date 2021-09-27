@@ -8,7 +8,7 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 
-#include "xnuspy_ctl.h"
+#include <xnuspy/xnuspy_ctl.h>
 
 static long SYS_xnuspy_ctl = 0;
 
@@ -179,7 +179,7 @@ int main(int argc, char **argv){
 
     printf("mach_task_self() @ %#llx\n", taskport_kaddr);
 
-    kdump(taskport_kaddr, 0xa8);
+    kdump((void *)taskport_kaddr, 0xa8);
 
     return 0;
 }

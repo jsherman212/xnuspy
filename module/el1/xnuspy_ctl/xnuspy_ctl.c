@@ -185,7 +185,7 @@ static bool xnuspy_mapping_release(struct xnuspy_mapping *m){
 
     if(prev >= MAX_MAPPING_REFERENCES){
         _panic("%s: xnuspy_mapping(%p) possible memory corruption",
-                m, __func__);
+                __func__, m);
     }
 
     bool last = (prev == 1);

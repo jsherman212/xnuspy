@@ -2,7 +2,7 @@ RP = $(realpath $(shell pwd))
 
 export RP
 
-TARGET_DIRS = loader opdump module
+TARGET_DIRS = loader opdump module klog example
 
 all : $(TARGET_DIRS)
 

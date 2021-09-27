@@ -8,7 +8,7 @@
 #include <sys/syscall.h>
 #include <unistd.h>
 
-#include "xnuspy_ctl.h"
+#include <xnuspy/xnuspy_ctl.h>
 
 static void *(*current_proc)(void);
 static void (*kprintf)(const char *, ...);
@@ -206,8 +206,8 @@ int main(int argc, char **argv){
         return 1;
     }
 
-    /* iPhone 8, 14.6 */
-    getClassName = (const char *(*)(const void *))(0xFFFFFFF007FBD108 + kernel_slide);
+    /* iPhone X 15.0 */
+    getClassName = (const char *(*)(const void *))(0xfffffff0080e8ba0 + kernel_slide);
 
     printf("kernel slide: %#llx\n", kernel_slide);
     printf("current_proc @ %#llx\n", (uint64_t)current_proc);
@@ -215,7 +215,7 @@ int main(int argc, char **argv){
     printf("kprintf @ %#llx\n", (uint64_t)kprintf);
     printf("proc_pid @ %#llx\n", (uint64_t)proc_pid);
 
-    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xfffffff008085dd0,
+    ret = syscall(SYS_xnuspy_ctl, XNUSPY_INSTALL_HOOK, 0xfffffff0081c1580,
             is_io_service_open_extended, &is_io_service_open_extended_orig);
 
     if(ret){
