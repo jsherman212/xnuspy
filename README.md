@@ -8,12 +8,13 @@ xnuspy is a pongoOS module that installs a new system call, `xnuspy_ctl`,
 which allows you to hook kernel functions from userspace. It supports iOS 13.x,
 iOS 14.x, and iOS 15.x on checkra1n 0.12.2 and up. 4K devices are not supported.
 
+This module completely neuters KTRR/KPP and makes it possible to create
+RWX memory inside EL1. Do not use this on your daily driver.
+
 Requires `libusb`: `brew install libusb`
 
 # Building
-Run `make` in the top level directory. It'll build the loader, the module,
-`klog`, and the examples. You can upload `klog` and the examples to your
-device by doing `make upload` in those directories.
+Run `make` in the top level directory. It'll build the loader and the module.
 
 ### Build Options
 Add these before `make`.
@@ -24,11 +25,11 @@ Add these before `make`.
 	- Send debug output from xnuspy to `IOLog`.
 - `XNUSPY_LEAKED_PAGE_LIMIT=n`
 	- Set the number of pages xnuspy is allowed to leak before its garbage
-collection thread starts deallocating them. Default is 64. More info can
-be found under the section called "Debugging Kernel Panics".
+collection thread starts deallocating them. Default is `64`. More info can
+be found under [Debugging Kernel Panics](#debugging-kernel-panics).
 - `XNUSPY_TRAMP_PAGES=n`
 	- Set the number of pages xnuspy will reserve for its trampoline structures.
-Default is 1. More info can be found under the section called "Limits".
+Default is 1. More info can be found under [Limits](#limits).
 
 `XNUSPY_DEBUG` and `XNUSPY_SERIAL` do not depend on each other.
 
@@ -155,8 +156,7 @@ does not return any errors. XNU's `mach_to_bsd_errno` is used to convert a
 - `ENOSPC` if:
   - There are no free `xnuspy_tramp` structs, a data structure internal to
 xnuspy. This shouldn't happen unless you're hooking hundreds of kernel functions
-*at the same time*. If you need more function hooks, check out the section about
-limits under "Important Information".
+*at the same time*. If you need more function hooks, check out [Limits](#limits).
 - `ENOTSUP` if:
   - The caller is not from a Mach-O executable or dynamic library.
 - `ENOENT` if:
@@ -246,7 +246,7 @@ You can create function pointers to other kernel functions and call those, thoug
 example, `PAGE_SIZE` expands to `vm_page_size`, not a constant. You need to
 disable PAN (on A10+, which I also don't recommend doing) before reading this 
 variable or you will panic.
-- *Make sure to compile your code with `-fno-stack-protector`.* In some cases,
+- *Make sure to compile your code with `-fno-stack-protector` and `-D_FORTIFY_SOURCE=0`* In some cases,
 the device will have to read `___stack_chk_guard` by dereferencing another userspace
 pointer, which will panic on A10+.
 - *Just to be safe, don't compile your hook programs with compiler optimizations.*
@@ -305,7 +305,7 @@ structs, letting you simultaneously hook around 225 kernel functions. If you wan
 more, you can add `XNUSPY_TRAMP_PAGES=n` before `make`. This will tell xnuspy to
 reserve `n` pages of static memory for `xnuspy_tramp` structures. However, if
 xnuspy has to fall back to unused code already inside the kernelcache, then this
-is ignored. When this happens is detailed in "How It Works".
+is ignored. When this happens is detailed in [How It Works](#how-it-works).
 
 ### Logging
 For some reason, logs from `os_log_with_args` don't show up in the stream
@@ -397,10 +397,6 @@ Unfortunately, this limits us from branching to hook structures more than 128 MB
 from a given kernel function. xnuspy does check for this scenario before booting
 and falls back to unused code already in the kernelcache for the hook structures
 to reside on instead if it finds that this could happen.
-
-# Device Security
-This module completely neuters KTRR/KPP and makes it possible to create
-RWX memory inside EL1. Do not use this on your daily driver.
 
 # Other Notes
 I do my best to make sure the patchfinders work, so if something isn't working,
