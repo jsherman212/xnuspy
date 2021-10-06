@@ -16,6 +16,7 @@ iPhone X 13.3.1:        0xfffffff007d70534
 iPhone X 15.0:          0xfffffff007d574f4
 iPhone 8 13.6.1:        0xfffffff007d99c1c
 iPhone 8 14.6:          0xfffffff007c4c8c4
+iPhone 8 14.8:          0xfffffff007c4c930
 iPhone 7 14.1:          0xfffffff00730aa64
 iPhone 7 14.5:          0xfffffff00733b960
 iPhone 7 15.0:          0xfffffff00736addc
@@ -45,6 +46,10 @@ iPhone 8 13.6.1:
 iPhone 8 14.6:
     getClassName: 0xfffffff007fbd108
     is_io_service_open_extended: 0xfffffff008085dd0
+
+iPhone 8 14.8:
+    getClassName: 0xfffffff007fbd400
+    is_io_service_open_extended: 0xfffffff0080861a0
 
 iPhone 7 14.1:
     getClassName: 0xfffffff00765be54
